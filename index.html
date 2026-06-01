@@ -1,0 +1,88 @@
+﻿<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Incident Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <h1>Incident Hub</h1>
+
+      <nav class="menu" aria-label="Categorie incident">
+        <div class="menu-category">
+          <button class="category-toggle" type="button" aria-expanded="false">Infrastruttura</button>
+          <ul class="incident-list">
+            <li><button class="incident-btn" type="button" data-incident="Server non raggiungibile">Server non raggiungibile</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Latenza elevata">Latenza elevata</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Errore backup notturno">Errore backup notturno</button></li>
+          </ul>
+        </div>
+
+        <div class="menu-category">
+          <button class="category-toggle" type="button" aria-expanded="false">Applicazioni</button>
+          <ul class="incident-list">
+            <li><button class="incident-btn" type="button" data-incident="Crash applicazione">Crash applicazione</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Errore login utenti">Errore login utenti</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Bug funzionale">Bug funzionale</button></li>
+          </ul>
+        </div>
+
+        <div class="menu-category">
+          <button class="category-toggle" type="button" aria-expanded="false">Sicurezza</button>
+          <ul class="incident-list">
+            <li><button class="incident-btn" type="button" data-incident="Tentativo accesso sospetto">Tentativo accesso sospetto</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Malware rilevato">Malware rilevato</button></li>
+            <li><button class="incident-btn" type="button" data-incident="Vulnerabilita critica">Vulnerabilita critica</button></li>
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <h2>Dashboard Incident</h2>
+        <p>Seleziona una categoria dal menu a sinistra, scegli l'incident e compila il ticket dalla modale.</p>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="ticketModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ticketModalTitle">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="ticketModalTitle">Nuovo Ticket</h3>
+        <button class="close-modal" type="button" aria-label="Chiudi modale">x</button>
+      </div>
+
+      <form id="ticketForm" class="ticket-form">
+        <label for="incidentType">Tipologia Incident</label>
+        <input id="incidentType" name="incidentType" type="text" readonly />
+
+        <label for="summary">Riepilogo</label>
+        <input id="summary" name="summary" type="text" placeholder="Es: Disservizio in produzione" required />
+
+        <label for="priority">Priorita</label>
+        <select id="priority" name="priority" required>
+          <option value="">Seleziona</option>
+          <option value="Bassa">Bassa</option>
+          <option value="Media">Media</option>
+          <option value="Alta">Alta</option>
+          <option value="Critica">Critica</option>
+        </select>
+
+        <label for="description">Descrizione</label>
+        <textarea id="description" name="description" rows="4" placeholder="Descrivi il problema..." required></textarea>
+
+        <div class="form-actions">
+          <button type="button" class="secondary close-modal">Annulla</button>
+          <button type="submit" class="primary">Crea Ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
