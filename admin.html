@@ -1,0 +1,108 @@
+﻿<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - Incident Hub</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-top"><h1>INCIDENT HUB</h1><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">☀</span></span></button></div>
+      <nav class="menu" id="adminMenu"></nav>
+      <button id="backToDashboardBtn" class="admin-toggle-btn" type="button">Dashboard</button>
+      <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
+    </aside>
+
+    <main class="content">
+      <section class="hero">
+        <h2>Admin Panel</h2>
+      </section>
+      <section class="panel">
+        <p class="muted">Modifica nomi con il pulsante Mod; sugli incident puoi anche impostare il testo ticket precompilato.</p>
+      </section>
+      <section class="panel">
+        <h3>Gestione Utenti</h3>
+        <form id="userCreateForm" class="admin-user-form">
+          <div>
+            <label for="newUsername">Username</label>
+            <input id="newUsername" name="newUsername" type="text" required />
+          </div>
+          <div>
+            <label for="newPassword">Password</label>
+            <input id="newPassword" name="newPassword" type="text" required />
+          </div>
+          <div>
+            <label for="newUserRole">Ruolo</label>
+            <select id="newUserRole" name="newUserRole">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <button type="submit" class="primary">Crea Utente</button>
+        </form>
+        <div id="usersList" class="users-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="adminIncidentModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3>Modifica Incident</h3>
+        <button class="close-modal" type="button">x</button>
+      </div>
+      <form id="adminIncidentForm" class="ticket-form">
+        <label for="adminIncidentName">Nome incident</label>
+        <input id="adminIncidentName" name="adminIncidentName" type="text" required />
+
+        <label for="adminIncidentPreset">Testo ticket precompilato (opzionale)</label>
+        <textarea id="adminIncidentPreset" name="adminIncidentPreset" rows="5" placeholder="Lascia vuoto se non vuoi precompilato"></textarea>
+        <div class="form-actions" style="justify-content:flex-start; margin-top:-4px; margin-bottom:10px;">
+          <button type="button" id="addPresetTextFieldBtn" class="secondary">+ Box testo</button>
+          <button type="button" id="addPresetSelectFieldBtn" class="secondary">+ Menu tendina</button>
+        </div>
+        <p class="muted" style="margin-top:-4px;">I token verranno sostituiti in dashboard con campi compilabili.</p>
+
+        <div class="admin-select-row">
+          <div>
+            <label for="adminSeverityDefault">Severity default</label>
+            <select id="adminSeverityDefault" name="adminSeverityDefault">
+              <option value="1">1 - Low</option>
+              <option value="2">2 - Medium</option>
+              <option value="3">3 - High</option>
+              <option value="4">4 - Extreme</option>
+            </select>
+          </div>
+          <div>
+            <label for="adminSeverityMode">Gestione severity</label>
+            <select id="adminSeverityMode" name="adminSeverityMode">
+              <option value="default">Default</option>
+              <option value="user">Scelta utente</option>
+            </select>
+          </div>
+          <div>
+            <label for="adminFabDefault">FAB predefinito</label>
+            <select id="adminFabDefault" name="adminFabDefault">
+              <option value="">Nessuno</option>
+              <option value="M5">M5</option>
+              <option value="L1">L1</option>
+              <option value="EWS">EWS</option>
+              <option value="WSIC">WSIC</option>
+              <option value="NRK">NRK</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="secondary close-modal">Annulla</button>
+          <button type="submit" class="primary">Salva</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
