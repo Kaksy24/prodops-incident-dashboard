@@ -43,6 +43,15 @@ function supabase_enabled()
     return $url && $key;
 }
 
+function env_first($keys)
+{
+    foreach ($keys as $key) {
+        $value = getenv($key);
+        if ($value !== false && $value !== '') return $value;
+    }
+    return false;
+}
+
 function supabase_base_url()
 {
     return rtrim(getenv('SUPABASE_URL'), '/') . '/rest/v1';
@@ -212,9 +221,9 @@ function read_json_body()
 
 function mysql_enabled()
 {
-    $host = getenv('MYSQL_HOST');
-    $db = getenv('MYSQL_DB');
-    $user = getenv('MYSQL_USER');
+    $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
+    $db = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
+    $user = env_first(array('MYSQL_USER', 'MYSQLUSER'));
     return $host && $db && $user;
 }
 
@@ -223,15 +232,66 @@ function mysql_conn()
     static $conn = null;
     if ($conn !== null) return $conn;
     if (!mysql_enabled() || !function_exists('mysqli_connect')) return null;
-    $host = getenv('MYSQL_HOST');
-    $port = intval(getenv('MYSQL_PORT') ? getenv('MYSQL_PORT') : 3306);
-    $user = getenv('MYSQL_USER');
-    $pass = getenv('MYSQL_PASS') ? getenv('MYSQL_PASS') : '';
-    $db = getenv('MYSQL_DB');
-    $conn = @mysqli_connect($host, $user, $pass, $db, $port);
+    $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
+    $portValue = env_first(array('MYSQL_PORT', 'MYSQLPORT'));
+    $port = intval($portValue ? $portValue : 3306);
+    $user = env_first(array('MYSQL_USER', 'MYSQLUSER'));
+    $pass = env_first(array('MYSQL_PASS', 'MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD'));
+    if ($pass === false) $pass = '';
+    $db = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
+    $useSsl = ($port === 443 || strpos($host, 'railway.app') !== false);
+    $conn = @mysqli_init();
     if (!$conn) return null;
+    @mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+    if (defined('MYSQLI_SET_CHARSET_NAME')) @mysqli_options($conn, MYSQLI_SET_CHARSET_NAME, 'utf8');
+    if (defined('MYSQLI_INIT_COMMAND')) @mysqli_options($conn, MYSQLI_INIT_COMMAND, 'SET NAMES utf8');
+    if ($useSsl) {
+        @mysqli_ssl_set($conn, null, null, null, null, null);
+    }
+    $flags = $useSsl ? MYSQLI_CLIENT_SSL : 0;
+    if ($useSsl && defined('MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT')) {
+        $flags |= MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT;
+    }
+    $ok = @mysqli_real_connect($conn, $host, $user, $pass, $db, $port, null, $flags);
+    if (!$ok && $db && function_exists('mysqli_connect_errno') && mysqli_connect_errno() === 1049) {
+        $conn = @mysqli_init();
+        if (!$conn) return null;
+        @mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+        if (defined('MYSQLI_SET_CHARSET_NAME')) @mysqli_options($conn, MYSQLI_SET_CHARSET_NAME, 'utf8');
+        if (defined('MYSQLI_INIT_COMMAND')) @mysqli_options($conn, MYSQLI_INIT_COMMAND, 'SET NAMES utf8');
+        if ($useSsl) {
+            @mysqli_ssl_set($conn, null, null, null, null, null);
+        }
+        $flags = $useSsl ? MYSQLI_CLIENT_SSL : 0;
+        if ($useSsl && defined('MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT')) {
+            $flags |= MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT;
+        }
+        $ok = @mysqli_real_connect($conn, $host, $user, $pass, '', $port, null, $flags);
+        if ($ok) {
+            @mysqli_query($conn, "CREATE DATABASE IF NOT EXISTS `" . mysql_escape($conn, $db) . "` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci");
+            @mysqli_select_db($conn, $db);
+        }
+    }
+    if (!$ok) return null;
     @mysqli_set_charset($conn, 'utf8');
     return $conn;
+}
+
+function mysql_ensure_schema($conn)
+{
+    $schemaPath = __DIR__ . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
+    if (!file_exists($schemaPath)) return false;
+    $sql = file_get_contents($schemaPath);
+    if ($sql === false || trim($sql) === '') return false;
+    $parts = explode(';', $sql);
+    foreach ($parts as $part) {
+        $statement = trim($part);
+        if ($statement === '') continue;
+        if (!mysqli_query($conn, $statement)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function mysql_escape($conn, $value)
@@ -243,6 +303,7 @@ function mysql_load_db($defaultUsers)
 {
     $conn = mysql_conn();
     if (!$conn) return null;
+    mysql_ensure_schema($conn);
 
     $db = array(
         'categories' => array(),
@@ -327,6 +388,14 @@ function mysql_load_db($defaultUsers)
     $db['counters']['incident'] = max_id($db['incidents']);
     $db['counters']['ticket'] = max_id($db['tickets']);
     $db['counters']['user'] = max_id($db['users']);
+    if (file_exists(DB_PATH)) {
+        $json = file_exists(DB_PATH) ? file_get_contents(DB_PATH) : false;
+        $seed = $json ? json_decode($json, true) : null;
+        if (is_array($seed) && isset($seed['categories']) && is_array($seed['categories']) && count($seed['categories']) && count($seed['categories']) > count($db['categories'])) {
+            mysql_save_db($seed);
+            return $seed;
+        }
+    }
     return $db;
 }
 
@@ -658,6 +727,22 @@ function in_range($iso, $startIso, $endIso)
 {
     $t = strtotime($iso);
     return $t >= strtotime($startIso) && $t < strtotime($endIso);
+}
+
+function ticket_search_match($ticket, $query)
+{
+    $query = trim(strtolower($query));
+    if ($query === '') return true;
+    $haystack = array(
+        isset($ticket['incident_name']) ? $ticket['incident_name'] : '',
+        isset($ticket['description']) ? $ticket['description'] : '',
+        isset($ticket['fab']) ? $ticket['fab'] : '',
+        isset($ticket['created_at']) ? $ticket['created_at'] : ''
+    );
+    foreach ($haystack as $value) {
+        if (strpos(strtolower(strval($value)), $query) !== false) return true;
+    }
+    return false;
 }
 
 function ticket_with_permissions($ticket, $user)
@@ -1167,6 +1252,31 @@ if ($path === '/api/tickets/previous-shifts' && $method === 'GET') {
         $out[] = array('label' => $s['label'], 'start' => $start, 'end' => $end, 'tickets' => $tickets);
     }
     json_response(array('shifts' => $out), 200);
+}
+
+if ($path === '/api/tickets/search' && $method === 'GET') {
+    $query = isset($_GET['query']) ? trim(strval($_GET['query'])) : '';
+    $from = isset($_GET['from']) ? trim(strval($_GET['from'])) : '';
+    $to = isset($_GET['to']) ? trim(strval($_GET['to'])) : '';
+    $fromTs = $from !== '' ? strtotime($from . ' 00:00:00') : false;
+    $toTs = $to !== '' ? strtotime($to . ' 23:59:59') : false;
+    if ($fromTs !== false && $toTs !== false && $fromTs > $toTs) json_response(array('error' => 'Intervallo date non valido'), 400);
+    $tickets = array();
+    foreach ($db['tickets'] as $t) {
+        $ticketTs = isset($t['created_at']) ? strtotime($t['created_at']) : false;
+        if ($fromTs !== false && $ticketTs !== false && $ticketTs < $fromTs) continue;
+        if ($toTs !== false && $ticketTs !== false && $ticketTs > $toTs) continue;
+        if (!ticket_search_match($t, $query)) continue;
+        $tickets[] = ticket_with_permissions($t, $user);
+    }
+    usort($tickets, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
+    json_response(array(
+        'query' => $query,
+        'from' => $from,
+        'to' => $to,
+        'count' => count($tickets),
+        'tickets' => $tickets
+    ), 200);
 }
 
 if ($path === '/api/stats/fab/current-day' && $method === 'GET') {

@@ -24,6 +24,35 @@
         <div id="previousShiftsContent" class="previous-shifts-content" hidden></div>
       </section>
 
+      <section class="panel ticket-search-panel">
+        <div class="panel-header-row">
+          <h3>Cerca ticket storici</h3>
+          <p class="muted">Usa parole chiave, date o entrambe per ritrovare rapidamente i ticket vecchi.</p>
+        </div>
+        <form id="ticketSearchForm" class="ticket-search-form">
+          <div class="ticket-search-grid">
+            <div>
+              <label for="ticketSearchQuery">Parole chiave</label>
+              <input id="ticketSearchQuery" type="text" placeholder="Es. reset, malware, FAB, categoria..." />
+            </div>
+            <div>
+              <label for="ticketSearchFrom">Da data</label>
+              <input id="ticketSearchFrom" type="date" />
+            </div>
+            <div>
+              <label for="ticketSearchTo">A data</label>
+              <input id="ticketSearchTo" type="date" />
+            </div>
+          </div>
+          <div class="form-actions inline-actions search-actions">
+            <button type="submit" class="primary">Cerca</button>
+            <button type="button" id="ticketSearchResetBtn" class="secondary">Reset</button>
+          </div>
+        </form>
+        <div id="ticketSearchSummary" class="muted ticket-search-summary">Nessuna ricerca avviata.</div>
+        <div id="ticketSearchResults" class="ticket-search-results"></div>
+      </section>
+
       <section class="panel-grid">
         <article class="panel">
           <h3>Ticket turno Corrente</h3>
@@ -118,7 +147,7 @@
   </div>
 
   <script src="script.js"></script>
-  <div class="app-version-badge">v0.1.003</div>
+  <div class="app-version-badge">v0.2.0</div>
 </body>
 </html>
 

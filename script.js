@@ -14,6 +14,13 @@ const logoutBtn = document.getElementById('logoutBtn');
 const deleteTicketBtn = document.getElementById('deleteTicketBtn');
 const previousShiftsToggle = document.getElementById('previousShiftsToggle');
 const previousShiftsContent = document.getElementById('previousShiftsContent');
+const ticketSearchForm = document.getElementById('ticketSearchForm');
+const ticketSearchQueryInput = document.getElementById('ticketSearchQuery');
+const ticketSearchFromInput = document.getElementById('ticketSearchFrom');
+const ticketSearchToInput = document.getElementById('ticketSearchTo');
+const ticketSearchResetBtn = document.getElementById('ticketSearchResetBtn');
+const ticketSearchSummary = document.getElementById('ticketSearchSummary');
+const ticketSearchResults = document.getElementById('ticketSearchResults');
 
 const fabDayChart = document.getElementById('fabDayChart');
 const fabYearChart = document.getElementById('fabYearChart');
@@ -552,6 +559,92 @@ function renderGroupedTickets(tickets) {
   return `<ul class="ticket-list previous-ticket-list">${groups}</ul>`;
 }
 
+function renderSearchTickets(tickets) {
+  if (!tickets.length) return '<p class="muted">Nessun ticket trovato con questi filtri.</p>';
+
+  const grouped = new Map();
+  tickets.forEach((ticket) => {
+    const category = incidentCategoryMap[ticket.incident_name] || 'Categoria non definita';
+    const key = `${category}|||${ticket.fab}`;
+    if (!grouped.has(key)) grouped.set(key, { category, fab: ticket.fab, incidents: [] });
+    grouped.get(key).incidents.push(ticket);
+  });
+
+  const groups = [...grouped.values()].map((group) => {
+    const categoryColor = colorForLabel(group.category);
+    const fabColor = colorForLabel(group.fab);
+    const rows = group.incidents.map((item) => {
+      const editBtn = item.can_edit
+        ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
+        : '';
+      return `<li data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span>${editBtn}</li>`;
+    }).join('');
+    return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
+  }).join('');
+
+  return `<ul class="ticket-list previous-ticket-list">${groups}</ul>`;
+}
+
+async function runTicketSearch() {
+  const query = ticketSearchQueryInput?.value?.trim() || '';
+  const from = ticketSearchFromInput?.value || '';
+  const to = ticketSearchToInput?.value || '';
+  const params = new URLSearchParams();
+  if (query) params.set('query', query);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  if (ticketSearchSummary) {
+    const parts = [];
+    if (query) parts.push(`parole chiave "${query}"`);
+    if (from || to) parts.push(`date ${from || '...'} → ${to || '...'}`);
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+  }
+  const data = await fetchJson(`/api/tickets/search${suffix}`);
+  if (ticketSearchResults) {
+    ticketSearchResults.innerHTML = `<p class="ticket-search-count">${data.count} ticket trovati.</p>${renderSearchTickets(data.tickets || [])}`;
+  }
+}
+
+function handleEditTicketButton(btn) {
+  editingTicketId = Number(btn.dataset.ticketId);
+  clearExtraTicketCards();
+  if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Conferma Modifica';
+  incidentTypeInput.value = btn.dataset.incident || '';
+  if (btn.dataset.incidentId && incidentIdToNameMap[btn.dataset.incidentId]) {
+    incidentTypeInput.value = incidentIdToNameMap[btn.dataset.incidentId];
+  }
+  if (ticketModalTitle) ticketModalTitle.textContent = incidentTypeInput.value || 'Nuovo Ticket';
+  const severityCfg = incidentSeverityMap[incidentTypeInput.value] || { severity_default: 1, severity_mode: 'default' };
+  const fallbackSeverity = Number(btn.dataset.severity || severityCfg.severity_default || 1);
+  ticketSeveritySelect.value = String(fallbackSeverity);
+  if (ticketSeverityGroup) ticketSeverityGroup.style.display = severityCfg.severity_mode === 'user' ? '' : 'none';
+  ticketSeveritySelect.disabled = severityCfg.severity_mode !== 'user';
+  if (ticketSeverityHint) {
+    ticketSeverityHint.textContent = severityCfg.severity_mode === 'user'
+      ? 'Severity selezionabile dall\'utente.'
+      : 'Severity impostata di default dall\'admin.';
+  }
+  document.getElementById('description').value = btn.dataset.description || '';
+  document.getElementById('description').readOnly = false;
+  document.getElementById('description').style.display = '';
+  document.getElementById('description').placeholder = 'Inserisci descrizione problema...';
+  if (presetInlineComposer) {
+    presetInlineComposer.style.display = 'none';
+    presetInlineComposer.innerHTML = '';
+  }
+  ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
+  fabValue.value = (btn.dataset.fab || '').toUpperCase();
+  document.querySelectorAll('.fab-btn').forEach((b) => {
+    b.classList.toggle('active', b.textContent === fabValue.value);
+  });
+  if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
+  if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
+  revealModal();
+  applyMultiModalLayout();
+  positionAddSameIncidentBtn();
+}
+
 async function loadPreviousShifts() {
   const data = await fetchJson('/api/tickets/previous-shifts');
   if (!data.shifts.length) {
@@ -670,6 +763,19 @@ ticketForm.addEventListener('submit', async (e) => {
   }
 });
 
+ticketSearchForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await runTicketSearch();
+});
+
+ticketSearchResetBtn?.addEventListener('click', async () => {
+  if (ticketSearchQueryInput) ticketSearchQueryInput.value = '';
+  if (ticketSearchFromInput) ticketSearchFromInput.value = '';
+  if (ticketSearchToInput) ticketSearchToInput.value = '';
+  if (ticketSearchSummary) ticketSearchSummary.textContent = 'Nessuna ricerca avviata.';
+  if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+});
+
 (async function init() {
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
   await loadCurrentUser();
@@ -690,42 +796,13 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',()=>{const next=docum
 ticketList.addEventListener('click', async (e) => {
   const btn = e.target.closest('.edit-ticket-btn');
   if (!btn) return;
-  editingTicketId = Number(btn.dataset.ticketId);
-  clearExtraTicketCards();
-  if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Conferma Modifica';
-  incidentTypeInput.value = btn.dataset.incident || '';
-  if (btn.dataset.incidentId && incidentIdToNameMap[btn.dataset.incidentId]) {
-    incidentTypeInput.value = incidentIdToNameMap[btn.dataset.incidentId];
-  }
-  if (ticketModalTitle) ticketModalTitle.textContent = incidentTypeInput.value || 'Nuovo Ticket';
-  const severityCfg = incidentSeverityMap[incidentTypeInput.value] || { severity_default: 1, severity_mode: 'default' };
-  const fallbackSeverity = Number(btn.dataset.severity || severityCfg.severity_default || 1);
-  ticketSeveritySelect.value = String(fallbackSeverity);
-  if (ticketSeverityGroup) ticketSeverityGroup.style.display = severityCfg.severity_mode === 'user' ? '' : 'none';
-  ticketSeveritySelect.disabled = severityCfg.severity_mode !== 'user';
-  if (ticketSeverityHint) {
-    ticketSeverityHint.textContent = severityCfg.severity_mode === 'user'
-      ? 'Severity selezionabile dall\'utente.'
-      : 'Severity impostata di default dall\'admin.';
-  }
-  document.getElementById('description').value = btn.dataset.description || '';
-  document.getElementById('description').readOnly = false;
-  document.getElementById('description').style.display = '';
-  document.getElementById('description').placeholder = 'Inserisci descrizione problema...';
-  if (presetInlineComposer) {
-    presetInlineComposer.style.display = 'none';
-    presetInlineComposer.innerHTML = '';
-  }
-  ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
-  fabValue.value = (btn.dataset.fab || '').toUpperCase();
-  document.querySelectorAll('.fab-btn').forEach((b) => {
-    b.classList.toggle('active', b.textContent === fabValue.value);
-  });
-  if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
-  if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
-  revealModal();
-  applyMultiModalLayout();
-  positionAddSameIncidentBtn();
+  handleEditTicketButton(btn);
+});
+
+ticketSearchResults?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.edit-ticket-btn');
+  if (!btn) return;
+  handleEditTicketButton(btn);
 });
 
 if (deleteTicketBtn) {
