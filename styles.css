@@ -163,7 +163,7 @@ body.theme-dark .switch-thumb {
 .muted { color: var(--muted); }
 .ticket-list { padding-left: 18px; }
 .ticket-list .incident-title {
-  color: #000000;
+  color: var(--text);
   font-weight: 700;
 }
 .ticket-list > li > ul {
@@ -183,6 +183,12 @@ body.theme-dark .switch-thumb {
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.45;
+  color: var(--text);
+}
+
+body.theme-dark .ticket-category-label,
+body.theme-dark .ticket-fab-label {
+  color: #9dd8ff !important;
 }
 .ticket-new-group {
   animation: ticketGroupFade 1.4s ease both;
@@ -624,4 +630,25 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   color: #b42318;
   font-weight: 700;
   margin: 2px 0 8px;
+}
+
+.app-version-badge {
+  position: fixed;
+  right: 10px;
+  bottom: 8px;
+  z-index: 1200;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 7px;
+  pointer-events: none;
+}
+
+body.theme-dark .app-version-badge {
+  background: rgba(12, 20, 34, 0.82);
+  color: #c8d6e8;
 }

@@ -1,126 +1,159 @@
 {
-  "categories": [
-    {
-      "id": 1,
-      "name": "AUTOMATION"
+    "categories": [
+        {
+            "id": 1,
+            "name": "AUTOMATION"
+        },
+        {
+            "id": 2,
+            "name": "WMM"
+        },
+        {
+            "id": 3,
+            "name": "SICMA"
+        }
+    ],
+    "incidents": [
+        {
+            "id": 1,
+            "category_id": 1,
+            "name": "Server non raggiungibile"
+        },
+        {
+            "id": 2,
+            "category_id": 1,
+            "name": "Latenza elevata"
+        },
+        {
+            "id": 3,
+            "category_id": 1,
+            "name": "Errore backup notturno"
+        },
+        {
+            "id": 4,
+            "category_id": 2,
+            "name": "Crash applicazione"
+        },
+        {
+            "id": 5,
+            "category_id": 2,
+            "name": "Errore login utenti"
+        },
+        {
+            "id": 6,
+            "category_id": 2,
+            "name": "Bug funzionale"
+        },
+        {
+            "id": 7,
+            "category_id": 3,
+            "name": "Tentativo accesso sospetto"
+        },
+        {
+            "id": 8,
+            "category_id": 3,
+            "name": "Malware rilevato"
+        },
+        {
+            "id": 9,
+            "category_id": 3,
+            "name": "Vulnerabilita critica"
+        }
+    ],
+    "tickets": [
+        {
+            "id": 1,
+            "incident_name": "Server non raggiungibile",
+            "description": "prova",
+            "fab": "M5",
+            "created_at": "2026-06-01T09:58:30.733Z",
+            "incident_id": 1
+        },
+        {
+            "id": 2,
+            "incident_name": "Latenza elevata",
+            "description": "eeee",
+            "fab": "L1",
+            "created_at": "2026-06-01T09:58:47.618Z",
+            "incident_id": 2
+        },
+        {
+            "id": 3,
+            "incident_name": "Latenza elevata",
+            "description": "ertere",
+            "fab": "M5",
+            "created_at": "2026-06-01T09:58:51.325Z",
+            "incident_id": 2
+        },
+        {
+            "id": 4,
+            "incident_name": "Errore backup notturno",
+            "description": "gewgerg",
+            "fab": "NRK",
+            "created_at": "2026-06-01T09:58:54.330Z",
+            "incident_id": 3
+        },
+        {
+            "id": 5,
+            "incident_name": "Errore login utenti",
+            "description": "grgr",
+            "fab": "WSIC",
+            "created_at": "2026-06-01T09:58:58.758Z",
+            "incident_id": 5
+        },
+        {
+            "id": 6,
+            "incident_name": "Bug funzionale",
+            "description": "grgrg",
+            "fab": "NRK",
+            "created_at": "2026-06-01T09:59:02.031Z",
+            "incident_id": 6
+        },
+        {
+            "id": 7,
+            "incident_name": "Malware rilevato",
+            "description": "rger",
+            "fab": "EWS",
+            "created_at": "2026-06-01T09:59:10.503Z",
+            "incident_id": 8
+        },
+        {
+            "id": 8,
+            "incident_name": "Vulnerabilita critica",
+            "description": "bnmm,",
+            "fab": "EWS",
+            "created_at": "2026-06-01T10:17:29.894Z",
+            "incident_id": 9
+        },
+        {
+            "id": 9,
+            "incident_id": 1,
+            "incident_name": "Server non raggiungibile",
+            "description": "test incident id",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "created_at": "2026-06-01T21:37:42+00:00"
+        }
+    ],
+    "counters": {
+        "category": 3,
+        "incident": 9,
+        "ticket": 9,
+        "user": 2
     },
-    {
-      "id": 2,
-      "name": "WMM"
-    },
-    {
-      "id": 3,
-      "name": "SICMA"
-    }
-  ],
-  "incidents": [
-    {
-      "id": 1,
-      "category_id": 1,
-      "name": "Server non raggiungibile"
-    },
-    {
-      "id": 2,
-      "category_id": 1,
-      "name": "Latenza elevata"
-    },
-    {
-      "id": 3,
-      "category_id": 1,
-      "name": "Errore backup notturno"
-    },
-    {
-      "id": 4,
-      "category_id": 2,
-      "name": "Crash applicazione"
-    },
-    {
-      "id": 5,
-      "category_id": 2,
-      "name": "Errore login utenti"
-    },
-    {
-      "id": 6,
-      "category_id": 2,
-      "name": "Bug funzionale"
-    },
-    {
-      "id": 7,
-      "category_id": 3,
-      "name": "Tentativo accesso sospetto"
-    },
-    {
-      "id": 8,
-      "category_id": 3,
-      "name": "Malware rilevato"
-    },
-    {
-      "id": 9,
-      "category_id": 3,
-      "name": "Vulnerabilita critica"
-    }
-  ],
-  "tickets": [
-    {
-      "id": 1,
-      "incident_name": "Server non raggiungibile",
-      "description": "prova",
-      "fab": "M5",
-      "created_at": "2026-06-01T09:58:30.733Z"
-    },
-    {
-      "id": 2,
-      "incident_name": "Latenza elevata",
-      "description": "eeee",
-      "fab": "L1",
-      "created_at": "2026-06-01T09:58:47.618Z"
-    },
-    {
-      "id": 3,
-      "incident_name": "Latenza elevata",
-      "description": "ertere",
-      "fab": "M5",
-      "created_at": "2026-06-01T09:58:51.325Z"
-    },
-    {
-      "id": 4,
-      "incident_name": "Errore backup notturno",
-      "description": "gewgerg",
-      "fab": "NRK",
-      "created_at": "2026-06-01T09:58:54.330Z"
-    },
-    {
-      "id": 5,
-      "incident_name": "Errore login utenti",
-      "description": "grgr",
-      "fab": "WSIC",
-      "created_at": "2026-06-01T09:58:58.758Z"
-    },
-    {
-      "id": 6,
-      "incident_name": "Bug funzionale",
-      "description": "grgrg",
-      "fab": "NRK",
-      "created_at": "2026-06-01T09:59:02.031Z"
-    },
-    {
-      "id": 7,
-      "incident_name": "Malware rilevato",
-      "description": "rger",
-      "fab": "EWS",
-      "created_at": "2026-06-01T09:59:10.503Z"
-    },
-    {
-      "id": 8,
-      "incident_name": "Vulnerabilita critica",
-      "description": "bnmm,",
-      "fab": "EWS",
-      "created_at": "2026-06-01T10:17:29.894Z"
-    }
-  ],
-  "counters": {
-    "category": 3,
-    "incident": 9,
-    "ticket": 8
-  }
+    "users": [
+        {
+            "username": "admin",
+            "role": "admin",
+            "id": 1,
+            "password": "admin"
+        },
+        {
+            "username": "user",
+            "role": "user",
+            "id": 2,
+            "password": "user"
+        }
+    ]
 }

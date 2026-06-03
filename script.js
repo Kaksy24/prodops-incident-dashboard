@@ -32,6 +32,8 @@ let fabYearMode = 'months';
 let catYearMode = 'months';
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
+const incidentNameToIdMap = {};
+const incidentIdToNameMap = {};
 const incidentPresetMap = {};
 const incidentSeverityMap = {};
 const incidentFabDefaultMap = {};
@@ -451,6 +453,8 @@ async function loadCategories() {
   const data = await fetchJson('/api/categories');
   menu.innerHTML = '';
   Object.keys(incidentCategoryMap).forEach((k) => delete incidentCategoryMap[k]);
+  Object.keys(incidentNameToIdMap).forEach((k) => delete incidentNameToIdMap[k]);
+  Object.keys(incidentIdToNameMap).forEach((k) => delete incidentIdToNameMap[k]);
   Object.keys(incidentPresetMap).forEach((k) => delete incidentPresetMap[k]);
   Object.keys(incidentSeverityMap).forEach((k) => delete incidentSeverityMap[k]);
   Object.keys(incidentFabDefaultMap).forEach((k) => delete incidentFabDefaultMap[k]);
@@ -462,6 +466,8 @@ async function loadCategories() {
     ul.className = 'incident-list';
     cat.incidents.forEach((inc) => {
       incidentCategoryMap[inc.name] = cat.name;
+      incidentNameToIdMap[inc.name] = Number(inc.id);
+      incidentIdToNameMap[String(inc.id)] = inc.name;
       incidentPresetMap[inc.name] = Array.isArray(inc.presets) ? inc.presets : [];
       incidentSeverityMap[inc.name] = {
         severity_default: Number(inc.severity_default || 1),
@@ -512,7 +518,7 @@ async function loadDayTickets(animatedTicketIds = []) {
       .map((item) => {
         const isAnimated = animatedIds.has(Number(item.id));
         const editBtn = item.can_edit
-          ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
+          ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
           : '';
         return `<li class="${isAnimated ? 'ticket-new-entry' : ''}" data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span>${editBtn}</li>`;
       })
@@ -610,11 +616,12 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
 ticketForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const incident_name = incidentTypeInput.value;
+  const incident_id = Number(incidentNameToIdMap[incident_name] || 0);
   const description = document.getElementById('description').value.trim();
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
   const ticket_time_local = ticketTimestampInput.value;
-  if (!description || !fab || !ticket_time_local) return alert('Compila descrizione, data/ora e FAB');
+  if (!incident_id || !description || !fab || !ticket_time_local) return alert('Compila incident, descrizione, data/ora e FAB');
   const ticket_time = new Date(ticket_time_local).toISOString();
   let createdTicketIds = [];
   try {
@@ -622,10 +629,10 @@ ticketForm.addEventListener('submit', async (e) => {
       await fetchJson(`/api/tickets/${editingTicketId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ incident_name, description, fab, ticket_time, severity })
+        body: JSON.stringify({ incident_id, description, fab, ticket_time, severity })
       });
     } else {
-      const payloads = [{ incident_name, description, fab, ticket_time, severity }];
+      const payloads = [{ incident_id, description, fab, ticket_time, severity }];
       const severityCfg = incidentSeverityMap[incident_name] || { severity_default: 1, severity_mode: 'default' };
       document.querySelectorAll('.extra-ticket-modal').forEach((panel) => {
         const extraDesc = panel.querySelector('.extra-description')?.value?.trim() || '';
@@ -635,7 +642,7 @@ ticketForm.addEventListener('submit', async (e) => {
         const userSeverity = panel.querySelector('.extra-severity')?.value;
         const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || severityCfg.severity_default || 1);
         payloads.push({
-          incident_name,
+          incident_id,
           description: extraDesc,
           fab: extraFab,
           ticket_time: new Date(extraDt).toISOString(),
@@ -687,6 +694,9 @@ ticketList.addEventListener('click', async (e) => {
   clearExtraTicketCards();
   if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Conferma Modifica';
   incidentTypeInput.value = btn.dataset.incident || '';
+  if (btn.dataset.incidentId && incidentIdToNameMap[btn.dataset.incidentId]) {
+    incidentTypeInput.value = incidentIdToNameMap[btn.dataset.incidentId];
+  }
   if (ticketModalTitle) ticketModalTitle.textContent = incidentTypeInput.value || 'Nuovo Ticket';
   const severityCfg = incidentSeverityMap[incidentTypeInput.value] || { severity_default: 1, severity_mode: 'default' };
   const fallbackSeverity = Number(btn.dataset.severity || severityCfg.severity_default || 1);
