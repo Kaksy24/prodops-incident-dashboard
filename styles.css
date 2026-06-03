@@ -40,8 +40,8 @@ body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--tex
   border: 0;
   text-decoration: none;
   font-weight: 700;
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-  letter-spacing: .4px;
+  font-family: inherit;
+  letter-spacing: normal;
 }
 .sidebar-link-btn:hover { filter: brightness(1.08); }
 .theme-switch {
