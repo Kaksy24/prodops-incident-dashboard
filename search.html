@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cerca Ticket Storici</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-top"><h1>INCIDENT HUB</h1><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">?</span></span></button></div>
+      <a class="sidebar-link-btn" href="/index.html">Dashboard</a>
+      <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
+      <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
+    </aside>
+
+    <main class="content">
+      <section class="panel ticket-search-panel">
+        <div class="panel-header-row">
+          <h3>Cerca ticket storici</h3>
+          <p class="muted">Cerca per parole chiave, date o entrambe per ritrovare vecchi ticket.</p>
+        </div>
+        <form id="ticketSearchForm" class="ticket-search-form">
+          <div class="ticket-search-grid">
+            <div>
+              <label for="ticketSearchQuery">Parole chiave</label>
+              <input id="ticketSearchQuery" type="text" placeholder="Es. reset, malware, FAB, categoria..." />
+            </div>
+            <div>
+              <label for="ticketSearchFrom">Da data</label>
+              <input id="ticketSearchFrom" type="date" />
+            </div>
+            <div>
+              <label for="ticketSearchTo">A data</label>
+              <input id="ticketSearchTo" type="date" />
+            </div>
+          </div>
+          <div class="form-actions inline-actions search-actions">
+            <button type="submit" class="primary">Cerca</button>
+            <button type="button" id="ticketSearchResetBtn" class="secondary">Reset</button>
+          </div>
+        </form>
+        <div id="ticketSearchSummary" class="muted ticket-search-summary">Nessuna ricerca avviata.</div>
+        <div id="ticketSearchResults" class="ticket-search-results"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="search.js"></script>
+  <div class="app-version-badge">v0.3.0</div>
+</body>
+</html>

@@ -1,0 +1,160 @@
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const openAdminBtn = document.getElementById('openAdminBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const ticketSearchForm = document.getElementById('ticketSearchForm');
+const ticketSearchQueryInput = document.getElementById('ticketSearchQuery');
+const ticketSearchFromInput = document.getElementById('ticketSearchFrom');
+const ticketSearchToInput = document.getElementById('ticketSearchTo');
+const ticketSearchResetBtn = document.getElementById('ticketSearchResetBtn');
+const ticketSearchSummary = document.getElementById('ticketSearchSummary');
+const ticketSearchResults = document.getElementById('ticketSearchResults');
+
+const incidentCategoryMap = {};
+let currentUser = null;
+
+const chartPalette = [
+  '#1f77b4',
+  '#ff7f0e',
+  '#2ca02c',
+  '#d62728',
+  '#9467bd',
+  '#17becf',
+  '#bcbd22',
+  '#8c564b',
+  '#e377c2',
+  '#7f7f7f'
+];
+
+function colorByIndex(index) {
+  return chartPalette[index % chartPalette.length];
+}
+
+function colorForLabel(label) {
+  let hash = 0;
+  const text = String(label || '');
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
+  return colorByIndex(Math.abs(hash));
+}
+
+function applyTheme(theme) {
+  document.body.classList.toggle('theme-dark', theme === 'dark');
+  if (themeToggleBtn) {
+    themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
+    const thumb = themeToggleBtn.querySelector('.switch-thumb');
+    if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
+  }
+}
+
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    window.location.href = '/login.html';
+    throw new Error('Login richiesta');
+  }
+  if (res.status === 403) {
+    alert('Non hai i permessi per questa operazione.');
+    throw new Error('Accesso non consentito');
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text);
+      throw new Error(parsed.error || text);
+    } catch {
+      throw new Error(text);
+    }
+  }
+  return res.json();
+}
+
+function renderSearchTickets(tickets) {
+  if (!tickets.length) return '<p class="muted">Nessun ticket trovato con questi filtri.</p>';
+
+  const grouped = new Map();
+  tickets.forEach((ticket) => {
+    const category = incidentCategoryMap[ticket.incident_name] || 'Categoria non definita';
+    const key = `${category}|||${ticket.fab}`;
+    if (!grouped.has(key)) grouped.set(key, { category, fab: ticket.fab, incidents: [] });
+    grouped.get(key).incidents.push(ticket);
+  });
+
+  const groups = [...grouped.values()].map((group) => {
+    const categoryColor = colorForLabel(group.category);
+    const fabColor = colorForLabel(group.fab);
+    const rows = group.incidents.map((item) => {
+      const dt = item.created_at ? new Date(item.created_at).toLocaleString('it-IT') : '';
+      return `<li><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span><span class="ticket-search-meta">${dt}</span></li>`;
+    }).join('');
+    return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
+  }).join('');
+
+  return `<ul class="ticket-list previous-ticket-list">${groups}</ul>`;
+}
+
+async function loadCategories() {
+  const data = await fetchJson('/api/categories');
+  Object.keys(incidentCategoryMap).forEach((k) => delete incidentCategoryMap[k]);
+  data.forEach((cat) => {
+    cat.incidents.forEach((inc) => {
+      incidentCategoryMap[inc.name] = cat.name;
+    });
+  });
+}
+
+async function runTicketSearch() {
+  const query = ticketSearchQueryInput?.value?.trim() || '';
+  const from = ticketSearchFromInput?.value || '';
+  const to = ticketSearchToInput?.value || '';
+  const params = new URLSearchParams();
+  if (query) params.set('query', query);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  if (ticketSearchSummary) {
+    const parts = [];
+    if (query) parts.push(`parole chiave "${query}"`);
+    if (from || to) parts.push(`date ${from || '...'} → ${to || '...'}`);
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+  }
+  const data = await fetchJson(`/api/tickets/search${suffix}`);
+  if (ticketSearchResults) {
+    ticketSearchResults.innerHTML = `<p class="ticket-search-count">${data.count} ticket trovati.</p>${renderSearchTickets(data.tickets || [])}`;
+  }
+}
+
+function applyTicketSearchListeners() {
+  ticketSearchForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await runTicketSearch();
+  });
+
+  ticketSearchResetBtn?.addEventListener('click', async () => {
+    if (ticketSearchQueryInput) ticketSearchQueryInput.value = '';
+    if (ticketSearchFromInput) ticketSearchFromInput.value = '';
+    if (ticketSearchToInput) ticketSearchToInput.value = '';
+    if (ticketSearchSummary) ticketSearchSummary.textContent = 'Nessuna ricerca avviata.';
+    if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+  });
+}
+
+(async function init() {
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  applyTheme(savedTheme);
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+      const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    });
+  }
+  openAdminBtn?.addEventListener('click', () => { window.location.href = '/admin.html'; });
+  logoutBtn?.addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+  const me = await fetchJson('/api/me');
+  currentUser = me.user;
+  if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  await loadCategories();
+  applyTicketSearchListeners();
+})();

@@ -805,6 +805,11 @@ if ($path === '/admin.html') {
     readfile(__DIR__ . DIRECTORY_SEPARATOR . 'admin.html');
     exit;
 }
+if ($path === '/search.html') {
+    require_page_auth('user');
+    readfile(__DIR__ . DIRECTORY_SEPARATOR . 'search.html');
+    exit;
+}
 if ($path === '/login.html') {
     $u = read_auth_user();
     if ($u) {

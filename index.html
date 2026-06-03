@@ -11,6 +11,7 @@
     <aside class="sidebar">
       <div class="sidebar-top"><h1>INCIDENT HUB</h1><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">?</span></span></button></div>
       <nav class="menu" id="menu"></nav>
+      <a class="sidebar-link-btn" href="/search.html">Cerca ticket</a>
       <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
       <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
     </aside>
@@ -22,35 +23,6 @@
           <span class="section-toggle-icon">+</span>
         </button>
         <div id="previousShiftsContent" class="previous-shifts-content" hidden></div>
-      </section>
-
-      <section class="panel ticket-search-panel">
-        <div class="panel-header-row">
-          <h3>Cerca ticket storici</h3>
-          <p class="muted">Usa parole chiave, date o entrambe per ritrovare rapidamente i ticket vecchi.</p>
-        </div>
-        <form id="ticketSearchForm" class="ticket-search-form">
-          <div class="ticket-search-grid">
-            <div>
-              <label for="ticketSearchQuery">Parole chiave</label>
-              <input id="ticketSearchQuery" type="text" placeholder="Es. reset, malware, FAB, categoria..." />
-            </div>
-            <div>
-              <label for="ticketSearchFrom">Da data</label>
-              <input id="ticketSearchFrom" type="date" />
-            </div>
-            <div>
-              <label for="ticketSearchTo">A data</label>
-              <input id="ticketSearchTo" type="date" />
-            </div>
-          </div>
-          <div class="form-actions inline-actions search-actions">
-            <button type="submit" class="primary">Cerca</button>
-            <button type="button" id="ticketSearchResetBtn" class="secondary">Reset</button>
-          </div>
-        </form>
-        <div id="ticketSearchSummary" class="muted ticket-search-summary">Nessuna ricerca avviata.</div>
-        <div id="ticketSearchResults" class="ticket-search-results"></div>
       </section>
 
       <section class="panel-grid">
@@ -147,7 +119,7 @@
   </div>
 
   <script src="script.js"></script>
-  <div class="app-version-badge">v0.2.0</div>
+  <div class="app-version-badge">v0.3.0</div>
 </body>
 </html>
 
