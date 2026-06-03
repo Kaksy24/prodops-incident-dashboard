@@ -39,8 +39,9 @@ body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--tex
   color: #fff;
   border: 0;
   text-decoration: none;
-  font-weight: 700;
-  font-family: inherit;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
   letter-spacing: normal;
 }
 .sidebar-link-btn:hover { filter: brightness(1.08); }
