@@ -22,6 +22,7 @@ let dragIncidentId = null;
 let dragIncidentCategoryId = null;
 let editingIncidentId = null;
 let adminOverlayPressStarted = false;
+let adminModalCloseTimer = null;
 let currentAdminUser = null;
 
 function captureAdminUiState() {
@@ -68,22 +69,36 @@ logoutBtn?.addEventListener('click', async () => {
 
 function closeIncidentModal() {
   if (!adminIncidentModal) return;
-  adminIncidentModal.classList.remove('show');
+  if (adminModalCloseTimer) clearTimeout(adminModalCloseTimer);
+  adminIncidentModal.classList.remove('active');
+  adminIncidentModal.classList.add('closing');
   adminIncidentModal.setAttribute('aria-hidden', 'true');
   editingIncidentId = null;
   adminIncidentForm?.reset();
+  adminModalCloseTimer = setTimeout(() => {
+    adminIncidentModal.classList.remove('show', 'closing');
+    adminModalCloseTimer = null;
+  }, 260);
 }
 
 function openIncidentModal(incident) {
   if (!adminIncidentModal) return;
+  if (adminModalCloseTimer) {
+    clearTimeout(adminModalCloseTimer);
+    adminModalCloseTimer = null;
+  }
+  adminIncidentModal.classList.remove('closing');
+  adminIncidentModal.classList.add('show');
   editingIncidentId = Number(incident.id);
   adminIncidentNameInput.value = incident.name || '';
   adminIncidentPresetInput.value = incident.preset || '';
   adminSeverityDefaultSelect.value = String(incident.severity_default || 1);
   adminSeverityModeSelect.value = incident.severity_mode || 'default';
   adminFabDefaultSelect.value = incident.fab_default || '';
-  adminIncidentModal.classList.add('show');
   adminIncidentModal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => {
+    adminIncidentModal.classList.add('active');
+  });
 }
 
 async function fetchJson(url, options) {
