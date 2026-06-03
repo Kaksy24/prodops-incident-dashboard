@@ -10,7 +10,25 @@ if ($path === '/' || $path === '/index.html' || $path === '/admin.html' || $path
 }
 
 if ($path !== '/' && is_file($file)) {
-    return false;
+    $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+    $mimeMap = array(
+        'css' => 'text/css; charset=utf-8',
+        'js' => 'application/javascript; charset=utf-8',
+        'html' => 'text/html; charset=utf-8',
+        'json' => 'application/json; charset=utf-8',
+        'svg' => 'image/svg+xml',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'ico' => 'image/x-icon',
+        'map' => 'application/json; charset=utf-8'
+    );
+    if (isset($mimeMap[$ext])) {
+        header('Content-Type: ' . $mimeMap[$ext]);
+    }
+    readfile($file);
+    return true;
 }
 
 require __DIR__ . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'index.php';
