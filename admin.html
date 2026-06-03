@@ -65,8 +65,17 @@
             <span class="switch-track"><span class="switch-thumb">L</span></span>
           </button>
         </div>
+        <div class="color-editor-card">
+          <div>
+            <strong id="adminColorEditorTitle">Nessuna barra selezionata</strong>
+            <p id="adminColorEditorMeta" class="muted">Clicca una colonna sotto per iniziare a modificarla.</p>
+          </div>
+          <div class="color-editor-controls">
+            <span id="adminColorEditorSwatch" class="color-editor-swatch" aria-hidden="true"></span>
+            <input id="adminColorEditorInput" type="color" value="#0c5f8c" />
+          </div>
+        </div>
         <div id="adminChartsPreview" class="charts-grid admin-charts-grid"></div>
-        <input id="adminColorPicker" class="color-picker-proxy" type="color" aria-hidden="true" tabindex="-1" />
 
         <div class="form-actions" style="justify-content:flex-start; margin-top:14px;">
           <button type="button" id="saveColorSettingsBtn" class="primary">Salva colori</button>

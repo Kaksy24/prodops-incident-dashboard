@@ -17,9 +17,12 @@ const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
+const adminColorEditorTitle = document.getElementById('adminColorEditorTitle');
+const adminColorEditorMeta = document.getElementById('adminColorEditorMeta');
+const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch');
+const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
-const adminColorPicker = document.getElementById('adminColorPicker');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 
 let dragCategoryId = null;
@@ -33,6 +36,7 @@ let adminCategoriesCache = [];
 let adminUiColors = null;
 let adminChartStats = null;
 let adminColorEditTheme = 'light';
+let adminColorSelection = null;
 const adminCharts = [
   { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
   { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
@@ -160,11 +164,68 @@ function getAdminThemeColor(group, label) {
   return normalizeHexColor(color) || colorForLabel(normalizedLabel);
 }
 
+function chartGroupForId(chartId) {
+  if (chartId === 'fabDayChart' || chartId === 'fabYearChart') return 'fabs';
+  if (chartId === 'catDayChart' || chartId === 'catYearChart') return 'categories';
+  if (chartId === 'teamYearChart') return 'teams';
+  if (chartId === 'severityYearChart') return 'severities';
+  return '';
+}
+
+function getSelectedColor() {
+  if (!adminColorSelection) return '';
+  const theme = adminColorEditTheme;
+  return normalizeHexColor(adminUiColors?.labels?.[adminColorSelection.group]?.[theme]?.[adminColorSelection.label]) || getAdminThemeColor(adminColorSelection.group, adminColorSelection.label);
+}
+
+function setSelectedColor(color) {
+  if (!adminColorSelection) return;
+  ensureAdminUiColors();
+  const clean = normalizeHexColor(color);
+  if (!clean) return;
+  if (!adminUiColors.labels[adminColorSelection.group]) adminUiColors.labels[adminColorSelection.group] = { light: {}, dark: {} };
+  adminUiColors.labels[adminColorSelection.group][adminColorEditTheme][adminColorSelection.label] = clean;
+  updateColorEditor();
+  renderColorSettings();
+}
+
+function updateColorEditor() {
+  if (!adminColorEditorTitle || !adminColorEditorMeta || !adminColorEditorInput || !adminColorEditorSwatch) return;
+  if (!adminColorSelection) {
+    adminColorEditorTitle.textContent = 'Nessuna barra selezionata';
+    adminColorEditorMeta.textContent = 'Clicca una colonna sotto per iniziare a modificarla.';
+    adminColorEditorInput.value = '#0c5f8c';
+    adminColorEditorInput.disabled = true;
+    adminColorEditorSwatch.style.background = '#0c5f8c';
+    return;
+  }
+  const color = getSelectedColor();
+  adminColorEditorTitle.textContent = `${adminColorSelection.chartLabel} — ${adminColorSelection.label}`;
+  adminColorEditorMeta.textContent = `Tema attivo: ${adminColorEditTheme.toUpperCase()}`;
+  adminColorEditorInput.disabled = false;
+  adminColorEditorInput.value = color;
+  adminColorEditorSwatch.style.background = color;
+}
+
+function selectAdminColorTarget(chartId, label) {
+  const group = chartGroupForId(chartId);
+  if (!group) return;
+  const chartLabel = adminCharts.find((chart) => chart.key === chartId.replace('Chart', ''))?.label || chartId;
+  adminColorSelection = {
+    chartId,
+    chartLabel,
+    group,
+    label: String(label || '')
+  };
+  updateColorEditor();
+}
+
 function syncAdminColorToggle() {
   if (!uiColorThemeToggleBtn) return;
   const thumb = uiColorThemeToggleBtn.querySelector('.switch-thumb');
   if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? 'D' : 'L';
   uiColorThemeToggleBtn.setAttribute('aria-pressed', String(adminColorEditTheme === 'dark'));
+  updateColorEditor();
 }
 
 function applyAdminColorTheme(theme) {
@@ -199,7 +260,7 @@ function renderAdminChart(chart, stats) {
   axis.innerHTML = tickValues.map((value) => `<span>${value}</span>`).join('');
   const barsWrap = document.createElement('div');
   barsWrap.className = 'chart-bars-wrap';
-  const group = chart.key.indexOf('fab') === 0 ? 'fabs' : chart.key.indexOf('cat') === 0 ? 'categories' : chart.key === 'teamYear' ? 'teams' : 'severities';
+  const group = chartGroupForId(`${chart.key}Chart`);
   sortedStats.forEach((item) => {
     const label = String(item.label || '');
     const total = Number(item.total || 0);
@@ -214,16 +275,7 @@ function renderAdminChart(chart, stats) {
     bar.dataset.chartId = chart.key;
     bar.innerHTML = `<span class="bar-value">${total}</span><div class="bar-fill" style="height:${height}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(label)}</span>`;
     bar.addEventListener('click', () => {
-      if (!adminColorPicker) return;
-      const currentColor = getAdminThemeColor(group, label);
-      adminColorPicker.value = currentColor || '#000000';
-      adminColorPicker.dataset.group = group;
-      adminColorPicker.dataset.label = label;
-      if (typeof adminColorPicker.showPicker === 'function') {
-        adminColorPicker.showPicker();
-      } else {
-        adminColorPicker.click();
-      }
+      selectAdminColorTarget(`${chart.key}Chart`, label);
     });
     barsWrap.appendChild(bar);
   });
@@ -242,6 +294,7 @@ function renderColorSettings() {
     const card = renderAdminChart(chart, adminChartStats[chart.key] || []);
     adminChartsPreview.appendChild(card);
   });
+  updateColorEditor();
 }
 
 async function loadUiColors() {
@@ -271,7 +324,7 @@ async function loadAdminChartsPreviewData() {
     renderColorSettings();
   } catch (error) {
     adminChartStats = {};
-    if (adminChartsPreview) {
+  if (adminChartsPreview) {
       adminChartsPreview.innerHTML = `<p class="muted">Impossibile caricare l'anteprima dei grafici: ${escapeHtml(error.message || error)}</p>`;
     }
   }
@@ -776,14 +829,4 @@ uiColorThemeToggleBtn?.addEventListener('click', () => {
   applyAdminColorTheme(next);
 });
 
-adminColorPicker?.addEventListener('input', () => {
-  const group = adminColorPicker.dataset.group || '';
-  const label = adminColorPicker.dataset.label || '';
-  const color = normalizeHexColor(adminColorPicker.value);
-  if (!group || !label || !color) return;
-  ensureAdminUiColors();
-  if (!adminUiColors.labels[group]) adminUiColors.labels[group] = { light: {}, dark: {} };
-  if (!adminUiColors.labels[group][adminColorEditTheme]) adminUiColors.labels[group][adminColorEditTheme] = {};
-  adminUiColors.labels[group][adminColorEditTheme][label] = color;
-  renderColorSettings();
-});
+adminColorEditorInput?.addEventListener('input', () => setSelectedColor(adminColorEditorInput.value));
