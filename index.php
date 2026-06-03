@@ -324,15 +324,19 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rp);
     }
 
-    $rc = @mysqli_query($conn, "SELECT id, name FROM categories ORDER BY sort_order ASC, id ASC");
+    $rc = @mysqli_query($conn, "SELECT id, name, sort_order FROM categories ORDER BY sort_order ASC, id ASC");
     if ($rc) {
         while ($row = mysqli_fetch_assoc($rc)) {
-            $db['categories'][] = array('id' => intval($row['id']), 'name' => $row['name']);
+            $db['categories'][] = array(
+                'id' => intval($row['id']),
+                'name' => $row['name'],
+                'sort_order' => intval($row['sort_order'])
+            );
         }
         mysqli_free_result($rc);
     }
 
-    $ri = @mysqli_query($conn, "SELECT id, category_id, name, severity_default, severity_mode, fab_default FROM incidents ORDER BY sort_order ASC, id ASC");
+    $ri = @mysqli_query($conn, "SELECT id, category_id, name, severity_default, severity_mode, fab_default, sort_order FROM incidents ORDER BY sort_order ASC, id ASC");
     if ($ri) {
         while ($row = mysqli_fetch_assoc($ri)) {
             $iid = intval($row['id']);
@@ -343,6 +347,7 @@ function mysql_load_db($defaultUsers)
                 'severity_default' => intval($row['severity_default'] ? $row['severity_default'] : 1),
                 'severity_mode' => $row['severity_mode'] ? $row['severity_mode'] : 'default',
                 'fab_default' => $row['fab_default'] ? $row['fab_default'] : '',
+                'sort_order' => intval($row['sort_order']),
                 'presets' => isset($presetsByIncident[$iid]) ? $presetsByIncident[$iid] : array()
             );
         }
@@ -518,6 +523,26 @@ function load_db($defaultUsers)
     if (!isset($db['categories']) || !is_array($db['categories'])) $db['categories'] = array();
     if (!isset($db['incidents']) || !is_array($db['incidents'])) $db['incidents'] = array();
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
+    $categoryOrder = 1;
+    foreach ($db['categories'] as $ci => $cat) {
+        if (!isset($db['categories'][$ci]['sort_order']) || intval($db['categories'][$ci]['sort_order']) <= 0) {
+            $db['categories'][$ci]['sort_order'] = $categoryOrder;
+        } else {
+            $db['categories'][$ci]['sort_order'] = intval($db['categories'][$ci]['sort_order']);
+        }
+        $categoryOrder++;
+    }
+    $incidentOrders = array();
+    foreach ($db['incidents'] as $ii => $inc) {
+        $catId = isset($inc['category_id']) ? intval($inc['category_id']) : 0;
+        if (!isset($incidentOrders[$catId])) $incidentOrders[$catId] = 1;
+        if (!isset($db['incidents'][$ii]['sort_order']) || intval($db['incidents'][$ii]['sort_order']) <= 0) {
+            $db['incidents'][$ii]['sort_order'] = $incidentOrders[$catId];
+        } else {
+            $db['incidents'][$ii]['sort_order'] = intval($db['incidents'][$ii]['sort_order']);
+        }
+        $incidentOrders[$catId]++;
+    }
     $incidentNameToId = array();
     foreach ($db['incidents'] as $inc) {
         $incidentNameToId[$inc['name']] = intval($inc['id']);
@@ -958,6 +983,9 @@ if ($path === '/api/categories' && $method === 'GET') {
         }
     }
     usort($db['categories'], function($a, $b) {
+        $ao = isset($a['sort_order']) ? intval($a['sort_order']) : 0;
+        $bo = isset($b['sort_order']) ? intval($b['sort_order']) : 0;
+        if ($ao !== $bo) return $ao - $bo;
         return intval($a['id']) - intval($b['id']);
     });
     $out = array();
@@ -969,10 +997,14 @@ if ($path === '/api/categories' && $method === 'GET') {
                 if (!isset($inc['severity_default'])) $inc['severity_default'] = 1;
                 if (!isset($inc['severity_mode'])) $inc['severity_mode'] = 'default';
                 if (!isset($inc['fab_default'])) $inc['fab_default'] = '';
+                if (!isset($inc['sort_order'])) $inc['sort_order'] = 0;
                 $items[] = $inc;
             }
         }
         usort($items, function($a, $b) {
+            $ao = isset($a['sort_order']) ? intval($a['sort_order']) : 0;
+            $bo = isset($b['sort_order']) ? intval($b['sort_order']) : 0;
+            if ($ao !== $bo) return $ao - $bo;
             return intval($a['id']) - intval($b['id']);
         });
         $out[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'incidents' => $items);
@@ -992,7 +1024,12 @@ if ($path === '/api/categories' && $method === 'POST') {
         if ($ins['ok']) json_response(array('id' => intval($ins['data']['id']), 'name' => $ins['data']['name']), 200);
     }
     $db['counters']['category'] = intval($db['counters']['category']) + 1;
-    $cat = array('id' => $db['counters']['category'], 'name' => $name);
+    $maxOrder = 0;
+    foreach ($db['categories'] as $existingCategory) {
+        $currentOrder = isset($existingCategory['sort_order']) ? intval($existingCategory['sort_order']) : 0;
+        if ($currentOrder > $maxOrder) $maxOrder = $currentOrder;
+    }
+    $cat = array('id' => $db['counters']['category'], 'name' => $name, 'sort_order' => $maxOrder + 1);
     $db['categories'][] = $cat;
     save_db($db);
     json_response($cat, 200);
@@ -1000,6 +1037,35 @@ if ($path === '/api/categories' && $method === 'POST') {
 
 if ($path === '/api/categories/reorder' && $method === 'PUT') {
     require_api_auth('admin');
+    $orderedIds = isset($payload['orderedIds']) && is_array($payload['orderedIds']) ? $payload['orderedIds'] : array();
+    if (count($orderedIds)) {
+        $byId = array();
+        $others = array();
+        foreach ($db['categories'] as $cat) {
+            $cid = intval($cat['id']);
+            $byId[$cid] = $cat;
+        }
+        $nextOrder = 1;
+        $reordered = array();
+        foreach ($orderedIds as $cidRaw) {
+            $cid = intval($cidRaw);
+            if (!isset($byId[$cid])) continue;
+            $cat = $byId[$cid];
+            $cat['sort_order'] = $nextOrder++;
+            $reordered[] = $cat;
+            unset($byId[$cid]);
+        }
+        foreach ($db['categories'] as $cat) {
+            $cid = intval($cat['id']);
+            if (isset($byId[$cid])) {
+                $cat['sort_order'] = $nextOrder++;
+                $reordered[] = $cat;
+                unset($byId[$cid]);
+            }
+        }
+        $db['categories'] = $reordered;
+        save_db($db);
+    }
     json_response(array('ok' => true), 200);
 }
 
@@ -1056,6 +1122,12 @@ if ($path === '/api/incidents' && $method === 'POST') {
     $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
     if ($categoryId <= 0 || $name === '') json_response(array('error' => 'Dati mancanti'), 400);
     $db['counters']['incident'] = intval($db['counters']['incident']) + 1;
+    $maxOrder = 0;
+    foreach ($db['incidents'] as $existingIncident) {
+        if (intval($existingIncident['category_id']) !== $categoryId) continue;
+        $currentOrder = isset($existingIncident['sort_order']) ? intval($existingIncident['sort_order']) : 0;
+        if ($currentOrder > $maxOrder) $maxOrder = $currentOrder;
+    }
     $db['incidents'][] = array(
         'id' => $db['counters']['incident'],
         'category_id' => $categoryId,
@@ -1063,6 +1135,7 @@ if ($path === '/api/incidents' && $method === 'POST') {
         'severity_default' => 1,
         'severity_mode' => 'default',
         'fab_default' => '',
+        'sort_order' => $maxOrder + 1,
         'presets' => array()
     );
     save_db($db);
@@ -1071,6 +1144,41 @@ if ($path === '/api/incidents' && $method === 'POST') {
 
 if ($path === '/api/incidents/reorder' && $method === 'PUT') {
     require_api_auth('admin');
+    $categoryId = isset($payload['category_id']) ? intval($payload['category_id']) : 0;
+    $orderedIds = isset($payload['orderedIds']) && is_array($payload['orderedIds']) ? $payload['orderedIds'] : array();
+    if ($categoryId > 0 && count($orderedIds)) {
+        $byId = array();
+        $reordered = array();
+        foreach ($db['incidents'] as $inc) {
+            $iid = intval($inc['id']);
+            $byId[$iid] = $inc;
+        }
+        $nextOrder = 1;
+        foreach ($db['incidents'] as $inc) {
+            if (intval($inc['category_id']) !== $categoryId) {
+                $reordered[] = $inc;
+            }
+        }
+        foreach ($orderedIds as $iidRaw) {
+            $iid = intval($iidRaw);
+            if (!isset($byId[$iid])) continue;
+            $inc = $byId[$iid];
+            if (intval($inc['category_id']) !== $categoryId) continue;
+            $inc['sort_order'] = $nextOrder++;
+            $reordered[] = $inc;
+            unset($byId[$iid]);
+        }
+        foreach ($db['incidents'] as $inc) {
+            $iid = intval($inc['id']);
+            if (isset($byId[$iid]) && intval($inc['category_id']) === $categoryId) {
+                $inc['sort_order'] = $nextOrder++;
+                $reordered[] = $inc;
+                unset($byId[$iid]);
+            }
+        }
+        $db['incidents'] = $reordered;
+        save_db($db);
+    }
     json_response(array('ok' => true), 200);
 }
 
