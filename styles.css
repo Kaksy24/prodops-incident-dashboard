@@ -34,12 +34,14 @@ body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--tex
   margin-top: 10px;
   padding: 11px 14px;
   border-radius: 6px;
-  text-align: left;
+  text-align: center;
   background: linear-gradient(130deg, #2a4364, #355a84);
   color: #fff;
   border: 0;
   text-decoration: none;
   font-weight: 700;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: .4px;
 }
 .sidebar-link-btn:hover { filter: brightness(1.08); }
 .theme-switch {
