@@ -476,8 +476,148 @@ body.theme-dark .fab-btn.active {
 body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; color: #e6eef9; }
 .toggle-row { display: flex; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; }
 .range-btn.active { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; }
-@media (max-width: 900px) { .app-layout, .panel-grid, .admin-grid, .charts-grid { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } }
-@media (max-width: 900px) { .ticket-search-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .app-layout,
+  .panel-grid,
+  .admin-grid,
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 16px 14px;
+  }
+  .sidebar-top {
+    margin-bottom: 12px;
+  }
+  .menu {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+  .content {
+    padding: 18px;
+  }
+  .hero,
+  .panel {
+    padding: 16px;
+  }
+  .ticket-search-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-select-row {
+    grid-template-columns: 1fr;
+  }
+  .admin-user-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .user-row {
+    grid-template-columns: 64px 1fr 64px auto auto;
+  }
+  .modal {
+    padding: 10px;
+  }
+  .modal-panel {
+    width: min(100%, 620px);
+  }
+  .ticket-form {
+    padding: 14px;
+  }
+  .form-actions {
+    flex-wrap: wrap;
+  }
+  .ticket-list > li > ul > li {
+    grid-template-columns: 1fr;
+  }
+  .menu#adminMenu .category-toggle,
+  .menu#adminMenu .incident-btn {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    padding: 14px 12px;
+  }
+  .sidebar-top {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .sidebar h1 {
+    font-size: 1rem;
+  }
+  .sidebar-link-btn,
+  .admin-toggle-btn,
+  .logout-btn {
+    padding: 12px 14px;
+    font-size: .96rem;
+  }
+  .category-toggle {
+    padding: 11px 10px;
+    min-height: 46px;
+  }
+  .incident-btn {
+    padding: 10px;
+    min-height: 42px;
+  }
+  .content {
+    padding: 12px;
+  }
+  .hero,
+  .panel {
+    padding: 14px;
+  }
+  .panel-header-row h3,
+  .hero h2,
+  .panel h3 {
+    word-break: break-word;
+  }
+  .ticket-search-form,
+  .admin-user-form {
+    gap: 8px;
+  }
+  .admin-user-form,
+  .user-row {
+    grid-template-columns: 1fr;
+  }
+  .user-row {
+    gap: 6px;
+    align-items: start;
+  }
+  .user-row-id {
+    font-size: .82rem;
+  }
+  .save-user-team-btn,
+  .delete-user-btn {
+    width: 100%;
+  }
+  .admin-select-row {
+    gap: 10px;
+  }
+  .ticket-timestamp-input {
+    max-width: 100%;
+  }
+  .modal-header,
+  .ticket-form {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .modal-header h3 {
+    font-size: 1rem;
+  }
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+  .form-actions > * {
+    width: 100%;
+  }
+  .fab-buttons {
+    gap: 6px;
+  }
+}
 
 .edit-ticket-btn{margin-left:8px;padding:3px 8px;font-size:.8rem;border:1px solid var(--border);background:var(--panel);color:var(--text)}
 
@@ -640,7 +780,7 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   cursor: not-allowed;
 }
 
-@media (max-width: 1100px) {
+@media (min-width: 901px) and (max-width: 1100px) {
   .admin-user-form {
     grid-template-columns: 1fr 1fr;
   }
