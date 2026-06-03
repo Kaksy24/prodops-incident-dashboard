@@ -84,6 +84,20 @@ CREATE TABLE `incident_presets` (
   PRIMARY KEY (`id`),
   KEY `idx_incident_presets_incident` (`incident_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+
+--
+-- Table structure for table `app_settings`
+--
+
+DROP TABLE IF EXISTS `app_settings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `app_settings` (
+  `setting_key` varchar(80) NOT NULL,
+  `setting_value` longtext NOT NULL,
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -93,6 +107,16 @@ CREATE TABLE `incident_presets` (
 LOCK TABLES `incident_presets` WRITE;
 /*!40000 ALTER TABLE `incident_presets` DISABLE KEYS */;
 /*!40000 ALTER TABLE `incident_presets` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Dumping data for table `app_settings`
+--
+
+LOCK TABLES `app_settings` WRITE;
+/*!40000 ALTER TABLE `app_settings` DISABLE KEYS */;
+INSERT INTO `app_settings` VALUES ('ui_colors','{\"charts\":{\"fabDay\":{\"light\":\"#0c5f8c\",\"dark\":\"#24a0d8\"},\"catDay\":{\"light\":\"#16a0b6\",\"dark\":\"#2ec4d6\"},\"fabYear\":{\"light\":\"#355a84\",\"dark\":\"#1fb6ff\"},\"catYear\":{\"light\":\"#6b4ea6\",\"dark\":\"#9b6cff\"}},\"labels\":{\"categories\":{\"light\":{},\"dark\":{}},\"fabs\":{\"light\":{},\"dark\":{}}}}');
+/*!40000 ALTER TABLE `app_settings` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --

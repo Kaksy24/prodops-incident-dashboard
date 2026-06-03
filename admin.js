@@ -17,6 +17,10 @@ const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
+const chartColorSettings = document.getElementById('chartColorSettings');
+const categoryColorSettings = document.getElementById('categoryColorSettings');
+const fabColorSettings = document.getElementById('fabColorSettings');
+const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 
 let dragCategoryId = null;
 let dragIncidentId = null;
@@ -25,6 +29,15 @@ let editingIncidentId = null;
 let adminOverlayPressStarted = false;
 let adminModalCloseTimer = null;
 let currentAdminUser = null;
+let adminCategoriesCache = [];
+let adminUiColors = null;
+const adminCharts = [
+  { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
+  { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
+  { key: 'fabYear', label: 'Ticket per FAB' },
+  { key: 'catYear', label: 'Ticket per categoria' }
+];
+const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 
 function captureAdminUiState() {
   const openCategoryIds = [...adminMenu.querySelectorAll('.menu-category.open[data-category-id]')]
@@ -52,6 +65,154 @@ function applyTheme(theme) {
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
   if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+}
+
+function defaultUiColors() {
+  return {
+    charts: {
+      fabDay: { light: '#0c5f8c', dark: '#24a0d8' },
+      catDay: { light: '#16a0b6', dark: '#2ec4d6' },
+      fabYear: { light: '#355a84', dark: '#1fb6ff' },
+      catYear: { light: '#6b4ea6', dark: '#9b6cff' }
+    },
+    labels: {
+      categories: { light: {}, dark: {} },
+      fabs: { light: {}, dark: {} }
+    }
+  };
+}
+
+function normalizeHexColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : '';
+}
+
+function normalizeUiColors(input) {
+  const defaults = defaultUiColors();
+  const out = {
+    charts: {},
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } }
+  };
+  Object.keys(defaults.charts).forEach((key) => {
+    out.charts[key] = { ...defaults.charts[key] };
+  });
+  if (!input || typeof input !== 'object') return out;
+  Object.keys(out.charts).forEach((key) => {
+    ['light', 'dark'].forEach((theme) => {
+      const next = normalizeHexColor(input?.charts?.[key]?.[theme]);
+      if (next) out.charts[key][theme] = next;
+    });
+  });
+  ['categories', 'fabs'].forEach((group) => {
+    ['light', 'dark'].forEach((theme) => {
+      const rows = input?.labels?.[group]?.[theme];
+      if (!rows || typeof rows !== 'object') return;
+      Object.keys(rows).forEach((label) => {
+        const next = normalizeHexColor(rows[label]);
+        if (next) out.labels[group][theme][label] = next;
+      });
+    });
+  });
+  return out;
+}
+
+function ensureAdminUiColors() {
+  if (!adminUiColors) adminUiColors = defaultUiColors();
+  adminUiColors = normalizeUiColors(adminUiColors);
+}
+
+function buildColorRow(label, lightValue, darkValue, dataKind, dataKey) {
+  return `
+    <div class="color-setting-row${dataKind === 'chart' ? '' : ' is-compact'}" data-kind="${dataKind}" data-key="${dataKey}">
+      <strong>${escapeHtml(label)}</strong>
+      <label>Light
+        <input type="color" value="${escapeHtml(lightValue)}" data-theme="light" />
+      </label>
+      <label>Dark
+        <input type="color" value="${escapeHtml(darkValue)}" data-theme="dark" />
+      </label>
+    </div>
+  `;
+}
+
+function syncColorInputPreview(input) {
+  const row = input.closest('.color-setting-row');
+  if (!row) return;
+  const color = input.value;
+  const preview = input.closest('label')?.querySelector('.color-setting-preview');
+  if (preview) preview.style.background = color;
+}
+
+function renderColorSettings() {
+  if (!chartColorSettings || !categoryColorSettings || !fabColorSettings) return;
+  ensureAdminUiColors();
+  const themeSafe = adminUiColors;
+  chartColorSettings.innerHTML = adminCharts.map((chart) => buildColorRow(
+    chart.label,
+    themeSafe.charts[chart.key].light,
+    themeSafe.charts[chart.key].dark,
+    'chart',
+    chart.key
+  )).join('');
+
+  categoryColorSettings.innerHTML = adminCategoriesCache.map((cat) => buildColorRow(
+    cat.name,
+    themeSafe.labels.categories.light[cat.name] || '#5c6b7d',
+    themeSafe.labels.categories.dark[cat.name] || '#9db1c9',
+    'category',
+    cat.name
+  )).join('');
+
+  fabColorSettings.innerHTML = adminFabList.map((fab) => buildColorRow(
+    fab,
+    themeSafe.labels.fabs.light[fab] || '#5c6b7d',
+    themeSafe.labels.fabs.dark[fab] || '#9db1c9',
+    'fab',
+    fab
+  )).join('');
+
+  document.querySelectorAll('.color-setting-row input[type="color"]').forEach((input) => {
+    input.addEventListener('input', () => syncColorInputPreview(input));
+    syncColorInputPreview(input);
+  });
+}
+
+async function loadUiColors() {
+  const data = await fetchJson('/api/ui-colors');
+  adminUiColors = normalizeUiColors(data.ui_colors || data || {});
+  renderColorSettings();
+}
+
+async function saveUiColors() {
+  ensureAdminUiColors();
+  const next = defaultUiColors();
+  document.querySelectorAll('.color-setting-row').forEach((row) => {
+    const kind = row.dataset.kind || '';
+    const key = row.dataset.key || '';
+    const inputs = row.querySelectorAll('input[type="color"]');
+    if (kind === 'chart') {
+      inputs.forEach((input) => {
+        const theme = input.dataset.theme || 'light';
+        const color = normalizeHexColor(input.value);
+        if (color) next.charts[key][theme] = color;
+      });
+      return;
+    }
+    if (kind === 'category' || kind === 'fab') {
+      inputs.forEach((input) => {
+        const theme = input.dataset.theme || 'light';
+        const color = normalizeHexColor(input.value);
+        if (color) next.labels[kind === 'category' ? 'categories' : 'fabs'][theme][key] = color;
+      });
+    }
+  });
+  adminUiColors = next;
+  await fetchJson('/api/ui-colors', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ui_colors: adminUiColors })
+  });
+  alert('Colori salvati.');
 }
 
 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -223,6 +384,7 @@ async function persistIncidentOrder(categoryId, ul) {
 
 async function loadAdminMenu(state = captureAdminUiState()) {
   const categories = await fetchJson('/api/categories');
+  adminCategoriesCache = categories;
   adminMenu.innerHTML = '';
 
   categories.forEach((cat) => {
@@ -328,6 +490,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
 
   bindAdminActions();
   restoreAdminUiState(state);
+  renderColorSettings();
 }
 
 function bindAdminActions() {
@@ -493,8 +656,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
 
 (async function initAdminPage() {
   await loadCurrentAdmin();
-  await loadAdminMenu(null);
-  await loadUsers();
+  await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors()]);
 })();
 
 function insertAtCursor(textarea, text) {
@@ -522,4 +684,12 @@ addPresetSelectFieldBtn?.addEventListener('click', () => {
   const options = optionsRaw.split(',').map((x) => x.trim()).filter(Boolean);
   if (!options.length) return;
   insertAtCursor(adminIncidentPresetInput, `[[select:${label.trim()}|${options.join(',')}]]`);
+});
+
+saveColorSettingsBtn?.addEventListener('click', async () => {
+  try {
+    await saveUiColors();
+  } catch (error) {
+    alert(`Errore salvataggio colori: ${error.message || error}`);
+  }
 });

@@ -45,6 +45,7 @@ const incidentPresetMap = {};
 const incidentSeverityMap = {};
 const incidentFabDefaultMap = {};
 const chartExportState = {};
+let uiColors = null;
 let editingTicketId = null;
 let presetTokenState = [];
 let extraTicketCounter = 0;
@@ -74,6 +75,91 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function defaultUiColors() {
+  return {
+    charts: {
+      fabDay: { light: '#0c5f8c', dark: '#24a0d8' },
+      catDay: { light: '#16a0b6', dark: '#2ec4d6' },
+      fabYear: { light: '#355a84', dark: '#1fb6ff' },
+      catYear: { light: '#6b4ea6', dark: '#9b6cff' }
+    },
+    labels: {
+      categories: { light: {}, dark: {} },
+      fabs: { light: {}, dark: {} }
+    }
+  };
+}
+
+function normalizeHexColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : '';
+}
+
+function normalizeUiColors(input) {
+  const defaults = defaultUiColors();
+  const out = {
+    charts: {},
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } }
+  };
+  Object.keys(defaults.charts).forEach((key) => {
+    out.charts[key] = {
+      light: defaults.charts[key].light,
+      dark: defaults.charts[key].dark
+    };
+  });
+  if (!input || typeof input !== 'object') return out;
+  Object.keys(out.charts).forEach((key) => {
+    ['light', 'dark'].forEach((theme) => {
+      const next = normalizeHexColor(input?.charts?.[key]?.[theme]);
+      if (next) out.charts[key][theme] = next;
+    });
+  });
+  ['categories', 'fabs'].forEach((group) => {
+    ['light', 'dark'].forEach((theme) => {
+      const rows = input?.labels?.[group]?.[theme];
+      if (!rows || typeof rows !== 'object') return;
+      Object.keys(rows).forEach((label) => {
+        const next = normalizeHexColor(rows[label]);
+        if (next) out.labels[group][theme][label] = next;
+      });
+    });
+  });
+  return out;
+}
+
+function themeKey() {
+  return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
+}
+
+function getChartColor(chartId) {
+  const theme = themeKey();
+  const fallback = defaultUiColors().charts[chartId];
+  const custom = uiColors?.charts?.[chartId]?.[theme];
+  return normalizeHexColor(custom) || fallback?.[theme] || '#0c5f8c';
+}
+
+function getLabelColor(group, label) {
+  const theme = themeKey();
+  const normalizedLabel = String(label || '');
+  const custom = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+  return normalizeHexColor(custom) || colorForLabel(normalizedLabel);
+}
+
+async function loadUiColors() {
+  const data = await fetchJson('/api/ui-colors');
+  uiColors = normalizeUiColors(data.ui_colors || data || {});
+  return uiColors;
+}
+
+async function refreshColorSensitiveViews() {
+  await loadDayTickets();
+  await loadCharts();
+  if (previousShiftsContent && !previousShiftsContent.hidden) {
+    previousShiftsLoaded = false;
+    await loadPreviousShifts();
+  }
 }
 
 
@@ -639,7 +725,7 @@ function renderVerticalChart(target, stats) {
   target.innerHTML = '';
   const panelTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
   chartExportState[target.id] = { title: panelTitle, stats: sortedStats.map((item) => ({ label: item.label, total: item.total })) };
-  const colorMap = new Map(sortedStats.map((item, index) => [item.label, colorByIndex(index)]));
+  const chartColor = getChartColor(target.id);
 
   const steps = 4;
   const tickValues = Array.from({ length: steps + 1 }, (_, i) => Math.round((max * (steps - i)) / steps));
@@ -656,11 +742,10 @@ function renderVerticalChart(target, stats) {
 
   sortedStats.forEach((s) => {
     const h = Math.round((s.total / max) * 180);
-    const color = colorMap.get(s.label);
     const pct = totalAll > 0 ? Math.round((s.total / totalAll) * 100) : 0;
     const row = document.createElement('div');
     row.className = 'bar';
-    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${s.label}</span>`;
+    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${chartColor}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${s.label}</span>`;
     barsWrap.appendChild(row);
   });
 
@@ -731,8 +816,8 @@ async function loadDayTickets(animatedTicketIds = []) {
   });
 
   grouped.forEach((group) => {
-    const categoryColor = colorForLabel(group.category);
-    const fabColor = colorForLabel(group.fab);
+    const categoryColor = getLabelColor('categories', group.category);
+    const fabColor = getLabelColor('fabs', group.fab);
     const li = document.createElement('li');
     const incidents = group.incidents
       .map((item) => {
@@ -761,8 +846,8 @@ function renderGroupedTickets(tickets) {
   });
 
   const groups = [...grouped.values()].map((group) => {
-    const categoryColor = colorForLabel(group.category);
-    const fabColor = colorForLabel(group.fab);
+    const categoryColor = getLabelColor('categories', group.category);
+    const fabColor = getLabelColor('fabs', group.fab);
     const rows = group.incidents
       .map((item) => `<li><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span></li>`)
       .join('');
@@ -784,8 +869,8 @@ function renderSearchTickets(tickets) {
   });
 
   const groups = [...grouped.values()].map((group) => {
-    const categoryColor = colorForLabel(group.category);
-    const fabColor = colorForLabel(group.fab);
+    const categoryColor = getLabelColor('categories', group.category);
+    const fabColor = getLabelColor('fabs', group.fab);
     const rows = group.incidents.map((item) => {
       const editBtn = item.can_edit
         ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
@@ -1001,7 +1086,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 
 (async function init() {
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
-  await Promise.all([loadCurrentUser(), loadCategories()]);
+  await Promise.all([loadCurrentUser(), loadCategories(), loadUiColors()]);
   renderFabButtons();
   await loadDayTickets();
   deferWork(async () => {
@@ -1012,9 +1097,9 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   });
 })();
 
-function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? '??' : '?'; }}
+function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? 'D' : 'L'; }}
 const savedTheme = localStorage.getItem('theme') || 'light'; applyTheme(savedTheme);
-if(themeToggleBtn){themeToggleBtn.addEventListener('click',()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next);});}
+if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next); await refreshColorSensitiveViews();});}
 
 
 

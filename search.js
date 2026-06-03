@@ -1,4 +1,3 @@
-const themeToggleBtn = document.getElementById('themeToggleBtn');
 const openAdminBtn = document.getElementById('openAdminBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const ticketSearchForm = document.getElementById('ticketSearchForm');
@@ -8,9 +7,11 @@ const ticketSearchToInput = document.getElementById('ticketSearchTo');
 const ticketSearchResetBtn = document.getElementById('ticketSearchResetBtn');
 const ticketSearchSummary = document.getElementById('ticketSearchSummary');
 const ticketSearchResults = document.getElementById('ticketSearchResults');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
 
 const incidentCategoryMap = {};
 let currentUser = null;
+let uiColors = null;
 
 const chartPalette = [
   '#1f77b4',
@@ -36,12 +37,56 @@ function colorForLabel(label) {
   return colorByIndex(Math.abs(hash));
 }
 
+function defaultUiColors() {
+  return {
+    labels: {
+      categories: { light: {}, dark: {} },
+      fabs: { light: {}, dark: {} }
+    }
+  };
+}
+
+function normalizeHexColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toUpperCase() : '';
+}
+
+function normalizeUiColors(input) {
+  const out = defaultUiColors();
+  if (!input || typeof input !== 'object') return out;
+  ['categories', 'fabs'].forEach((group) => {
+    ['light', 'dark'].forEach((theme) => {
+      const rows = input?.labels?.[group]?.[theme];
+      if (!rows || typeof rows !== 'object') return;
+      Object.keys(rows).forEach((label) => {
+        const next = normalizeHexColor(rows[label]);
+        if (next) out.labels[group][theme][label] = next;
+      });
+    });
+  });
+  return out;
+}
+
+function themeKey() {
+  return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
+}
+
+function getLabelColor(group, label) {
+  const theme = themeKey();
+  return normalizeHexColor(uiColors?.labels?.[group]?.[theme]?.[label]) || colorForLabel(label);
+}
+
+async function loadUiColors() {
+  const data = await fetchJson('/api/ui-colors');
+  uiColors = normalizeUiColors(data.ui_colors || data || {});
+}
+
 function applyTheme(theme) {
   document.body.classList.toggle('theme-dark', theme === 'dark');
   if (themeToggleBtn) {
     themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
     const thumb = themeToggleBtn.querySelector('.switch-thumb');
-    if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
+    if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
   }
 }
 
@@ -79,8 +124,8 @@ function renderSearchTickets(tickets) {
   });
 
   const groups = [...grouped.values()].map((group) => {
-    const categoryColor = colorForLabel(group.category);
-    const fabColor = colorForLabel(group.fab);
+    const categoryColor = getLabelColor('categories', group.category);
+    const fabColor = getLabelColor('fabs', group.fab);
     const rows = group.incidents.map((item) => {
       const dt = item.created_at ? new Date(item.created_at).toLocaleString('it-IT') : '';
       return `<li><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span><span class="ticket-search-meta">${dt}</span></li>`;
@@ -141,10 +186,13 @@ function applyTicketSearchListeners() {
   const savedTheme = localStorage.getItem('theme') || 'light';
   applyTheme(savedTheme);
   if (themeToggleBtn) {
-    themeToggleBtn.addEventListener('click', () => {
+    themeToggleBtn.addEventListener('click', async () => {
       const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
       localStorage.setItem('theme', next);
       applyTheme(next);
+      if (ticketSearchResults && ticketSearchResults.innerHTML.trim()) {
+        await runTicketSearch();
+      }
     });
   }
   openAdminBtn?.addEventListener('click', () => { window.location.href = '/admin.html'; });
@@ -152,6 +200,7 @@ function applyTicketSearchListeners() {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
+  await loadUiColors();
   const me = await fetchJson('/api/me');
   currentUser = me.user;
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';

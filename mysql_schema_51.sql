@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS incident_presets (
   KEY idx_incident_presets_incident (incident_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key VARCHAR(80) NOT NULL,
+  setting_value LONGTEXT NOT NULL,
+  PRIMARY KEY (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE IF NOT EXISTS app_users (
   id INT UNSIGNED NOT NULL,
   username VARCHAR(80) NOT NULL,

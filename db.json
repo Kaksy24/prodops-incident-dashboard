@@ -353,5 +353,35 @@
         "incident": 10,
         "ticket": 35,
         "user": 6
+    },
+    "ui_colors": {
+        "charts": {
+            "fabDay": {
+                "light": "#0c5f8c",
+                "dark": "#24a0d8"
+            },
+            "catDay": {
+                "light": "#16a0b6",
+                "dark": "#2ec4d6"
+            },
+            "fabYear": {
+                "light": "#355a84",
+                "dark": "#1fb6ff"
+            },
+            "catYear": {
+                "light": "#6b4ea6",
+                "dark": "#9b6cff"
+            }
+        },
+        "labels": {
+            "categories": {
+                "light": {},
+                "dark": {}
+            },
+            "fabs": {
+                "light": {},
+                "dark": {}
+            }
+        }
     }
 }

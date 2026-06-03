@@ -65,6 +65,57 @@ function normalize_team($team)
     return in_array($team, $allowed, true) ? $team : 'A';
 }
 
+function default_ui_colors()
+{
+    return array(
+        'charts' => array(
+            'fabDay' => array('light' => '#0c5f8c', 'dark' => '#24a0d8'),
+            'catDay' => array('light' => '#16a0b6', 'dark' => '#2ec4d6'),
+            'fabYear' => array('light' => '#355a84', 'dark' => '#1fb6ff'),
+            'catYear' => array('light' => '#6b4ea6', 'dark' => '#9b6cff')
+        ),
+        'labels' => array(
+            'categories' => array('light' => array(), 'dark' => array()),
+            'fabs' => array('light' => array(), 'dark' => array())
+        )
+    );
+}
+
+function sanitize_hex_color($value)
+{
+    $value = trim(strval($value));
+    return preg_match('/^#[0-9a-fA-F]{6}$/', $value) ? strtoupper($value) : '';
+}
+
+function normalize_ui_colors($colors)
+{
+    $defaults = default_ui_colors();
+    if (!is_array($colors)) return $defaults;
+
+    $out = $defaults;
+    foreach ($defaults['charts'] as $key => $themeMap) {
+        if (!isset($colors['charts'][$key]) || !is_array($colors['charts'][$key])) continue;
+        foreach (array('light', 'dark') as $theme) {
+            $color = sanitize_hex_color(isset($colors['charts'][$key][$theme]) ? $colors['charts'][$key][$theme] : '');
+            if ($color !== '') $out['charts'][$key][$theme] = $color;
+        }
+    }
+
+    foreach (array('categories', 'fabs') as $group) {
+        foreach (array('light', 'dark') as $theme) {
+            if (!isset($colors['labels'][$group][$theme]) || !is_array($colors['labels'][$group][$theme])) continue;
+            foreach ($colors['labels'][$group][$theme] as $label => $color) {
+                $cleanLabel = trim(strval($label));
+                $cleanColor = sanitize_hex_color($color);
+                if ($cleanLabel !== '' && $cleanColor !== '') {
+                    $out['labels'][$group][$theme][$cleanLabel] = $cleanColor;
+                }
+            }
+        }
+    }
+    return $out;
+}
+
 function user_by_id($users, $userId)
 {
     $userId = intval($userId);
@@ -381,6 +432,7 @@ function mysql_ensure_schema($conn)
         }
     }
     $alterStatements = array(
+        "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8",
         "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id"
     );
@@ -410,6 +462,7 @@ function mysql_load_db($defaultUsers)
         'incidents' => array(),
         'tickets' => array(),
         'users' => array(),
+        'ui_colors' => default_ui_colors(),
         'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 0)
     );
 
@@ -490,6 +543,15 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($ru);
     }
 
+    $rs = @mysqli_query($conn, "SELECT setting_value FROM app_settings WHERE setting_key = 'ui_colors' LIMIT 1");
+    if ($rs) {
+        if ($row = mysqli_fetch_assoc($rs)) {
+            $parsed = json_decode($row['setting_value'], true);
+            if (is_array($parsed)) $db['ui_colors'] = normalize_ui_colors($parsed);
+        }
+        mysqli_free_result($rs);
+    }
+
     if (!count($db['users'])) $db['users'] = $defaultUsers;
     $db['counters']['category'] = max_id($db['categories']);
     $db['counters']['incident'] = max_id($db['incidents']);
@@ -514,6 +576,7 @@ function mysql_save_db($db)
     $ok = true;
 
     $queries = array(
+        "DELETE FROM app_settings",
         "DELETE FROM incident_presets",
         "DELETE FROM tickets",
         "DELETE FROM incidents",
@@ -525,6 +588,12 @@ function mysql_save_db($db)
             $ok = false;
             break;
         }
+    }
+
+    if ($ok) {
+        $uiColors = normalize_ui_colors(isset($db['ui_colors']) && is_array($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors());
+        $uiJson = mysql_escape($conn, json_encode($uiColors));
+        if (!mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('ui_colors', '$uiJson')")) { $ok = false; }
     }
 
     if ($ok) {
@@ -627,6 +696,8 @@ function load_db($defaultUsers)
     if (!isset($db['categories']) || !is_array($db['categories'])) $db['categories'] = array();
     if (!isset($db['incidents']) || !is_array($db['incidents'])) $db['incidents'] = array();
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
+    if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
+    $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
     $categoryOrder = 1;
     foreach ($db['categories'] as $ci => $cat) {
         if (!isset($db['categories'][$ci]['sort_order']) || intval($db['categories'][$ci]['sort_order']) <= 0) {
@@ -1037,6 +1108,18 @@ if ($path === '/api/me' && $method === 'GET') {
     if (!$me) $me = $user;
     $me['team'] = normalize_team(isset($me['team']) ? $me['team'] : 'A');
     json_response(array('user' => $me), 200);
+}
+
+if ($path === '/api/ui-colors' && $method === 'GET') {
+    json_response(array('ui_colors' => normalize_ui_colors(isset($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors())), 200);
+}
+
+if ($path === '/api/ui-colors' && $method === 'PUT') {
+    require_api_auth('admin');
+    $incoming = isset($payload['ui_colors']) ? $payload['ui_colors'] : $payload;
+    $db['ui_colors'] = normalize_ui_colors($incoming);
+    save_db($db);
+    json_response(array('ok' => true, 'ui_colors' => $db['ui_colors']), 200);
 }
 
 if ($path === '/api/users' && $method === 'GET') {
