@@ -121,6 +121,10 @@ let overlayPressStarted = false;
 function positionAddSameIncidentBtn() {
   if (!modal || !addSameIncidentBtn || !mainTicketPanel) return;
   if (!modal.classList.contains('show')) return;
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    addSameIncidentBtn.style.display = 'none';
+    return;
+  }
   const extraPanels = [...(extraTicketModals?.querySelectorAll('.extra-ticket-modal') || [])];
   const anchor = extraPanels.length ? extraPanels[extraPanels.length - 1] : mainTicketPanel;
   const rect = anchor.getBoundingClientRect();
@@ -134,11 +138,24 @@ function positionAddSameIncidentBtn() {
 
 function applyMultiModalLayout() {
   if (!modal || !mainTicketPanel || !extraTicketModals) return;
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
   const count = extraTicketModals.querySelectorAll('.extra-ticket-modal').length;
   const totalPanels = 1 + count;
   const cols = Math.min(Math.max(totalPanels, 1), 3);
   modal.classList.toggle('compact-modals', totalPanels >= 4);
   modal.classList.toggle('dense-modals', totalPanels >= 7);
+
+  if (isMobile) {
+    modal.style.gridTemplateColumns = '1fr';
+    modal.style.alignItems = 'center';
+    modal.style.justifyItems = 'center';
+    mainTicketPanel.style.width = 'calc(100vw - 12px)';
+    extraTicketModals.querySelectorAll('.extra-ticket-modal').forEach((panel) => {
+      panel.style.width = 'calc(100vw - 12px)';
+    });
+    positionAddSameIncidentBtn();
+    return;
+  }
 
   if (count === 0) {
     mainTicketPanel.style.width = 'min(620px, 100%)';
