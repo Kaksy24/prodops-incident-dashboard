@@ -176,6 +176,14 @@ function chartGroupForId(chartId) {
   return '';
 }
 
+function chartKeysForGroup(group) {
+  if (group === 'fabs') return ['fabDay', 'fabYear'];
+  if (group === 'categories') return ['catDay', 'catYear'];
+  if (group === 'teams') return ['teamYear'];
+  if (group === 'severities') return ['severityYear'];
+  return [];
+}
+
 function getSelectedColor() {
   if (!adminColorSelection) return '';
   const [theme, fallbackTheme] = adminThemeFallbackOrder();
@@ -189,8 +197,22 @@ function setSelectedColor(color) {
   if (!clean) return;
   if (!adminUiColors.labels[adminColorSelection.group]) adminUiColors.labels[adminColorSelection.group] = { light: {}, dark: {} };
   adminUiColors.labels[adminColorSelection.group][adminColorEditTheme][adminColorSelection.label] = clean;
+  chartKeysForGroup(adminColorSelection.group).forEach((chartKey) => {
+    if (!adminUiColors.bars[chartKey]) adminUiColors.bars[chartKey] = { light: {}, dark: {} };
+    adminUiColors.bars[chartKey][adminColorEditTheme][adminColorSelection.label] = clean;
+  });
   updateColorEditor();
   renderColorSettings();
+}
+
+function getAdminBarColor(chartKey, group, label) {
+  ensureAdminUiColors();
+  const [theme, fallbackTheme] = adminThemeFallbackOrder();
+  const normalizedLabel = String(label || '');
+  const chartColor = adminUiColors?.bars?.[chartKey]?.[theme]?.[normalizedLabel] || adminUiColors?.bars?.[chartKey]?.[fallbackTheme]?.[normalizedLabel];
+  if (normalizeHexColor(chartColor)) return normalizeHexColor(chartColor);
+  const groupColor = adminUiColors?.labels?.[group]?.[theme]?.[normalizedLabel] || adminUiColors?.labels?.[group]?.[fallbackTheme]?.[normalizedLabel];
+  return normalizeHexColor(groupColor) || colorForLabel(normalizedLabel);
 }
 
 function updateColorEditor() {
@@ -270,7 +292,7 @@ function renderAdminChart(chart, stats) {
     const total = Number(item.total || 0);
     const height = Math.round((total / max) * 180);
     const pct = totalAll > 0 ? Math.round((total / totalAll) * 100) : 0;
-    const color = getAdminThemeColor(group, label);
+    const color = getAdminBarColor(chart.key, group, label);
     const bar = document.createElement('button');
     bar.type = 'button';
     bar.className = 'bar admin-bar-button';
