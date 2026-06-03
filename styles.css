@@ -194,6 +194,66 @@ body.theme-dark .switch-thumb {
 .panel-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 16px 0; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
 .day-charts-grid { grid-template-columns: 1fr 1fr; }
+.panel-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.panel-heading-row h3 {
+  margin: 0;
+  min-width: 0;
+}
+.chart-export {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chart-export-btn {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: .86rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.chart-export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 110px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 14px 32px rgba(15, 24, 40, .15);
+  display: none;
+  z-index: 20;
+}
+.chart-export-menu.open {
+  display: grid;
+  gap: 6px;
+}
+.chart-export-option {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: #edf4fb;
+  color: var(--text);
+  font-weight: 700;
+}
+body.theme-dark .chart-export-option {
+  background: #233a56;
+  color: #e6eef9;
+}
+.chart-export-option:hover {
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff;
+}
 .muted { color: var(--muted); }
 .ticket-list { padding-left: 18px; }
 .ticket-list .incident-title {
@@ -572,10 +632,20 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   .panel {
     padding: 12px;
   }
+  .panel-heading-row {
+    align-items: center;
+  }
   .panel-header-row h3,
   .hero h2,
   .panel h3 {
     word-break: break-word;
+  }
+  .panel-heading-row {
+    flex-wrap: wrap;
+  }
+  .chart-export-menu {
+    left: 0;
+    right: auto;
   }
   .ticket-search-form,
   .admin-user-form {

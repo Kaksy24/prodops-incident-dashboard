@@ -34,19 +34,49 @@
 
       <section class="charts-grid day-charts-grid">
         <section class="panel">
-          <h3>Ticket per FAB (LAST 24H)</h3>
+          <div class="panel-heading-row">
+            <h3>Ticket per FAB (LAST 24H)</h3>
+            <div class="chart-export" data-chart-target="fabDayChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico FAB ultime 24 ore">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
           <div id="fabDayChart" class="chart vertical-chart"></div>
         </section>
 
         <section class="panel">
-          <h3>Ticket per categoria (LAST 24H)</h3>
+          <div class="panel-heading-row">
+            <h3>Ticket per categoria (LAST 24H)</h3>
+            <div class="chart-export" data-chart-target="catDayChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico categoria ultime 24 ore">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
           <div id="catDayChart" class="chart vertical-chart"></div>
         </section>
       </section>
 
       <section class="charts-grid">
         <section class="panel">
-          <h3>Ticket per FAB</h3>
+          <div class="panel-heading-row">
+            <h3>Ticket per FAB</h3>
+            <div class="chart-export" data-chart-target="fabYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico FAB annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
           <div class="toggle-row">
             <button class="range-btn active year-btn" data-target="fabYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="fabYear" data-mode="q1">Q1</button>
@@ -58,7 +88,17 @@
         </section>
 
         <section class="panel">
-          <h3>Ticket per categoria</h3>
+          <div class="panel-heading-row">
+            <h3>Ticket per categoria</h3>
+            <div class="chart-export" data-chart-target="catYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico categoria annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
           <div class="toggle-row">
             <button class="range-btn active year-btn" data-target="catYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="catYear" data-mode="q1">Q1</button>
@@ -119,7 +159,7 @@
   </div>
 
   <script src="script.js"></script>
-  <div class="app-version-badge">v0.5.2</div>
+  <div class="app-version-badge">v0.5.3</div>
 </body>
 </html>
 

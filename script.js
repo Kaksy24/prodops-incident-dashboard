@@ -44,6 +44,7 @@ const incidentIdToNameMap = {};
 const incidentPresetMap = {};
 const incidentSeverityMap = {};
 const incidentFabDefaultMap = {};
+const chartExportState = {};
 let editingTicketId = null;
 let presetTokenState = [];
 let extraTicketCounter = 0;
@@ -73,6 +74,188 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+
+function sanitizeFileNamePart(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '_')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '');
+}
+
+function closeChartExportMenus(exceptMenu = null) {
+  document.querySelectorAll('.chart-export-menu.open').forEach((menu) => {
+    if (menu !== exceptMenu) menu.classList.remove('open');
+  });
+  document.querySelectorAll('.chart-export-btn[aria-expanded="true"]').forEach((btn) => {
+    const wrapper = btn.closest('.chart-export');
+    const menu = wrapper ? wrapper.querySelector('.chart-export-menu') : null;
+    if (menu !== exceptMenu) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function triggerDownload(filename, content, mimeType) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function getChartExportPayload(targetId) {
+  const payload = chartExportState[targetId];
+  if (!payload) return null;
+  const stats = Array.isArray(payload.stats) ? payload.stats : [];
+  return {
+    title: payload.title || targetId,
+    stats
+  };
+}
+
+function buildChartCsv(stats) {
+  const rows = ['label,total'];
+  stats.forEach((item) => {
+    rows.push(String(item.label || '').replace(/\r?\n/g, ' ') + ',' + Number(item.total || 0));
+  });
+  return rows.join('\r\n');
+}
+
+function buildChartXls(title, stats) {
+  const safeTitle = String(title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rows = stats.map((item) => '<tr><td>' + String(item.label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</td><td>' + Number(item.total || 0) + '</td></tr>').join('');
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><table border="1"><tr><th colspan="2">' + safeTitle + '</th></tr><tr><th>label</th><th>total</th></tr>' + rows + '</table></body></html>';
+}
+
+async function buildChartPngBlob(title, stats) {
+  const width = 1280;
+  const rowHeight = 60;
+  const height = Math.max(360, 160 + stats.length * rowHeight);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const isDark = document.body.classList.contains('theme-dark');
+  const bg = isDark ? '#101a2a' : '#ffffff';
+  const panel = isDark ? '#16253a' : '#f7fbff';
+  const textColor = isDark ? '#e6eef9' : '#17202f';
+  const muted = isDark ? '#9db1c9' : '#5c6b7d';
+  const grid = isDark ? 'rgba(157,177,201,.22)' : 'rgba(55,80,111,.16)';
+  const max = Math.max.apply(Math, stats.map((item) => Number(item.total || 0)).concat([1]));
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = panel;
+  ctx.fillRect(24, 24, width - 48, height - 48);
+
+  ctx.fillStyle = textColor;
+  ctx.font = '700 30px Segoe UI, sans-serif';
+  ctx.fillText(title || 'Grafico', 48, 64);
+  ctx.fillStyle = muted;
+  ctx.font = '600 18px Segoe UI, sans-serif';
+  ctx.fillText('Export dashboard', 48, 92);
+
+  const left = 190;
+  const right = width - 60;
+  const top = 130;
+  const barHeight = 24;
+  const barGap = 22;
+  const barArea = right - left - 120;
+
+  ctx.strokeStyle = grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i += 1) {
+    const y = top + i * ((stats.length * (barHeight + barGap)) / 4);
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+  }
+
+  stats.forEach((item, index) => {
+    const y = top + index * (barHeight + barGap);
+    const label = String(item.label || '');
+    const value = Number(item.total || 0);
+    const barWidth = Math.max(4, Math.round((value / max) * barArea));
+    const color = colorByIndex(index);
+
+    ctx.fillStyle = textColor;
+    ctx.font = '600 22px Segoe UI, sans-serif';
+    ctx.fillText(label, 48, y + 18);
+
+    ctx.fillStyle = isDark ? '#22344d' : '#dbe7f5';
+    ctx.fillRect(left, y, barArea, barHeight);
+
+    const grad = ctx.createLinearGradient(left, y, left + barWidth, y);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, isDark ? '#2ec4d6' : '#0c5f8c');
+    ctx.fillStyle = grad;
+    ctx.fillRect(left, y, barWidth, barHeight);
+
+    ctx.fillStyle = textColor;
+    ctx.font = '700 20px Segoe UI, sans-serif';
+    ctx.fillText(String(value), left + barArea + 14, y + 18);
+  });
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+  });
+}
+
+async function exportChart(targetId, format) {
+  const payload = getChartExportPayload(targetId);
+  if (!payload || !payload.stats.length) {
+    alert('Nessun dato disponibile per l\'export.');
+    return;
+  }
+  const fileRoot = sanitizeFileNamePart(payload.title || targetId) || targetId;
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (format === 'csv') {
+    triggerDownload(fileRoot + '_' + stamp + '.csv', buildChartCsv(payload.stats), 'text/csv;charset=utf-8');
+    return;
+  }
+  if (format === 'xls') {
+    triggerDownload(fileRoot + '_' + stamp + '.xls', buildChartXls(payload.title, payload.stats), 'application/vnd.ms-excel;charset=utf-8');
+    return;
+  }
+  if (format === 'png') {
+    const blob = await buildChartPngBlob(payload.title, payload.stats);
+    if (!blob) {
+      alert('Impossibile generare il PNG.');
+      return;
+    }
+    triggerDownload(fileRoot + '_' + stamp + '.png', blob, 'image/png');
+  }
+}
+
+function setupChartExportControls() {
+  document.querySelectorAll('.chart-export').forEach((wrap) => {
+    const targetId = wrap.dataset.chartTarget || '';
+    const btn = wrap.querySelector('.chart-export-btn');
+    const menu = wrap.querySelector('.chart-export-menu');
+    if (!btn || !menu) return;
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const willOpen = !menu.classList.contains('open');
+      closeChartExportMenus();
+      menu.classList.toggle('open', willOpen);
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+    menu.querySelectorAll('.chart-export-option').forEach((option) => {
+      option.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        closeChartExportMenus();
+        btn.setAttribute('aria-expanded', 'false');
+        await exportChart(targetId, option.dataset.format || 'csv');
+      });
+    });
+  });
+  document.addEventListener('click', () => closeChartExportMenus());
 }
 
 function deferWork(task) {
@@ -454,6 +637,8 @@ function renderVerticalChart(target, stats) {
   const max = Math.max(...sortedStats.map((x) => x.total), 1);
   const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
   target.innerHTML = '';
+  const panelTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
+  chartExportState[target.id] = { title: panelTitle, stats: sortedStats.map((item) => ({ label: item.label, total: item.total })) };
   const colorMap = new Map(sortedStats.map((item, index) => [item.label, colorByIndex(index)]));
 
   const steps = 4;
@@ -626,7 +811,7 @@ async function runTicketSearch() {
     const parts = [];
     if (query) parts.push(`parole chiave "${query}"`);
     if (from || to) parts.push(`date ${from || '...'} ? ${to || '...'}`);
-    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' Â· ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   const data = await fetchJson(`/api/tickets/search${suffix}`);
   if (ticketSearchResults) {
@@ -692,6 +877,8 @@ async function loadPreviousShifts() {
     previousShiftsLoading = false;
   }
 }
+
+setupChartExportControls();
 
 async function loadCharts() {
   const [fabDay, fabYear, catDay, catYear] = await Promise.all([
