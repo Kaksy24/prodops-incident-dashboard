@@ -49,6 +49,8 @@ let presetTokenState = [];
 let extraTicketCounter = 0;
 let modalCloseTimer = null;
 let currentUser = null;
+let previousShiftsLoaded = false;
+let previousShiftsLoading = false;
 const chartPalette = [
   '#1f77b4',
   '#ff7f0e',
@@ -71,6 +73,15 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function deferWork(task) {
+  const runner = () => Promise.resolve().then(task).catch((error) => console.error(error));
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(runner, { timeout: 1200 });
+    return;
+  }
+  window.setTimeout(runner, 0);
 }
 
 function toDatetimeLocalValue(dateLike) {
@@ -646,15 +657,23 @@ function handleEditTicketButton(btn) {
 }
 
 async function loadPreviousShifts() {
+  if (previousShiftsLoaded || previousShiftsLoading) return;
+  previousShiftsLoading = true;
   const data = await fetchJson('/api/tickets/previous-shifts');
-  if (!data.shifts.length) {
-    previousShiftsContent.innerHTML = '<p class="muted">Non ci sono turni precedenti nel giorno corrente.</p>';
-    return;
-  }
+  try {
+    if (!data.shifts.length) {
+      previousShiftsContent.innerHTML = '<p class="muted">Non ci sono turni precedenti nel giorno corrente.</p>';
+      previousShiftsLoaded = true;
+      return;
+    }
 
-  previousShiftsContent.innerHTML = data.shifts.map((shift) => {
-    return `<section class="previous-shift-block"><h4>${shift.label}</h4>${renderGroupedTickets(shift.tickets)}</section>`;
-  }).join('');
+    previousShiftsContent.innerHTML = data.shifts.map((shift) => {
+      return `<section class="previous-shift-block"><h4>${shift.label}</h4>${renderGroupedTickets(shift.tickets)}</section>`;
+    }).join('');
+    previousShiftsLoaded = true;
+  } finally {
+    previousShiftsLoading = false;
+  }
 }
 
 async function loadCharts() {
@@ -690,7 +709,7 @@ if (previousShiftsToggle) {
     previousShiftsToggle.setAttribute('aria-expanded', String(!isOpen));
     previousShiftsToggle.querySelector('.section-toggle-icon').textContent = isOpen ? '+' : '-';
     previousShiftsContent.hidden = isOpen;
-    if (!isOpen) await loadPreviousShifts();
+    if (!isOpen && !previousShiftsLoaded) await loadPreviousShifts();
   });
 }
 
@@ -778,12 +797,15 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 
 (async function init() {
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
-  await loadCurrentUser();
+  await Promise.all([loadCurrentUser(), loadCategories()]);
   renderFabButtons();
-  await loadCategories();
   await loadDayTickets();
-  await loadPreviousShifts();
-  await loadCharts();
+  deferWork(async () => {
+    if (!previousShiftsLoaded && previousShiftsContent && !previousShiftsContent.hidden) {
+      await loadPreviousShifts();
+    }
+    await loadCharts();
+  });
 })();
 
 function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? '🌙' : '☀'; }}
