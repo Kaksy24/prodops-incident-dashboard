@@ -162,15 +162,21 @@ function themeFallbackOrder() {
   return theme === 'dark' ? ['dark', 'light'] : ['light', 'dark'];
 }
 
+function normalizeChartKey(chartId) {
+  const id = String(chartId || '');
+  return id.endsWith('Chart') ? id.slice(0, -5) : id;
+}
+
 function getChartColor(chartId) {
+  const chartKey = normalizeChartKey(chartId);
   const [theme, fallbackTheme] = themeFallbackOrder();
-  const fallback = defaultUiColors().charts[chartId];
-  const custom = uiColors?.charts?.[chartId]?.[theme] || uiColors?.charts?.[chartId]?.[fallbackTheme];
+  const fallback = defaultUiColors().charts[chartKey];
+  const custom = uiColors?.charts?.[chartKey]?.[theme] || uiColors?.charts?.[chartKey]?.[fallbackTheme];
   return normalizeHexColor(custom) || fallback?.[theme] || fallback?.[fallbackTheme] || '#0c5f8c';
 }
 
 function chartGroupForId(chartId) {
-  switch (chartId) {
+  switch (normalizeChartKey(chartId)) {
     case 'fabDay':
     case 'fabYear':
       return 'fabs';
@@ -194,11 +200,12 @@ function getLabelColor(group, label) {
 }
 
 function getBarColor(chartId, label) {
+  const chartKey = normalizeChartKey(chartId);
   const [theme, fallbackTheme] = themeFallbackOrder();
   const normalizedLabel = String(label || '');
-  const custom = uiColors?.bars?.[chartId]?.[theme]?.[normalizedLabel] || uiColors?.bars?.[chartId]?.[fallbackTheme]?.[normalizedLabel];
+  const custom = uiColors?.bars?.[chartKey]?.[theme]?.[normalizedLabel] || uiColors?.bars?.[chartKey]?.[fallbackTheme]?.[normalizedLabel];
   if (normalizeHexColor(custom)) return normalizeHexColor(custom);
-  const group = chartGroupForId(chartId);
+  const group = chartGroupForId(chartKey);
   if (group) {
     const groupColor = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel] || uiColors?.labels?.[group]?.[fallbackTheme]?.[normalizedLabel];
     if (normalizeHexColor(groupColor)) return normalizeHexColor(groupColor);
