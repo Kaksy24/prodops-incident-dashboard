@@ -637,6 +637,37 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   .modal-panel {
     border-radius: 4px;
   }
+  #ticketModal.show {
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 12px;
+    padding-bottom: 86px;
+  }
+  #ticketModal.show .modal-panel {
+    width: min(100%, 640px);
+    max-height: calc(100vh - 18px);
+  }
+  .extra-ticket-modals {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+  .extra-ticket-modal {
+    width: min(100%, 640px);
+  }
+  .add-same-incident-btn {
+    width: 48px;
+    height: 48px;
+    right: 12px;
+    left: auto !important;
+    top: auto !important;
+    bottom: 12px;
+    font-size: 1.7rem;
+  }
+  .modal .modal-panel {
+    box-shadow: 0 12px 26px rgba(0,0,0,.14);
+  }
 }
 
 .edit-ticket-btn{margin-left:8px;padding:3px 8px;font-size:.8rem;border:1px solid var(--border);background:var(--panel);color:var(--text)}
