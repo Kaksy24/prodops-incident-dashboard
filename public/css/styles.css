@@ -54,6 +54,15 @@ body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--tex
 .admin-toggle-btn { margin-top: auto; background: linear-gradient(130deg, #2a4364, #355a84); }
 .logout-btn { margin-top: 8px; color: #eaf2ff; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
 .sidebar-link-btn:hover { filter: brightness(1.08); }
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  text-align: center;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: rgba(238, 246, 255, 0.78);
+  letter-spacing: 0.2px;
+}
 .theme-switch {
   background: transparent;
   border: 0;
