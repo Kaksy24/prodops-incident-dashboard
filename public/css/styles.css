@@ -354,6 +354,13 @@ body.theme-dark .chart-export-option {
   line-height: 1.45;
   color: var(--text);
 }
+.ticket-entry-time {
+  color: var(--muted);
+  font-size: 0.9em;
+  font-weight: 600;
+  margin-right: 6px;
+  white-space: nowrap;
+}
 
 body.theme-dark .ticket-category-label,
 body.theme-dark .ticket-fab-label {

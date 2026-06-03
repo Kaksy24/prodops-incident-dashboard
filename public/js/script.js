@@ -84,6 +84,13 @@ function colorForLabel(label) {
   return colorByIndex(Math.abs(hash));
 }
 
+function formatTicketTimestamp(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `[${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}]`;
+}
+
 function defaultUiColors() {
   return {
     charts: {
@@ -923,7 +930,8 @@ async function loadDayTickets(animatedTicketIds = []) {
         const editBtn = item.can_edit
           ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
           : '';
-        return `<li class="${isAnimated ? 'ticket-new-entry' : ''}" data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span>${editBtn}</li>`;
+        const ticketTimestamp = formatTicketTimestamp(item.created_at);
+        return `<li class="${isAnimated ? 'ticket-new-entry' : ''}" data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="ticket-entry-time">${ticketTimestamp}</span><span class="incident-title">${item.incident_name}</span> - ${item.description}</span>${editBtn}</li>`;
       })
       .join('');
     li.innerHTML = `<strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${incidents}</ul>`;
