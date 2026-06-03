@@ -1427,6 +1427,15 @@ if ($path === '/api/tickets' && $method === 'POST') {
     json_response(ticket_with_permissions($ticket, $user), 200);
 }
 
+if ($path === '/api/tickets/clear' && $method === 'DELETE') {
+    require_api_auth('admin');
+    $deletedCount = count($db['tickets']);
+    $db['tickets'] = array();
+    $db['counters']['ticket'] = 0;
+    save_db($db);
+    json_response(array('ok' => true, 'deleted' => $deletedCount), 200);
+}
+
 if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
     $id = intval($m[1]);
     $idx = -1;
