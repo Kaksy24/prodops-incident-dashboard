@@ -552,23 +552,25 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   .sidebar-link-btn,
   .admin-toggle-btn,
   .logout-btn {
-    padding: 12px 14px;
-    font-size: .96rem;
+    padding: 11px 12px;
+    font-size: .92rem;
   }
   .category-toggle {
-    padding: 11px 10px;
-    min-height: 46px;
+    padding: 10px 10px;
+    min-height: 44px;
+    font-size: .95rem;
   }
   .incident-btn {
-    padding: 10px;
-    min-height: 42px;
+    padding: 9px 10px;
+    min-height: 40px;
+    font-size: .94rem;
   }
   .content {
-    padding: 12px;
+    padding: 10px;
   }
   .hero,
   .panel {
-    padding: 14px;
+    padding: 12px;
   }
   .panel-header-row h3,
   .hero h2,
@@ -616,6 +618,24 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   }
   .fab-buttons {
     gap: 6px;
+  }
+  .menu#adminMenu .category-toggle,
+  .menu#adminMenu .incident-btn {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .menu#adminMenu .admin-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+  .menu#adminMenu .category-toggle > span:first-child,
+  .menu#adminMenu .incident-btn > span:first-child {
+    width: 100%;
+  }
+  .modal-panel {
+    border-radius: 4px;
   }
 }
 
