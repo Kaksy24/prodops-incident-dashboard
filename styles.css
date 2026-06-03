@@ -638,14 +638,15 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
     border-radius: 4px;
   }
   #ticketModal.show {
-    align-items: stretch;
-    justify-content: stretch;
-    gap: 12px;
-    padding-bottom: 86px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding-bottom: 0;
   }
   #ticketModal.show .modal-panel {
     width: min(100%, 640px);
-    max-height: calc(100vh - 18px);
+    max-height: calc(100vh - 12px);
+    overflow: hidden;
   }
   .extra-ticket-modals {
     display: flex;
@@ -657,16 +658,49 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
     width: min(100%, 640px);
   }
   .add-same-incident-btn {
-    width: 48px;
-    height: 48px;
-    right: 12px;
-    left: auto !important;
-    top: auto !important;
-    bottom: 12px;
-    font-size: 1.7rem;
+    display: none !important;
   }
   .modal .modal-panel {
     box-shadow: 0 12px 26px rgba(0,0,0,.14);
+  }
+  #ticketModal .modal-header {
+    padding: 9px 12px;
+  }
+  #ticketModal .modal-header h3 {
+    font-size: .98rem;
+  }
+  #ticketModal .ticket-form {
+    padding: 8px 12px 10px;
+  }
+  #ticketModal .ticket-form label {
+    margin-top: 6px;
+    font-size: .92rem;
+  }
+  #ticketModal textarea {
+    min-height: 64px;
+    height: 68px;
+    max-height: 78px;
+  }
+  #ticketModal .fab-buttons {
+    margin-bottom: 6px;
+    gap: 5px;
+  }
+  #ticketModal .fab-btn {
+    padding: 5px 8px;
+    font-size: .88rem;
+  }
+  #ticketModal .ticket-timestamp-input {
+    margin-top: 2px;
+  }
+  #ticketModal .ticket-form .muted {
+    margin: 4px 0 0;
+    font-size: .82rem;
+  }
+  #ticketModal .form-actions {
+    margin-top: 8px;
+  }
+  #ticketModal .form-actions > * {
+    min-height: 38px;
   }
 }
 
