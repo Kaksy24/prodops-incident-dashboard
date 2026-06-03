@@ -36,6 +36,12 @@ function load_env_file($path)
 
 load_env_file(__DIR__ . DIRECTORY_SEPARATOR . '.env');
 
+function remote_api_base()
+{
+    $base = getenv('REMOTE_API_BASE');
+    return $base ? rtrim($base, '/') : '';
+}
+
 function supabase_enabled()
 {
     $url = getenv('SUPABASE_URL');
@@ -235,6 +241,71 @@ function read_json_body()
     }
     $parsed = json_decode($raw, true);
     return is_array($parsed) ? $parsed : array();
+}
+
+function proxy_remote_api_request($path, $method, $payload)
+{
+    $base = remote_api_base();
+    if ($base === '') return false;
+
+    $url = $base . $path;
+    if (isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '') {
+        $url .= '?' . $_SERVER['QUERY_STRING'];
+    }
+
+    if (!function_exists('curl_init')) return false;
+
+    $headers = array('Content-Type: application/json');
+    if (isset($_COOKIE[AUTH_COOKIE]) && $_COOKIE[AUTH_COOKIE] !== '') {
+        $headers[] = 'Cookie: ' . AUTH_COOKIE . '=' . $_COOKIE[AUTH_COOKIE];
+    }
+
+    $responseHeaders = array();
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, strtoupper($method));
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($curl, $headerLine) use (&$responseHeaders) {
+        $trimmed = trim($headerLine);
+        if ($trimmed !== '') $responseHeaders[] = $trimmed;
+        return strlen($headerLine);
+    });
+    if ($payload !== null && strtoupper($method) !== 'GET') {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    }
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $body = curl_exec($ch);
+    $status = intval(curl_getinfo($ch, CURLINFO_HTTP_CODE));
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false) {
+        http_response_code(502);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(array('error' => $error ? $error : 'Proxy error'));
+        exit;
+    }
+
+    if ($path === '/api/login' && $status >= 200 && $status < 300) {
+        $decoded = json_decode($body, true);
+        if (is_array($decoded) && isset($decoded['id'])) {
+            set_auth_cookie(array(
+                'id' => intval($decoded['id']),
+                'username' => isset($decoded['username']) ? $decoded['username'] : '',
+                'role' => isset($decoded['role']) ? $decoded['role'] : 'user',
+                'team' => isset($decoded['team']) ? $decoded['team'] : 'A'
+            ));
+        }
+    }
+
+    if ($path === '/api/logout') {
+        clear_auth_cookie();
+    }
+
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo $body;
+    exit;
 }
 
 function mysql_enabled()
@@ -898,11 +969,15 @@ if (strpos($path, '/api/') !== 0) {
     exit;
 }
 
+$payload = read_json_body();
+if (remote_api_base() !== '') {
+    proxy_remote_api_request($path, $method, $payload);
+}
+
 $db = load_db($defaultUsers);
 if (!mysql_enabled()) {
     supabase_bootstrap_if_needed($db);
 }
-$payload = read_json_body();
 
 if ($path === '/api/login' && $method === 'POST') {
     $username = isset($payload['username']) ? trim(strval($payload['username'])) : '';
