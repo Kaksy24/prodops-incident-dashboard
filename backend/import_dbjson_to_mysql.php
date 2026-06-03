@@ -33,7 +33,7 @@ if (!$host || !$dbName || !$user) {
     exit(1);
 }
 
-$dbPath = __DIR__ . DIRECTORY_SEPARATOR . 'db.json';
+$dbPath = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json';
 if (!file_exists($dbPath)) {
     fwrite(STDERR, "db.json not found\n");
     exit(1);
@@ -53,7 +53,7 @@ if (!$conn) {
 }
 mysqli_set_charset($conn, 'utf8');
 
-$schemaPath = __DIR__ . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
+$schemaPath = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
 $schemaSql = file_get_contents($schemaPath);
 if ($schemaSql === false) {
     fwrite(STDERR, "Cannot read mysql_schema_51.sql\n");
@@ -128,7 +128,8 @@ if ($ok) {
         $un = mysqli_real_escape_string($conn, $u['username']);
         $pw = mysqli_real_escape_string($conn, $u['password']);
         $rl = mysqli_real_escape_string($conn, $u['role']);
-        if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role) VALUES ($id,'$un','$pw','$rl')")) { $ok = false; break; }
+        $tm = mysqli_real_escape_string($conn, isset($u['team']) ? strtoupper(trim($u['team'])) : 'A');
+        if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team) VALUES ($id,'$un','$pw','$rl','$tm')")) { $ok = false; break; }
     }
 }
 
@@ -153,7 +154,8 @@ if ($ok) {
         $ca = mysqli_real_escape_string($conn, isset($t['created_at']) ? $t['created_at'] : gmdate('c'));
         $se = isset($t['severity']) ? intval($t['severity']) : 1;
         $ou = (isset($t['owner_user_id']) && $t['owner_user_id'] !== null) ? intval($t['owner_user_id']) : 'NULL';
-        if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id) VALUES ($id,$incidentId,'$de','$fa','$ca',$se,$ou)")) { $ok = false; break; }
+        $ot = mysqli_real_escape_string($conn, isset($t['owner_team']) ? strtoupper(trim($t['owner_team'])) : 'A');
+        if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($id,$incidentId,'$de','$fa','$ca',$se,$ou,'$ot')")) { $ok = false; break; }
     }
 }
 

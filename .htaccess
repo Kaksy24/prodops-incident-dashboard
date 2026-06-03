@@ -1,9 +1,0 @@
-RewriteEngine On
-
-# Route protected pages and API through PHP front controller.
-RewriteCond %{REQUEST_URI} ^/$ [OR]
-RewriteCond %{REQUEST_URI} ^/index\.html$ [NC,OR]
-RewriteCond %{REQUEST_URI} ^/admin\.html$ [NC,OR]
-RewriteCond %{REQUEST_URI} ^/login\.html$ [NC,OR]
-RewriteCond %{REQUEST_URI} ^/api/ [NC]
-RewriteRule ^ index.php [L,QSA]

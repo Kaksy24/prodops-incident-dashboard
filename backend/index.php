@@ -5,7 +5,7 @@ if (function_exists('mysqli_report')) {
     mysqli_report(MYSQLI_REPORT_OFF);
 }
 
-define('DB_PATH', __DIR__ . DIRECTORY_SEPARATOR . 'db.json');
+define('DB_PATH', __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json');
 define('AUTH_COOKIE', 'prodops_auth');
 define('AUTH_TTL_SECONDS', 8 * 60 * 60);
 
@@ -449,7 +449,7 @@ function mysql_conn()
 
 function mysql_ensure_schema($conn)
 {
-    $schemaPath = __DIR__ . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
+    $schemaPath = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
     if (!file_exists($schemaPath)) return false;
     $sql = file_get_contents($schemaPath);
     if ($sql === false || trim($sql) === '') return false;
@@ -1100,17 +1100,17 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if ($path === '/' || $path === '/index.html') {
     require_page_auth('user');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . 'index.html');
+    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'index.html');
     exit;
 }
 if ($path === '/admin.html') {
     require_page_auth('admin');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . 'admin.html');
+    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'admin.html');
     exit;
 }
 if ($path === '/search.html') {
     require_page_auth('user');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . 'search.html');
+    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'search.html');
     exit;
 }
 if ($path === '/login.html') {
@@ -1119,7 +1119,7 @@ if ($path === '/login.html') {
         header('Location: ' . ($u['role'] === 'admin' ? '/admin.html' : '/index.html'));
         exit;
     }
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . 'login.html');
+    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'login.html');
     exit;
 }
 
