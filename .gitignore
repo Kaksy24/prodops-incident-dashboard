@@ -1,4 +1,6 @@
 .env
+backend/config.php
+backend/config.local.php
 node_modules/
 .vercel/
 .vercel.production.env

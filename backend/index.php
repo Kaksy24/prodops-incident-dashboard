@@ -36,6 +36,24 @@ function load_env_file($path)
 
 load_env_file(__DIR__ . DIRECTORY_SEPARATOR . '.env');
 
+function load_runtime_config_file($path)
+{
+    if (!file_exists($path)) return;
+    $config = include $path;
+    if (!is_array($config)) return;
+    foreach ($config as $key => $value) {
+        $key = trim(strval($key));
+        if ($key === '') continue;
+        if (getenv($key) === false || getenv($key) === '') {
+            putenv($key . '=' . strval($value));
+            $_ENV[$key] = strval($value);
+        }
+    }
+}
+
+load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.php');
+load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.local.php');
+
 function remote_api_base()
 {
     $base = getenv('REMOTE_API_BASE');
