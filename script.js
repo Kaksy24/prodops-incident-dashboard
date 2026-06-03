@@ -1,4 +1,4 @@
-﻿const menu = document.getElementById('menu');
+const menu = document.getElementById('menu');
 const modal = document.getElementById('ticketModal');
 const mainTicketPanel = document.querySelector('#ticketModal > .modal-panel');
 const incidentTypeInput = document.getElementById('incidentType');
@@ -364,7 +364,7 @@ function openModal(incidentName) {
   if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Crea Ticket';
   if (deleteTicketBtn) deleteTicketBtn.style.display = 'none';
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'grid';
-  document.querySelectorAll('.fab-btn').forEach((b) => {
+  fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
     b.classList.toggle('active', b.textContent === defaultFab);
   });
   revealModal();
@@ -413,7 +413,7 @@ function renderFabButtons() {
     btn.className = 'fab-btn';
     btn.textContent = fab;
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.fab-btn').forEach((b) => b.classList.remove('active'));
+      fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       fabValue.value = fab;
     });
@@ -625,8 +625,8 @@ async function runTicketSearch() {
   if (ticketSearchSummary) {
     const parts = [];
     if (query) parts.push(`parole chiave "${query}"`);
-    if (from || to) parts.push(`date ${from || '...'} → ${to || '...'}`);
-    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+    if (from || to) parts.push(`date ${from || '...'} ? ${to || '...'}`);
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' � ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   const data = await fetchJson(`/api/tickets/search${suffix}`);
   if (ticketSearchResults) {
@@ -663,7 +663,7 @@ function handleEditTicketButton(btn) {
   }
   ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
   fabValue.value = (btn.dataset.fab || '').toUpperCase();
-  document.querySelectorAll('.fab-btn').forEach((b) => {
+  fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
     b.classList.toggle('active', b.textContent === fabValue.value);
   });
   if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
@@ -825,7 +825,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   });
 })();
 
-function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? '🌙' : '☀'; }}
+function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? '??' : '?'; }}
 const savedTheme = localStorage.getItem('theme') || 'light'; applyTheme(savedTheme);
 if(themeToggleBtn){themeToggleBtn.addEventListener('click',()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next);});}
 
@@ -871,3 +871,5 @@ window.addEventListener('resize', () => {
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
 });
+
+
