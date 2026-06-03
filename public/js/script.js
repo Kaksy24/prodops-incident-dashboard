@@ -57,6 +57,7 @@ let modalCloseTimer = null;
 let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
+const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const chartPalette = [
   '#1f77b4',
   '#ff7f0e',
@@ -209,6 +210,24 @@ async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
   return uiColors;
+}
+
+async function syncUiColorsAfterAdminChange() {
+  await loadUiColors();
+  await loadDayTickets();
+  await loadCharts();
+  if (previousShiftsContent && !previousShiftsContent.hidden) {
+    previousShiftsLoaded = false;
+    await loadPreviousShifts();
+  }
+}
+
+function announceUiColorsChange() {
+  try {
+    localStorage.setItem(uiColorsSyncKey, String(Date.now()));
+  } catch (error) {
+    // ignore storage issues
+  }
 }
 
 function lockModalScroll() {
@@ -1176,6 +1195,18 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? 'D' : 'L'; }}
 const savedTheme = localStorage.getItem('theme') || 'light'; applyTheme(savedTheme);
 if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next); await refreshColorSensitiveViews();});}
+
+window.addEventListener('storage', (event) => {
+  if (event.key === uiColorsSyncKey) {
+    syncUiColorsAfterAdminChange().catch(() => {});
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    syncUiColorsAfterAdminChange().catch(() => {});
+  }
+});
 
 
 

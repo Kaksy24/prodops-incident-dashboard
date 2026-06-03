@@ -24,6 +24,7 @@ const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
+const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 
 let dragCategoryId = null;
 let dragIncidentId = null;
@@ -364,6 +365,11 @@ async function saveUiColors() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ui_colors: adminUiColors })
   });
+  try {
+    localStorage.setItem(uiColorsSyncKey, String(Date.now()));
+  } catch (error) {
+    // ignore storage issues
+  }
   alert('Colori salvati.');
 }
 
