@@ -11,8 +11,8 @@ define('AUTH_TTL_SECONDS', 8 * 60 * 60);
 
 $fabs = array('M5', 'L1', 'EWS', 'WSIC', 'NRK');
 $defaultUsers = array(
-    array('id' => 1, 'username' => 'admin', 'password' => 'admin', 'role' => 'admin'),
-    array('id' => 2, 'username' => 'user', 'password' => 'user', 'role' => 'user')
+    array('id' => 1, 'username' => 'admin', 'password' => 'admin', 'role' => 'admin', 'team' => 'A'),
+    array('id' => 2, 'username' => 'user', 'password' => 'user', 'role' => 'user', 'team' => 'B')
 );
 
 function load_env_file($path)
@@ -50,6 +50,22 @@ function env_first($keys)
         if ($value !== false && $value !== '') return $value;
     }
     return false;
+}
+
+function normalize_team($team)
+{
+    $team = strtoupper(trim(strval($team)));
+    $allowed = array('A', 'B', 'C', 'D', 'E');
+    return in_array($team, $allowed, true) ? $team : 'A';
+}
+
+function user_by_id($users, $userId)
+{
+    $userId = intval($userId);
+    foreach ($users as $user) {
+        if (intval($user['id']) === $userId) return $user;
+    }
+    return null;
 }
 
 function supabase_base_url()
@@ -180,7 +196,8 @@ function supabase_bootstrap_if_needed($db)
                 'description' => isset($t['description']) ? $t['description'] : '',
                 'fab' => isset($t['fab']) ? $t['fab'] : '',
                 'created_at' => isset($t['created_at']) ? $t['created_at'] : gmdate('c'),
-                'severity' => isset($t['severity']) ? intval($t['severity']) : 1
+                'severity' => isset($t['severity']) ? intval($t['severity']) : 1,
+                'owner_team' => normalize_team(isset($t['owner_team']) ? $t['owner_team'] : 'A')
             );
         }
         sb_insert('tickets', $payload, false);
@@ -194,7 +211,8 @@ function supabase_bootstrap_if_needed($db)
                 'id' => intval($u['id']),
                 'username' => $u['username'],
                 'password' => $u['password'],
-                'role' => $u['role']
+                'role' => $u['role'],
+                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A')
             );
         }
         sb_insert('app_users', $payload, false);
@@ -291,6 +309,17 @@ function mysql_ensure_schema($conn)
             return false;
         }
     }
+    $alterStatements = array(
+        "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
+        "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id"
+    );
+    foreach ($alterStatements as $statement) {
+        if (@mysqli_query($conn, $statement)) continue;
+        $errno = function_exists('mysqli_errno') ? @mysqli_errno($conn) : 0;
+        if ($errno !== 1060) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -357,7 +386,7 @@ function mysql_load_db($defaultUsers)
     $incidentNameById = array();
     foreach ($db['incidents'] as $incRow) $incidentNameById[intval($incRow['id'])] = $incRow['name'];
 
-    $rt = @mysqli_query($conn, "SELECT id, incident_id, description, fab, created_at, severity, owner_user_id FROM tickets ORDER BY id ASC");
+    $rt = @mysqli_query($conn, "SELECT id, incident_id, description, fab, created_at, severity, owner_user_id, owner_team FROM tickets ORDER BY id ASC");
     if ($rt) {
         while ($row = mysqli_fetch_assoc($rt)) {
             $iid = intval($row['incident_id']);
@@ -369,20 +398,22 @@ function mysql_load_db($defaultUsers)
                 'fab' => $row['fab'],
                 'created_at' => $row['created_at'],
                 'severity' => intval($row['severity'] ? $row['severity'] : 1),
-                'owner_user_id' => $row['owner_user_id'] !== null ? intval($row['owner_user_id']) : null
+                'owner_user_id' => $row['owner_user_id'] !== null ? intval($row['owner_user_id']) : null,
+                'owner_team' => normalize_team(isset($row['owner_team']) ? $row['owner_team'] : 'A')
             );
         }
         mysqli_free_result($rt);
     }
 
-    $ru = @mysqli_query($conn, "SELECT id, username, password, role FROM app_users ORDER BY id ASC");
+    $ru = @mysqli_query($conn, "SELECT id, username, password, role, team FROM app_users ORDER BY id ASC");
     if ($ru) {
         while ($row = mysqli_fetch_assoc($ru)) {
             $db['users'][] = array(
                 'id' => intval($row['id']),
                 'username' => $row['username'],
                 'password' => $row['password'],
-                'role' => $row['role']
+                'role' => $row['role'],
+                'team' => normalize_team(isset($row['team']) ? $row['team'] : 'A')
             );
         }
         mysqli_free_result($ru);
@@ -467,7 +498,8 @@ function mysql_save_db($db)
             $un = mysql_escape($conn, $u['username']);
             $pw = mysql_escape($conn, $u['password']);
             $rl = mysql_escape($conn, $u['role']);
-            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role) VALUES ($id,'$un','$pw','$rl')")) { $ok = false; break; }
+            $tm = mysql_escape($conn, isset($u['team']) ? normalize_team($u['team']) : 'A');
+            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team) VALUES ($id,'$un','$pw','$rl','$tm')")) { $ok = false; break; }
         }
     }
 
@@ -486,7 +518,8 @@ function mysql_save_db($db)
             $ca = mysql_escape($conn, isset($t['created_at']) ? $t['created_at'] : gmdate('c'));
             $se = isset($t['severity']) ? intval($t['severity']) : 1;
             $ou = (isset($t['owner_user_id']) && $t['owner_user_id'] !== null) ? intval($t['owner_user_id']) : 'NULL';
-            if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id) VALUES ($id,$incidentId,'$de','$fa','$ca',$se,$ou)")) { $ok = false; break; }
+            $ot = mysql_escape($conn, isset($t['owner_team']) ? normalize_team($t['owner_team']) : 'A');
+            if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($id,$incidentId,'$de','$fa','$ca',$se,$ou,'$ot')")) { $ok = false; break; }
         }
     }
 
@@ -554,6 +587,17 @@ function load_db($defaultUsers)
         }
     }
     if (!isset($db['users']) || !is_array($db['users']) || !count($db['users'])) $db['users'] = $defaultUsers;
+    foreach ($db['users'] as $ui => $userRow) {
+        if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
+        $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
+    }
+    foreach ($db['tickets'] as $ti => $ticketRow) {
+        if (!isset($db['tickets'][$ti]['owner_team'])) {
+            $ownerUser = isset($ticketRow['owner_user_id']) ? user_by_id($db['users'], intval($ticketRow['owner_user_id'])) : null;
+            $db['tickets'][$ti]['owner_team'] = $ownerUser ? normalize_team(isset($ownerUser['team']) ? $ownerUser['team'] : 'A') : 'A';
+        }
+        $db['tickets'][$ti]['owner_team'] = normalize_team($db['tickets'][$ti]['owner_team']);
+    }
     if (!isset($db['counters']) || !is_array($db['counters'])) $db['counters'] = array();
     if (!isset($db['counters']['category'])) $db['counters']['category'] = max_id($db['categories']);
     if (!isset($db['counters']['incident'])) $db['counters']['incident'] = max_id($db['incidents']);
@@ -622,6 +666,7 @@ function set_auth_cookie($user)
         'id' => intval($user['id']),
         'username' => $user['username'],
         'role' => $user['role'],
+        'team' => normalize_team(isset($user['team']) ? $user['team'] : 'A'),
         'exp' => time() + AUTH_TTL_SECONDS
     );
     $body = base64url_encode(json_encode($payload));
@@ -651,7 +696,8 @@ function read_auth_user()
     return array(
         'id' => intval($payload['id']),
         'username' => strval($payload['username']),
-        'role' => strval($payload['role'])
+        'role' => strval($payload['role']),
+        'team' => normalize_team(isset($payload['team']) ? $payload['team'] : 'A')
     );
 }
 
@@ -774,6 +820,7 @@ function ticket_with_permissions($ticket, $user)
 {
     $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
     $ticket['owner_user_id'] = $ownerId > 0 ? $ownerId : null;
+    $ticket['owner_team'] = normalize_team(isset($ticket['owner_team']) ? $ticket['owner_team'] : 'A');
     $ticket['can_edit'] = ($ownerId > 0 && intval($user['id']) === $ownerId);
     if (!isset($ticket['severity'])) $ticket['severity'] = 1;
     return $ticket;
@@ -874,6 +921,7 @@ if ($path === '/api/login' && $method === 'POST') {
                 'id' => intval($u['id']),
                 'username' => $u['username'],
                 'role' => $u['role'],
+                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
                 'redirectTo' => ($u['role'] === 'admin' ? '/admin.html' : '/index.html')
             ), 200);
         }
@@ -886,6 +934,7 @@ if ($path === '/api/login' && $method === 'POST') {
                 'id' => intval($u['id']),
                 'username' => $u['username'],
                 'role' => $u['role'],
+                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
                 'redirectTo' => ($u['role'] === 'admin' ? '/admin.html' : '/index.html')
             ), 200);
         }
@@ -901,20 +950,23 @@ if ($path === '/api/logout' && $method === 'POST') {
 $user = require_api_auth('user');
 
 if ($path === '/api/me' && $method === 'GET') {
-    json_response(array('user' => $user), 200);
+    $me = user_by_id($db['users'], intval($user['id']));
+    if (!$me) $me = $user;
+    $me['team'] = normalize_team(isset($me['team']) ? $me['team'] : 'A');
+    json_response(array('user' => $me), 200);
 }
 
 if ($path === '/api/users' && $method === 'GET') {
     require_api_auth('admin');
     $out = array();
     if (supabase_enabled()) {
-        $resp = sb_select('app_users', 'id,username,role', array(), 'id.asc');
+        $resp = sb_select('app_users', 'id,username,role,team', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role']);
+            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'));
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role']);
+    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'));
     json_response($out, 200);
 }
 
@@ -923,16 +975,36 @@ if ($path === '/api/users' && $method === 'POST') {
     $username = isset($payload['username']) ? trim(strval($payload['username'])) : '';
     $password = isset($payload['password']) ? trim(strval($payload['password'])) : '';
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : 'user';
+    $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     if ($username === '' || $password === '') json_response(array('error' => 'Username e password obbligatori'), 400);
     if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
     $db['counters']['user'] = intval($db['counters']['user']) + 1;
-    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role);
+    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team);
     $db['users'][] = $newUser;
     save_db($db);
-    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role), 200);
+    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role, 'team' => $team), 200);
+}
+
+if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
+    require_api_auth('admin');
+    $id = intval($m[1]);
+    $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
+    $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
+    foreach ($db['users'] as &$u) {
+        if (intval($u['id']) === $id) {
+            $u['team'] = $team;
+            if ($role !== null && $role !== '') {
+                if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
+                $u['role'] = $role;
+            }
+            save_db($db);
+            json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'])), 200);
+        }
+    }
+    json_response(array('error' => 'Utente non trovato'), 404);
 }
 
 if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
@@ -1255,11 +1327,14 @@ if ($path === '/api/tickets' && $method === 'POST') {
     $severity = isset($payload['severity']) ? intval($payload['severity']) : 1;
     if ($incidentId <= 0 || $desc === '' || $fab === '' || $ticketTime === '') json_response(array('error' => 'Dati ticket incompleti'), 400);
     if (strtotime($ticketTime) === false) json_response(array('error' => 'Data/ora ticket non valida'), 400);
+    $ownerRecord = user_by_id($db['users'], intval($user['id']));
+    if (!$ownerRecord) $ownerRecord = $user;
     $incidentName = '';
     foreach ($db['incidents'] as $inc) {
         if (intval($inc['id']) === $incidentId) { $incidentName = $inc['name']; break; }
     }
     if ($incidentName === '') json_response(array('error' => 'Incident non valido'), 400);
+    $ownerTeam = normalize_team(isset($ownerRecord['team']) ? $ownerRecord['team'] : 'A');
     $db['counters']['ticket'] = intval($db['counters']['ticket']) + 1;
     $ticket = array(
         'id' => $db['counters']['ticket'],
@@ -1269,6 +1344,7 @@ if ($path === '/api/tickets' && $method === 'POST') {
         'fab' => $fab,
         'severity' => $severity,
         'owner_user_id' => intval($user['id']),
+        'owner_team' => $ownerTeam,
         'created_at' => gmdate('c', strtotime($ticketTime))
     );
     $db['tickets'][] = $ticket;
@@ -1309,6 +1385,7 @@ if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
         $db['tickets'][$idx]['description'] = $desc;
         $db['tickets'][$idx]['fab'] = $fab;
         $db['tickets'][$idx]['severity'] = $severity;
+        $db['tickets'][$idx]['owner_team'] = normalize_team(isset($db['tickets'][$idx]['owner_team']) ? $db['tickets'][$idx]['owner_team'] : (isset($user['team']) ? $user['team'] : 'A'));
         $db['tickets'][$idx]['created_at'] = gmdate('c', strtotime($ticketTime));
         save_db($db);
         json_response(array('ok' => true, 'ticket' => ticket_with_permissions($db['tickets'][$idx], $user)), 200);

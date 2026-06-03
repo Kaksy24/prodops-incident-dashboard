@@ -16,6 +16,7 @@ const usersList = document.getElementById('usersList');
 const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
+const newUserTeamSelect = document.getElementById('newUserTeam');
 
 let dragCategoryId = null;
 let dragIncidentId = null;
@@ -153,10 +154,34 @@ async function loadUsers() {
           <span class="user-row-id">ID ${Number(user.id)}</span>
           <span>${escapeHtml(user.username)}</span>
           <strong>${escapeHtml(user.role)}</strong>
+          <select class="user-team-select" data-user-id="${Number(user.id)}" ${isSelf ? 'disabled' : ''}>
+            ${['A', 'B', 'C', 'D', 'E'].map((team) => `<option value="${team}" ${String(user.team || 'A') === team ? 'selected' : ''}>${team}</option>`).join('')}
+          </select>
+          <button type="button" class="save-user-team-btn" data-user-id="${Number(user.id)}" ${isSelf ? 'disabled' : ''}>Salva</button>
           <button type="button" class="delete-user-btn" data-user-id="${Number(user.id)}" data-username="${escapeHtml(user.username)}" ${isSelf ? 'disabled' : ''}>X</button>
         </div>
       `;
     }).join('');
+
+    usersList.querySelectorAll('.save-user-team-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const userId = Number(btn.dataset.userId);
+        if (!userId) return;
+        const row = btn.closest('.user-row');
+        const teamSelect = row?.querySelector('.user-team-select');
+        const team = teamSelect?.value || 'A';
+        try {
+          await fetchJson(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ team })
+          });
+          await loadUsers();
+        } catch (error) {
+          alert(`Errore salvataggio team: ${error.message || error}`);
+        }
+      });
+    });
 
     usersList.querySelectorAll('.delete-user-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -446,6 +471,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   const username = (newUsernameInput?.value || '').trim();
   const password = (newPasswordInput?.value || '').trim();
   const role = (newUserRoleSelect?.value || 'user').trim();
+  const team = (newUserTeamSelect?.value || 'A').trim();
   if (!username || !password) {
     alert('Inserisci username e password.');
     return;
@@ -454,10 +480,11 @@ userCreateForm?.addEventListener('submit', async (e) => {
     await fetchJson('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role })
+      body: JSON.stringify({ username, password, role, team })
     });
     userCreateForm.reset();
     if (newUserRoleSelect) newUserRoleSelect.value = 'user';
+    if (newUserTeamSelect) newUserTeamSelect.value = 'A';
     await loadUsers();
   } catch (error) {
     alert(`Errore creazione utente: ${error.message || error}`);

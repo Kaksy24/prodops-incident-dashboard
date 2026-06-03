@@ -582,7 +582,7 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
 
 .admin-user-form {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr 80px auto;
   gap: 10px;
   align-items: end;
 }
@@ -596,7 +596,7 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
 
 .user-row {
   display: grid;
-  grid-template-columns: 74px 1fr 90px auto;
+  grid-template-columns: 74px 1fr 90px 70px auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -621,6 +621,20 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
   font-weight: 700;
 }
 
+.save-user-team-btn {
+  border: 1px solid #5e7ea3;
+  background: rgba(42, 67, 100, .14);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.user-team-select {
+  width: 100%;
+  min-width: 60px;
+}
+
 .delete-user-btn:disabled {
   opacity: .5;
   cursor: not-allowed;
@@ -629,6 +643,9 @@ body.theme-dark .secondary, body.theme-dark .range-btn { background: #2a3f5b; co
 @media (max-width: 1100px) {
   .admin-user-form {
     grid-template-columns: 1fr 1fr;
+  }
+  .user-row {
+    grid-template-columns: 64px 1fr 64px auto auto;
   }
 }
 

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS app_users (
   username VARCHAR(80) NOT NULL,
   password VARCHAR(160) NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'user',
+  team VARCHAR(1) NOT NULL DEFAULT 'A',
   PRIMARY KEY (id),
   UNIQUE KEY uq_app_users_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   created_at VARCHAR(40) NOT NULL,
   severity TINYINT UNSIGNED NOT NULL DEFAULT 1,
   owner_user_id INT UNSIGNED NULL,
+  owner_team VARCHAR(1) NOT NULL DEFAULT 'A',
   PRIMARY KEY (id),
   KEY idx_tickets_incident (incident_id),
   KEY idx_tickets_created_at (created_at),

@@ -27,6 +27,7 @@ CREATE TABLE `app_users` (
   `username` varchar(80) NOT NULL,
   `password` varchar(160) NOT NULL,
   `role` varchar(20) NOT NULL DEFAULT 'user',
+  `team` varchar(1) NOT NULL DEFAULT 'A',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_app_users_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
@@ -38,7 +39,7 @@ CREATE TABLE `app_users` (
 
 LOCK TABLES `app_users` WRITE;
 /*!40000 ALTER TABLE `app_users` DISABLE KEYS */;
-INSERT INTO `app_users` VALUES (1,'admin','admin','admin'),(2,'user','user','user');
+INSERT INTO `app_users` VALUES (1,'admin','admin','admin','A'),(2,'user','user','user','B');
 /*!40000 ALTER TABLE `app_users` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -140,6 +141,7 @@ CREATE TABLE `tickets` (
   `created_at` varchar(40) NOT NULL,
   `severity` tinyint unsigned NOT NULL DEFAULT '1',
   `owner_user_id` int unsigned DEFAULT NULL,
+  `owner_team` varchar(1) NOT NULL DEFAULT 'A',
   PRIMARY KEY (`id`),
   KEY `idx_tickets_incident` (`incident_id`),
   KEY `idx_tickets_created_at` (`created_at`),
