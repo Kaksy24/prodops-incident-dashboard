@@ -84,6 +84,74 @@ function colorForLabel(label) {
   return colorByIndex(Math.abs(hash));
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const chartTypeStorageKey = 'prodops_chart_types';
+const chartTypeChoices = [
+  { value: 'column', label: 'Colonne' },
+  { value: 'bar', label: 'Barre orizzontali' },
+  { value: 'donut', label: 'Ciambella' },
+  { value: 'pie', label: 'Torta' },
+  { value: 'line', label: 'Linea' }
+];
+let chartTypes = defaultChartTypes();
+
+function defaultChartTypes() {
+  return {
+    fabDay: 'column',
+    catDay: 'column',
+    fabYear: 'bar',
+    catYear: 'bar',
+    teamYear: 'donut',
+    severityYear: 'line'
+  };
+}
+
+function normalizeChartType(value) {
+  const allowed = new Set(chartTypeChoices.map((item) => item.value));
+  return allowed.has(value) ? value : 'column';
+}
+
+function loadChartTypes() {
+  const defaults = defaultChartTypes();
+  try {
+    const raw = localStorage.getItem(chartTypeStorageKey);
+    if (!raw) {
+      chartTypes = defaults;
+      localStorage.setItem(chartTypeStorageKey, JSON.stringify(chartTypes));
+      return chartTypes;
+    }
+    const parsed = JSON.parse(raw);
+    chartTypes = { ...defaults };
+    Object.keys(defaults).forEach((key) => {
+      chartTypes[key] = normalizeChartType(parsed?.[key] || defaults[key]);
+    });
+  } catch (error) {
+    chartTypes = defaults;
+  }
+  return chartTypes;
+}
+
+function saveChartTypes() {
+  try {
+    localStorage.setItem(chartTypeStorageKey, JSON.stringify(chartTypes));
+  } catch (error) {
+    // ignore storage issues
+  }
+}
+
+function getChartType(chartId) {
+  const key = normalizeChartKey(chartId);
+  return normalizeChartType(chartTypes?.[key] || defaultChartTypes()[key] || 'column');
+}
+
 function formatTicketTimestamp(dateLike) {
   const date = new Date(dateLike);
   if (Number.isNaN(date.getTime())) return '';
@@ -839,13 +907,23 @@ async function loadCurrentUser() {
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
 }
 
-function renderVerticalChart(target, stats) {
+function chartTitleForTarget(target) {
+  return target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
+}
+
+function setChartExportState(target, sortedStats) {
+  chartExportState[target.id] = {
+    title: chartTitleForTarget(target),
+    stats: sortedStats.map((item) => ({ label: item.label, total: item.total }))
+  };
+}
+
+function renderColumnChart(target, stats) {
   const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   const max = Math.max(...sortedStats.map((x) => x.total), 1);
   const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
   target.innerHTML = '';
-  const panelTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
-  chartExportState[target.id] = { title: panelTitle, stats: sortedStats.map((item) => ({ label: item.label, total: item.total })) };
+  setChartExportState(target, sortedStats);
 
   const steps = 4;
   const tickValues = Array.from({ length: steps + 1 }, (_, i) => Math.round((max * (steps - i)) / steps));
@@ -866,13 +944,172 @@ function renderVerticalChart(target, stats) {
     const row = document.createElement('div');
     row.className = 'bar';
     const color = getBarColor(target.id, s.label);
-    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${s.label}</span>`;
+    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(s.label)}</span>`;
     barsWrap.appendChild(row);
   });
 
   inner.appendChild(axis);
   inner.appendChild(barsWrap);
   target.appendChild(inner);
+}
+
+function renderHorizontalChart(target, stats) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  target.innerHTML = '';
+  setChartExportState(target, sortedStats);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-horizontal-wrap';
+
+  sortedStats.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'chart-horizontal-row';
+    const width = Math.round((item.total / max) * 100);
+    const pct = Math.round((item.total / Math.max(sortedStats.reduce((sum, x) => sum + x.total, 0), 1)) * 100);
+    const color = getBarColor(target.id, item.label);
+    row.innerHTML = `
+      <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
+      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"><span class="bar-pct">${pct}%</span></div></div>
+      <span class="chart-horizontal-value">${item.total}</span>
+    `;
+    wrap.appendChild(row);
+  });
+
+  target.appendChild(wrap);
+}
+
+function renderPieOrDonutChart(target, stats, isDonut) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  target.innerHTML = '';
+  setChartExportState(target, sortedStats);
+
+  const layout = document.createElement('div');
+  layout.className = `chart-pie-layout${isDonut ? ' donut' : ' pie'}`;
+
+  const visual = document.createElement('div');
+  visual.className = `chart-pie-visual${isDonut ? ' donut' : ' pie'}`;
+  const slices = totalAll > 0 ? sortedStats.map((item) => {
+    const color = getBarColor(target.id, item.label);
+    const start = 0;
+    return { color, pct: (item.total / totalAll) * 100, label: item.label };
+  }) : [];
+  let angle = 0;
+  const gradient = slices.length
+    ? slices.map((slice) => {
+        const nextAngle = angle + slice.pct;
+        const part = `${slice.color} ${angle}% ${nextAngle}%`;
+        angle = nextAngle;
+        return part;
+      }).join(', ')
+    : '#d9e3ee 0% 100%';
+  visual.style.background = `conic-gradient(${gradient})`;
+
+  if (isDonut) {
+    const center = document.createElement('div');
+    center.className = 'chart-pie-center';
+    center.innerHTML = `<strong>${totalAll}</strong><span>Totale</span>`;
+    visual.appendChild(center);
+  }
+
+  const legend = document.createElement('div');
+  legend.className = 'chart-pie-legend';
+  sortedStats.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'chart-pie-legend-row';
+    const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
+    row.innerHTML = `
+      <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
+      <span class="chart-pie-label">${escapeHtml(item.label)}</span>
+      <strong class="chart-pie-value">${item.total}</strong>
+      <span class="chart-pie-percent">${pct}%</span>
+    `;
+    legend.appendChild(row);
+  });
+
+  layout.appendChild(visual);
+  layout.appendChild(legend);
+  target.appendChild(layout);
+}
+
+function renderLineChart(target, stats) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  target.innerHTML = '';
+  setChartExportState(target, sortedStats);
+
+  const width = 320;
+  const height = 200;
+  const padding = 26;
+  const usableWidth = width - (padding * 2);
+  const usableHeight = height - (padding * 2);
+  const points = sortedStats.map((item, index) => {
+    const x = sortedStats.length === 1 ? width / 2 : padding + (usableWidth * index) / (sortedStats.length - 1);
+    const y = height - padding - ((item.total / max) * usableHeight);
+    return { x, y, item };
+  });
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'chart-line-svg');
+  svg.innerHTML = `
+    <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" class="chart-line-axis"></line>
+    <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" class="chart-line-axis"></line>
+    <path d="${path}" class="chart-line-path"></path>
+    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4.5" class="chart-line-point" fill="${getBarColor(target.id, point.item.label)}"></circle>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label">${escapeHtml(point.item.label)}</text>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-line-value">${point.item.total}</text>`).join('')}
+  `;
+  target.appendChild(svg);
+}
+
+function renderChart(target, stats) {
+  const type = getChartType(target.id);
+  if (type === 'bar') return renderHorizontalChart(target, stats);
+  if (type === 'donut') return renderPieOrDonutChart(target, stats, true);
+  if (type === 'pie') return renderPieOrDonutChart(target, stats, false);
+  if (type === 'line') return renderLineChart(target, stats);
+  return renderColumnChart(target, stats);
+}
+
+function renderVerticalChart(target, stats) {
+  renderChart(target, stats);
+}
+
+function setupChartTypeControls() {
+  document.querySelectorAll('.chart-export[data-chart-target]').forEach((wrap) => {
+    const targetId = wrap.dataset.chartTarget || '';
+    const panelHeader = wrap.closest('.panel-heading-row');
+    if (!panelHeader || panelHeader.querySelector(`.chart-type-select[data-chart-target="${targetId}"]`)) return;
+    const select = document.createElement('select');
+    select.className = 'chart-type-select';
+    select.dataset.chartTarget = targetId;
+    select.setAttribute('aria-label', `Tipo grafico ${targetId}`);
+    chartTypeChoices.forEach((choice) => {
+      const option = document.createElement('option');
+      option.value = choice.value;
+      option.textContent = choice.label;
+      select.appendChild(option);
+    });
+    select.value = getChartType(targetId);
+    panelHeader.insertBefore(select, wrap);
+  });
+
+  document.querySelectorAll('.chart-type-select[data-chart-target]').forEach((select) => {
+    const targetId = select.dataset.chartTarget || '';
+    const current = getChartType(targetId);
+    if (select.value !== current) select.value = current;
+    if (select.dataset.chartBound === '1') return;
+    select.dataset.chartBound = '1';
+    select.addEventListener('change', () => {
+      const key = normalizeChartKey(targetId);
+      chartTypes[key] = normalizeChartType(select.value);
+      saveChartTypes();
+      loadCharts().catch(() => {});
+    });
+  });
 }
 
 async function loadCategories() {
@@ -1115,12 +1352,12 @@ async function loadCharts() {
     fetchJson(`/api/stats/team/current-year?mode=${teamYearMode}`),
     fetchJson(`/api/stats/severity/current-year?mode=${severityYearMode}`)
   ]);
-  renderVerticalChart(fabDayChart, fabDay.stats);
-  renderVerticalChart(fabYearChart, fabYear.stats);
-  renderVerticalChart(catDayChart, catDay.stats);
-  renderVerticalChart(catYearChart, catYear.stats);
-  renderVerticalChart(teamYearChart, teamYear.stats);
-  renderVerticalChart(severityYearChart, severityYear.stats);
+  renderChart(fabDayChart, fabDay.stats);
+  renderChart(fabYearChart, fabYear.stats);
+  renderChart(catDayChart, catDay.stats);
+  renderChart(catYearChart, catYear.stats);
+  renderChart(teamYearChart, teamYear.stats);
+  renderChart(severityYearChart, severityYear.stats);
 }
 
 document.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeModal));
@@ -1233,8 +1470,10 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 
 (async function init() {
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
+  loadChartTypes();
   await Promise.all([loadCurrentUser(), loadCategories(), loadUiColors()]);
   renderFabButtons();
+  setupChartTypeControls();
   await loadDayTickets();
   startCurrentShiftAutoRefresh();
   deferWork(async () => {
@@ -1253,11 +1492,19 @@ window.addEventListener('storage', (event) => {
   if (event.key === uiColorsSyncKey) {
     syncUiColorsAfterAdminChange().catch(() => {});
   }
+  if (event.key === chartTypeStorageKey) {
+    loadChartTypes();
+    setupChartTypeControls();
+    loadCharts().catch(() => {});
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     syncUiColorsAfterAdminChange().catch(() => {});
+    loadChartTypes();
+    setupChartTypeControls();
+    loadCharts().catch(() => {});
   }
 });
 

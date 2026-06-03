@@ -185,6 +185,64 @@ function chartKeysForGroup(group) {
   return [];
 }
 
+const chartTypeStorageKey = 'prodops_chart_types';
+const chartTypeChoices = [
+  { value: 'column', label: 'Colonne' },
+  { value: 'bar', label: 'Barre orizzontali' },
+  { value: 'donut', label: 'Ciambella' },
+  { value: 'pie', label: 'Torta' },
+  { value: 'line', label: 'Linea' }
+];
+let adminChartTypes = defaultChartTypes();
+
+function defaultChartTypes() {
+  return {
+    fabDay: 'column',
+    catDay: 'column',
+    fabYear: 'bar',
+    catYear: 'bar',
+    teamYear: 'donut',
+    severityYear: 'line'
+  };
+}
+
+function normalizeChartType(value) {
+  const allowed = new Set(chartTypeChoices.map((item) => item.value));
+  return allowed.has(value) ? value : 'column';
+}
+
+function loadChartTypes() {
+  const defaults = defaultChartTypes();
+  try {
+    const raw = localStorage.getItem(chartTypeStorageKey);
+    if (!raw) {
+      adminChartTypes = defaults;
+      localStorage.setItem(chartTypeStorageKey, JSON.stringify(adminChartTypes));
+      return adminChartTypes;
+    }
+    const parsed = JSON.parse(raw);
+    adminChartTypes = { ...defaults };
+    Object.keys(defaults).forEach((key) => {
+      adminChartTypes[key] = normalizeChartType(parsed?.[key] || defaults[key]);
+    });
+  } catch (error) {
+    adminChartTypes = defaults;
+  }
+  return adminChartTypes;
+}
+
+function saveChartTypes() {
+  try {
+    localStorage.setItem(chartTypeStorageKey, JSON.stringify(adminChartTypes));
+  } catch (error) {
+    // ignore storage issues
+  }
+}
+
+function getChartType(chartKey) {
+  return normalizeChartType(adminChartTypes?.[chartKey] || defaultChartTypes()[chartKey] || 'column');
+}
+
 function getSelectedColor() {
   if (!adminColorSelection) return '';
   const [theme, fallbackTheme] = adminThemeFallbackOrder();
@@ -261,22 +319,11 @@ function applyAdminColorTheme(theme) {
   renderColorSettings();
 }
 
-function renderAdminChart(chart, stats) {
+function renderAdminColumnChart(target, chartKey, stats) {
   const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   const max = Math.max(...sortedStats.map((x) => x.total), 1);
   const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
-  const card = document.createElement('section');
-  card.className = 'panel admin-chart-card';
-  card.dataset.chartId = chart.key;
-  card.innerHTML = `
-    <div class="panel-heading-row">
-      <div>
-        <h3>${escapeHtml(chart.label)}</h3>
-        <p class="muted">Clicca una colonna per cambiarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
-      </div>
-    </div>
-  `;
-
+  target.innerHTML = '';
   const chartWrap = document.createElement('div');
   chartWrap.className = 'chart vertical-chart';
   const inner = document.createElement('div');
@@ -287,29 +334,168 @@ function renderAdminChart(chart, stats) {
   axis.innerHTML = tickValues.map((value) => `<span>${value}</span>`).join('');
   const barsWrap = document.createElement('div');
   barsWrap.className = 'chart-bars-wrap';
-  const group = chartGroupForId(`${chart.key}Chart`);
+  const group = chartGroupForId(`${chartKey}Chart`);
   sortedStats.forEach((item) => {
     const label = String(item.label || '');
     const total = Number(item.total || 0);
     const height = Math.round((total / max) * 180);
     const pct = totalAll > 0 ? Math.round((total / totalAll) * 100) : 0;
-    const color = getAdminBarColor(chart.key, group, label);
+    const color = getAdminBarColor(chartKey, group, label);
     const bar = document.createElement('button');
     bar.type = 'button';
     bar.className = 'bar admin-bar-button';
     bar.dataset.group = group;
     bar.dataset.label = label;
-    bar.dataset.chartId = chart.key;
+    bar.dataset.chartId = chartKey;
     bar.innerHTML = `<span class="bar-value">${total}</span><div class="bar-fill" style="height:${height}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(label)}</span>`;
     bar.addEventListener('click', () => {
-      selectAdminColorTarget(`${chart.key}Chart`, label);
+      selectAdminColorTarget(`${chartKey}Chart`, label);
     });
     barsWrap.appendChild(bar);
   });
   inner.appendChild(axis);
   inner.appendChild(barsWrap);
   chartWrap.appendChild(inner);
+  target.appendChild(chartWrap);
+}
+
+function renderAdminHorizontalChart(target, chartKey, stats) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  target.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-horizontal-wrap';
+  const group = chartGroupForId(`${chartKey}Chart`);
+  sortedStats.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'chart-horizontal-row';
+    const width = Math.round((item.total / max) * 100);
+    const pct = Math.round((item.total / Math.max(sortedStats.reduce((sum, x) => sum + x.total, 0), 1)) * 100);
+    const color = getAdminBarColor(chartKey, group, String(item.label || ''));
+    row.innerHTML = `
+      <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
+      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"><span class="bar-pct">${pct}%</span></div></div>
+      <span class="chart-horizontal-value">${item.total}</span>
+    `;
+    row.addEventListener('click', () => selectAdminColorTarget(`${chartKey}Chart`, String(item.label || '')));
+    wrap.appendChild(row);
+  });
+  target.appendChild(wrap);
+}
+
+function renderAdminPieOrDonutChart(target, chartKey, stats, isDonut) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  target.innerHTML = '';
+  const layout = document.createElement('div');
+  layout.className = `chart-pie-layout${isDonut ? ' donut' : ' pie'}`;
+  const visual = document.createElement('div');
+  visual.className = `chart-pie-visual${isDonut ? ' donut' : ' pie'}`;
+  let angle = 0;
+  const gradient = sortedStats.length
+    ? sortedStats.map((item) => {
+        const pct = totalAll > 0 ? (item.total / totalAll) * 100 : 0;
+        const color = getAdminBarColor(chartKey, chartGroupForId(`${chartKey}Chart`), String(item.label || ''));
+        const part = `${color} ${angle}% ${angle + pct}%`;
+        angle += pct;
+        return part;
+      }).join(', ')
+    : '#d9e3ee 0% 100%';
+  visual.style.background = `conic-gradient(${gradient})`;
+  if (isDonut) {
+    const center = document.createElement('div');
+    center.className = 'chart-pie-center';
+    center.innerHTML = `<strong>${totalAll}</strong><span>Totale</span>`;
+    visual.appendChild(center);
+  }
+  const legend = document.createElement('div');
+  legend.className = 'chart-pie-legend';
+  sortedStats.forEach((item) => {
+    const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
+    const row = document.createElement('div');
+    row.className = 'chart-pie-legend-row';
+    row.innerHTML = `
+      <span class="chart-pie-swatch" style="background:${getAdminBarColor(chartKey, chartGroupForId(`${chartKey}Chart`), String(item.label || ''))}"></span>
+      <span class="chart-pie-label">${escapeHtml(item.label)}</span>
+      <strong class="chart-pie-value">${item.total}</strong>
+      <span class="chart-pie-percent">${pct}%</span>
+    `;
+    row.addEventListener('click', () => selectAdminColorTarget(`${chartKey}Chart`, String(item.label || '')));
+    legend.appendChild(row);
+  });
+  layout.appendChild(visual);
+  layout.appendChild(legend);
+  target.appendChild(layout);
+}
+
+function renderAdminLineChart(target, chartKey, stats) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  target.innerHTML = '';
+  const width = 320;
+  const height = 200;
+  const padding = 26;
+  const usableWidth = width - (padding * 2);
+  const usableHeight = height - (padding * 2);
+  const points = sortedStats.map((item, index) => {
+    const x = sortedStats.length === 1 ? width / 2 : padding + (usableWidth * index) / (sortedStats.length - 1);
+    const y = height - padding - ((item.total / max) * usableHeight);
+    return { x, y, item };
+  });
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'chart-line-svg');
+  svg.innerHTML = `
+    <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" class="chart-line-axis"></line>
+    <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" class="chart-line-axis"></line>
+    <path d="${path}" class="chart-line-path"></path>
+    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4.5" class="chart-line-point" fill="${getAdminBarColor(chartKey, chartGroupForId(`${chartKey}Chart`), String(point.item.label || ''))}"></circle>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label">${escapeHtml(point.item.label)}</text>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-line-value">${point.item.total}</text>`).join('')}
+  `;
+  target.appendChild(svg);
+}
+
+function renderAdminChartByType(chart, stats, target) {
+  const type = getChartType(chart.key);
+  if (type === 'bar') return renderAdminHorizontalChart(target, chart.key, stats);
+  if (type === 'donut') return renderAdminPieOrDonutChart(target, chart.key, stats, true);
+  if (type === 'pie') return renderAdminPieOrDonutChart(target, chart.key, stats, false);
+  if (type === 'line') return renderAdminLineChart(target, chart.key, stats);
+  return renderAdminColumnChart(target, chart.key, stats);
+}
+
+function renderAdminChart(chart, stats) {
+  const card = document.createElement('section');
+  card.className = 'panel admin-chart-card';
+  card.dataset.chartId = chart.key;
+  card.innerHTML = `
+    <div class="panel-heading-row">
+      <div>
+        <h3>${escapeHtml(chart.label)}</h3>
+        <p class="muted">Clicca una barra per cambiarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
+      </div>
+      <div class="chart-controls">
+        <select class="chart-type-select" data-chart-target="${chart.key}" aria-label="Tipo grafico ${escapeHtml(chart.label)}">
+          ${chartTypeChoices.map((choice) => `<option value="${choice.value}">${choice.label}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  `;
+  const chartWrap = document.createElement('div');
+  chartWrap.className = 'chart admin-chart';
+  renderAdminChartByType(chart, stats, chartWrap);
   card.appendChild(chartWrap);
+  const select = card.querySelector('.chart-type-select');
+  if (select) {
+    select.value = getChartType(chart.key);
+    select.addEventListener('change', () => {
+      adminChartTypes[chart.key] = normalizeChartType(select.value);
+      saveChartTypes();
+      renderColorSettings();
+    });
+  }
   return card;
 }
 
@@ -817,6 +1003,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
 
 (async function initAdminPage() {
   await loadCurrentAdmin();
+  loadChartTypes();
   syncAdminColorToggle();
   await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors(), loadAdminChartsPreviewData()]);
 })();
@@ -862,3 +1049,17 @@ uiColorThemeToggleBtn?.addEventListener('click', () => {
 });
 
 adminColorEditorInput?.addEventListener('input', () => setSelectedColor(adminColorEditorInput.value));
+
+window.addEventListener('storage', (event) => {
+  if (event.key === chartTypeStorageKey) {
+    loadChartTypes();
+    renderColorSettings();
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    loadChartTypes();
+    renderColorSettings();
+  }
+});
