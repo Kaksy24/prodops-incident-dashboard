@@ -3,30 +3,35 @@
     {
       "id": 1,
       "username": "admin",
+      "password": "admin",
       "role": "admin",
       "team": "A"
     },
     {
       "id": 2,
       "username": "user",
+      "password": "user",
       "role": "user",
       "team": "A"
     },
     {
       "id": 4,
       "username": "FaillaV",
+      "password": "FaillaV",
       "role": "admin",
       "team": "B"
     },
     {
       "id": 5,
       "username": "DibellaA",
+      "password": "DibellaA",
       "role": "admin",
       "team": "B"
     },
     {
       "id": 6,
       "username": "NicosiaF",
+      "password": "NicosiaF",
       "role": "admin",
       "team": "B"
     }

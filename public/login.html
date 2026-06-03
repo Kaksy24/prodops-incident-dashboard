@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Incident Hub</title>
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="/public/css/styles.css" />
 </head>
 <body class="login-page">
   <main class="login-shell">
     <section class="login-panel">
       <h1>INCIDENT HUB</h1>
-      <form id="loginForm" class="login-form">
+      <form id="loginForm" class="login-form" action="/api/login" method="post">
         <label for="username">Utente</label>
         <input id="username" name="username" type="text" autocomplete="username" required />
 
@@ -22,7 +22,7 @@
       </form>
     </section>
   </main>
-  <script src="js/login.js"></script>
+  <script src="/public/js/login.js"></script>
   <div class="app-version-badge">v0.8.1</div>
 </body>
 </html>

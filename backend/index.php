@@ -54,15 +54,40 @@ function load_runtime_config_file($path)
 load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.php');
 load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.local.php');
 
+function is_local_dev_host()
+{
+    $host = isset($_SERVER['HTTP_HOST']) ? strtolower(strval($_SERVER['HTTP_HOST'])) : '';
+    return strpos($host, '127.0.0.1:5500') === 0 || strpos($host, 'localhost:5500') === 0;
+}
+
+function runtime_config_values()
+{
+    static $config = null;
+    if ($config !== null) return $config;
+    $config = array();
+    $paths = array(
+        __DIR__ . DIRECTORY_SEPARATOR . 'config.php',
+        __DIR__ . DIRECTORY_SEPARATOR . 'config.local.php'
+    );
+    foreach ($paths as $path) {
+        if (!file_exists($path)) continue;
+        $loaded = include $path;
+        if (is_array($loaded)) {
+            foreach ($loaded as $key => $value) {
+                $key = trim(strval($key));
+                if ($key !== '' && !isset($config[$key])) {
+                    $config[$key] = strval($value);
+                }
+            }
+        }
+    }
+    return $config;
+}
+
 function remote_api_base()
 {
     $base = getenv('REMOTE_API_BASE');
-    if ($base) return rtrim($base, '/');
-    $host = isset($_SERVER['HTTP_HOST']) ? strtolower($_SERVER['HTTP_HOST']) : '';
-    if ($host && preg_match('/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/', $host)) {
-        return 'https://prodops-web-production.up.railway.app';
-    }
-    return '';
+    return $base ? rtrim($base, '/') : '';
 }
 
 function supabase_enabled()
@@ -409,9 +434,14 @@ function proxy_remote_api_request($path, $method, $payload)
 
 function mysql_enabled()
 {
+    if (is_local_dev_host()) return false;
+    $cfg = runtime_config_values();
     $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
+    if ($host === false && isset($cfg['MYSQL_HOST'])) $host = $cfg['MYSQL_HOST'];
     $db = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
+    if ($db === false && isset($cfg['MYSQL_DB'])) $db = $cfg['MYSQL_DB'];
     $user = env_first(array('MYSQL_USER', 'MYSQLUSER'));
+    if ($user === false && isset($cfg['MYSQL_USER'])) $user = $cfg['MYSQL_USER'];
     return $host && $db && $user;
 }
 
@@ -420,13 +450,19 @@ function mysql_conn()
     static $conn = null;
     if ($conn !== null) return $conn;
     if (!mysql_enabled() || !function_exists('mysqli_connect')) return null;
+    $cfg = runtime_config_values();
     $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
+    if ($host === false && isset($cfg['MYSQL_HOST'])) $host = $cfg['MYSQL_HOST'];
     $portValue = env_first(array('MYSQL_PORT', 'MYSQLPORT'));
+    if ($portValue === false && isset($cfg['MYSQL_PORT'])) $portValue = $cfg['MYSQL_PORT'];
     $port = intval($portValue ? $portValue : 3306);
     $user = env_first(array('MYSQL_USER', 'MYSQLUSER'));
+    if ($user === false && isset($cfg['MYSQL_USER'])) $user = $cfg['MYSQL_USER'];
     $pass = env_first(array('MYSQL_PASS', 'MYSQLPASSWORD', 'MYSQL_ROOT_PASSWORD'));
+    if ($pass === false && isset($cfg['MYSQL_PASS'])) $pass = $cfg['MYSQL_PASS'];
     if ($pass === false) $pass = '';
     $db = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
+    if ($db === false && isset($cfg['MYSQL_DB'])) $db = $cfg['MYSQL_DB'];
     $useSsl = ($port === 443 || strpos($host, 'railway.app') !== false);
     $conn = @mysqli_init();
     if (!$conn) return null;
@@ -781,6 +817,16 @@ function load_db($defaultUsers)
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
+    if (!count($db['incidents'])) {
+        foreach ($db['categories'] as $categoryRow) {
+            $categoryId = isset($categoryRow['id']) ? intval($categoryRow['id']) : 0;
+            $nestedIncidents = isset($categoryRow['incidents']) && is_array($categoryRow['incidents']) ? $categoryRow['incidents'] : array();
+            foreach ($nestedIncidents as $incidentRow) {
+                $incidentRow['category_id'] = $categoryId;
+                $db['incidents'][] = $incidentRow;
+            }
+        }
+    }
     $categoryOrder = 1;
     foreach ($db['categories'] as $ci => $cat) {
         if (!isset($db['categories'][$ci]['sort_order']) || intval($db['categories'][$ci]['sort_order']) <= 0) {
@@ -813,6 +859,9 @@ function load_db($defaultUsers)
     }
     if (!isset($db['users']) || !is_array($db['users']) || !count($db['users'])) $db['users'] = $defaultUsers;
     foreach ($db['users'] as $ui => $userRow) {
+        if (!isset($db['users'][$ui]['password']) || $db['users'][$ui]['password'] === '') {
+            $db['users'][$ui]['password'] = isset($userRow['username']) ? strval($userRow['username']) : '';
+        }
         if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
         $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
     }
@@ -1193,8 +1242,21 @@ if (!mysql_enabled()) {
 }
 
 if ($path === '/api/login' && $method === 'POST') {
-    $username = isset($payload['username']) ? trim(strval($payload['username'])) : '';
-    $password = isset($payload['password']) ? trim(strval($payload['password'])) : '';
+    $contentType = isset($_SERVER['CONTENT_TYPE']) ? strtolower(strval($_SERVER['CONTENT_TYPE'])) : '';
+    $isJsonRequest = strpos($contentType, 'application/json') !== false;
+    $requestData = $payload;
+    if (!$isJsonRequest) {
+        if (!empty($_POST)) {
+            $requestData = $_POST;
+        } else {
+            $raw = file_get_contents('php://input');
+            $parsed = array();
+            parse_str($raw, $parsed);
+            if (is_array($parsed) && count($parsed)) $requestData = $parsed;
+        }
+    }
+    $username = isset($requestData['username']) ? trim(strval($requestData['username'])) : '';
+    $password = isset($requestData['password']) ? trim(strval($requestData['password'])) : '';
     $users = $db['users'];
     if (supabase_enabled()) {
         $resp = sb_select('app_users', 'id,username,password,role', array(), 'id.asc');
@@ -1205,29 +1267,43 @@ if ($path === '/api/login' && $method === 'POST') {
     foreach ($users as $u) {
         if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
             set_auth_cookie($u);
-            json_response(array(
-                'id' => intval($u['id']),
-                'username' => $u['username'],
-                'role' => $u['role'],
-                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
-                'redirectTo' => ($u['role'] === 'admin' ? '/admin.html' : '/index.html')
-            ), 200);
+            $redirectTo = ($u['role'] === 'admin' ? '/admin.html' : '/index.html');
+            if ($isJsonRequest) {
+                json_response(array(
+                    'id' => intval($u['id']),
+                    'username' => $u['username'],
+                    'role' => $u['role'],
+                    'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
+                    'redirectTo' => $redirectTo
+                ), 200);
+            }
+            header('Location: ' . $redirectTo, true, 302);
+            exit;
         }
     }
     // Emergency fallback: always allow built-in defaults.
     foreach ($defaultUsers as $u) {
         if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
             set_auth_cookie($u);
-            json_response(array(
-                'id' => intval($u['id']),
-                'username' => $u['username'],
-                'role' => $u['role'],
-                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
-                'redirectTo' => ($u['role'] === 'admin' ? '/admin.html' : '/index.html')
-            ), 200);
+            $redirectTo = ($u['role'] === 'admin' ? '/admin.html' : '/index.html');
+            if ($isJsonRequest) {
+                json_response(array(
+                    'id' => intval($u['id']),
+                    'username' => $u['username'],
+                    'role' => $u['role'],
+                    'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
+                    'redirectTo' => $redirectTo
+                ), 200);
+            }
+            header('Location: ' . $redirectTo, true, 302);
+            exit;
         }
     }
-    json_response(array('error' => 'Credenziali non valide'), 401);
+    if ($isJsonRequest) {
+        json_response(array('error' => 'Credenziali non valide'), 401);
+    }
+    header('Location: /login.html?error=1', true, 302);
+    exit;
 }
 
 if ($path === '/api/logout' && $method === 'POST') {
