@@ -561,6 +561,8 @@ function renderPresetForTargets(template, descriptionInput, composerContainer) {
     composerContainer.style.display = 'none';
     composerContainer.innerHTML = '';
     descriptionInput.readOnly = false;
+    descriptionInput.dataset.presetAutoSync = 'off';
+    descriptionInput.dataset.presetAutoValue = '';
     descriptionInput.placeholder = 'Inserisci descrizione problema...';
     descriptionInput.value = template || '';
     return;
@@ -569,8 +571,10 @@ function renderPresetForTargets(template, descriptionInput, composerContainer) {
   const tokenState = tokens.map((token) => ({ ...token, value: '' }));
   composerContainer.style.display = 'flex';
   composerContainer.innerHTML = '';
-  descriptionInput.readOnly = true;
-  descriptionInput.placeholder = 'La descrizione verra compilata automaticamente dai campi sottostanti.';
+  descriptionInput.readOnly = false;
+  descriptionInput.dataset.presetAutoSync = 'on';
+  descriptionInput.dataset.presetAutoValue = '';
+  descriptionInput.placeholder = 'Puoi scrivere liberamente oppure usare i campi sottostanti.';
 
   tokenState.forEach((token, tokenIndex) => {
     const fieldWrap = document.createElement('div');
@@ -599,13 +603,25 @@ function renderPresetForTargets(template, descriptionInput, composerContainer) {
     input.style.width = '100%';
     input.addEventListener('input', () => {
       tokenState[tokenIndex].value = input.value || '';
-      descriptionInput.value = buildDescriptionFromTemplate(template, tokenState, true);
+      const generated = buildDescriptionFromTemplate(template, tokenState, true);
+      descriptionInput.dataset.presetAutoValue = generated;
+      if (descriptionInput.dataset.presetAutoSync !== 'off') {
+        descriptionInput.value = generated;
+      }
     });
     fieldWrap.appendChild(input);
     composerContainer.appendChild(fieldWrap);
   });
 
-  descriptionInput.value = buildDescriptionFromTemplate(template, tokenState, true);
+  descriptionInput.addEventListener('input', () => {
+    const current = descriptionInput.value || '';
+    const generated = descriptionInput.dataset.presetAutoValue || '';
+    if (current !== generated) descriptionInput.dataset.presetAutoSync = 'off';
+  }, { once: true });
+
+  const initialGenerated = buildDescriptionFromTemplate(template, tokenState, true);
+  descriptionInput.dataset.presetAutoValue = initialGenerated;
+  descriptionInput.value = initialGenerated;
 }
 
 function createExtraTicketCard(incidentName) {
