@@ -57,6 +57,8 @@ let modalCloseTimer = null;
 let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
+let currentShiftAutoRefreshTimer = null;
+let currentShiftAutoRefreshBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const chartPalette = [
   '#1f77b4',
@@ -930,6 +932,25 @@ async function loadDayTickets(animatedTicketIds = []) {
   });
 }
 
+async function refreshCurrentShiftTickets() {
+  if (currentShiftAutoRefreshBusy) return;
+  currentShiftAutoRefreshBusy = true;
+  try {
+    await loadDayTickets();
+  } catch (error) {
+    // Silenzio: il refresh periodico riproverà al ciclo successivo.
+  } finally {
+    currentShiftAutoRefreshBusy = false;
+  }
+}
+
+function startCurrentShiftAutoRefresh() {
+  if (currentShiftAutoRefreshTimer) return;
+  currentShiftAutoRefreshTimer = window.setInterval(() => {
+    refreshCurrentShiftTickets().catch(() => {});
+  }, 5000);
+}
+
 function renderGroupedTickets(tickets) {
   if (!tickets.length) return '<p class="muted">Nessun ticket registrato.</p>';
 
@@ -1191,6 +1212,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   await Promise.all([loadCurrentUser(), loadCategories(), loadUiColors()]);
   renderFabButtons();
   await loadDayTickets();
+  startCurrentShiftAutoRefresh();
   deferWork(async () => {
     if (!previousShiftsLoaded && previousShiftsContent && !previousShiftsContent.hidden) {
       await loadPreviousShifts();
