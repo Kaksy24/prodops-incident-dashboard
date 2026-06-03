@@ -1,417 +1,303 @@
 {
-    "categories": [
-        {
-            "id": 1,
-            "name": "AUTOMATION",
-            "sort_order": 1
-        },
-        {
-            "id": 2,
-            "name": "WMM",
-            "sort_order": 2
-        },
-        {
-            "id": 3,
-            "name": "SICMA",
-            "sort_order": 3
-        },
-        {
-            "id": 4,
-            "name": "ROBOTIZATION",
-            "sort_order": 4
-        }
-    ],
-    "incidents": [
-        {
-            "id": 2,
-            "category_id": 1,
-            "name": "Reset Interfaccia",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 1
-        },
-        {
-            "id": 4,
-            "category_id": 2,
-            "name": "Generic",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 1
-        },
-        {
-            "id": 7,
-            "category_id": 3,
-            "name": "Tentativo accesso sospetto",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 1
-        },
-        {
-            "id": 3,
-            "category_id": 1,
-            "name": "Switch Silverbox",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 2
-        },
-        {
-            "id": 5,
-            "category_id": 2,
-            "name": "ADSC",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 2
-        },
-        {
-            "id": 8,
-            "category_id": 3,
-            "name": "Malware rilevato",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 2
-        },
-        {
-            "id": 6,
-            "category_id": 2,
-            "name": "SLTA",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 3
-        },
-        {
-            "id": 9,
-            "category_id": 1,
-            "name": "Generic",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 3
-        },
-        {
-            "id": 10,
-            "category_id": 3,
-            "name": "Generic",
-            "severity_default": 1,
-            "severity_mode": "default",
-            "fab_default": "",
-            "presets": [],
-            "sort_order": 3
-        }
-    ],
-    "tickets": [
-        {
-            "id": 7,
-            "incident_id": 8,
-            "incident_name": "Malware rilevato",
-            "description": "rger",
-            "fab": "EWS",
-            "created_at": "2026-06-01T09:59:10.503+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 9,
-            "incident_id": 7,
-            "incident_name": "Tentativo accesso sospetto",
-            "description": "erregf",
-            "fab": "M5",
-            "created_at": "2026-06-01T12:08:14.761372+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 11,
-            "incident_id": 7,
-            "incident_name": "Tentativo accesso sospetto",
-            "description": "DEF",
-            "fab": "M5",
-            "created_at": "2026-06-01T10:10:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 13,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity:pep21\n\nMotivo del reset:busy",
-            "fab": "M5",
-            "created_at": "2026-06-01T13:04:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 14,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity:erer\n\nMotivo del reset:prova",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T10:05:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 15,
-            "incident_id": 5,
-            "incident_name": "ADSC",
-            "description": "Eseguito ADSC per il lotto 55623M03 all'operazione 1945",
-            "fab": "M5",
-            "created_at": "2026-06-01T13:33:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 21,
-            "incident_id": 6,
-            "incident_name": "SLTA",
-            "description": "Ciao  FB ",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T15:24:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 22,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "prova inserimento dissolvenza",
-            "fab": "M5",
-            "created_at": "2026-06-01T15:27:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 24,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "provaaaaaaaaaaaaaaa",
-            "fab": "M5",
-            "created_at": "2026-06-01T15:30:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 25,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "bellissimo",
-            "fab": "M5",
-            "created_at": "2026-06-01T15:30:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 26,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "ciaoooooooooooo",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T15:30:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 28,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "provs",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T15:35:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 29,
-            "incident_id": 10,
-            "incident_name": "Generic",
-            "description": "admin update attempt",
-            "fab": "M5",
-            "created_at": "2026-06-01T15:50:55.778+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 30,
-            "incident_id": 5,
-            "incident_name": "ADSC",
-            "description": "Eseguito ADSC per il lotto 25126346 all'operazione 2234",
-            "fab": "M5",
-            "created_at": "2026-06-01T19:20:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 31,
-            "incident_id": 5,
-            "incident_name": "ADSC",
-            "description": "Eseguito ADSC per il lotto 55678363 all'operazione 2552",
-            "fab": "M5",
-            "created_at": "2026-06-01T19:20:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 32,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity: egr102\n\nMotivo del reset: busy",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T20:22:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 33,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity: PEP12\n\nMotivo del reset: BUSY",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T20:21:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 34,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity: ETM05\n\nMotivo del reset: Comm down",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T20:22:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        },
-        {
-            "id": 35,
-            "incident_id": 2,
-            "incident_name": "Reset Interfaccia",
-            "description": "Eseguito reset interfaccia per entity: DIS05\n\nMotivo del reset: BUSY",
-            "fab": "WSIC",
-            "created_at": "2026-06-01T20:22:00+00:00",
-            "severity": 1,
-            "owner_user_id": null,
-            "owner_team": "A"
-        }
-    ],
-    "users": [
-        {
-            "id": 1,
-            "username": "admin",
-            "password": "admin",
-            "role": "admin",
-            "team": "A"
-        },
-        {
-            "id": 2,
-            "username": "user",
-            "password": "user",
-            "role": "user",
-            "team": "B"
-        },
-        {
-            "id": 4,
-            "username": "FaillaV",
-            "password": "FaillaV",
-            "role": "admin",
-            "team": "A"
-        },
-        {
-            "id": 5,
-            "username": "DibellaA",
-            "password": "DibellaA",
-            "role": "admin",
-            "team": "A"
-        },
-        {
-            "id": 6,
-            "username": "NicosiaF",
-            "password": "NicosiaF",
-            "role": "admin",
-            "team": "A"
-        }
-    ],
-    "counters": {
-        "category": 4,
-        "incident": 10,
-        "ticket": 35,
-        "user": 6
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "role": "admin",
+      "team": "A"
     },
-    "ui_colors": {
-        "charts": {
-            "fabDay": {
-                "light": "#0C5F8C",
-                "dark": "#24A0D8"
-            },
-            "catDay": {
-                "light": "#16A0B6",
-                "dark": "#2EC4D6"
-            },
-            "fabYear": {
-                "light": "#355A84",
-                "dark": "#1FB6FF"
-            },
-            "catYear": {
-                "light": "#6B4EA6",
-                "dark": "#9B6CFF"
-            },
-            "teamYear": {
-                "light": "#D97706",
-                "dark": "#F59E0B"
-            },
-            "severityYear": {
-                "light": "#BE185D",
-                "dark": "#EC4899"
-            }
-        },
-        "bars": [],
-        "labels": {
-            "categories": {
-                "light": [],
-                "dark": []
-            },
-            "fabs": {
-                "light": [],
-                "dark": []
-            },
-            "teams": {
-                "light": [],
-                "dark": []
-            },
-            "severities": {
-                "light": [],
-                "dark": []
-            }
-        }
+    {
+      "id": 2,
+      "username": "user",
+      "role": "user",
+      "team": "A"
+    },
+    {
+      "id": 4,
+      "username": "FaillaV",
+      "role": "admin",
+      "team": "B"
+    },
+    {
+      "id": 5,
+      "username": "DibellaA",
+      "role": "admin",
+      "team": "B"
+    },
+    {
+      "id": 6,
+      "username": "NicosiaF",
+      "role": "admin",
+      "team": "B"
     }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "AUTOMATION",
+      "incidents": [
+        {
+          "id": 9,
+          "category_id": 1,
+          "name": "Generic",
+          "severity_default": 1,
+          "severity_mode": "user",
+          "fab_default": "",
+          "sort_order": 1,
+          "presets": []
+        },
+        {
+          "id": 2,
+          "category_id": 1,
+          "name": "Reset Interfaccia",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 2,
+          "presets": [
+            "Eseguito Reset Interfaccia per entity: [[text:Macchina]]\nMotivo del Reset: [[text:Motivo Reset]]"
+          ]
+        },
+        {
+          "id": 3,
+          "category_id": 1,
+          "name": "Switch Silverbox",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 3,
+          "presets": []
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "WMM",
+      "incidents": [
+        {
+          "id": 4,
+          "category_id": 2,
+          "name": "Generic",
+          "severity_default": 1,
+          "severity_mode": "user",
+          "fab_default": "",
+          "sort_order": 1,
+          "presets": []
+        },
+        {
+          "id": 5,
+          "category_id": 2,
+          "name": "ADSC",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 2,
+          "presets": [
+            "Richiesto ADSC per [[text:Lotto]] allo step [[text:step]]"
+          ]
+        },
+        {
+          "id": 6,
+          "category_id": 2,
+          "name": "SLTA",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 3,
+          "presets": []
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "SICMA",
+      "incidents": [
+        {
+          "id": 10,
+          "category_id": 3,
+          "name": "Generic",
+          "severity_default": 1,
+          "severity_mode": "user",
+          "fab_default": "",
+          "sort_order": 1,
+          "presets": []
+        },
+        {
+          "id": 14,
+          "category_id": 3,
+          "name": "ADSC",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "WSIC",
+          "sort_order": 2,
+          "presets": [
+            "Eseguito ADSC per [[text:Ingot/Box]] all'operazione [[text:Operazione]]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ROBOTIZATION",
+      "incidents": [
+        {
+          "id": 11,
+          "category_id": 4,
+          "name": "Generic",
+          "severity_default": 1,
+          "severity_mode": "user",
+          "fab_default": "",
+          "sort_order": 1,
+          "presets": []
+        },
+        {
+          "id": 12,
+          "category_id": 4,
+          "name": "Restart braccio monorail",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 2,
+          "presets": []
+        },
+        {
+          "id": 13,
+          "category_id": 4,
+          "name": "Restart braccio ISL41",
+          "severity_default": 1,
+          "severity_mode": "default",
+          "fab_default": "",
+          "sort_order": 3,
+          "presets": []
+        }
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "id": 5,
+      "incident_id": 14,
+      "incident_name": "ADSC",
+      "description": "Eseguito ADSC per 235626 all'operazione 4444",
+      "fab": "WSIC",
+      "created_at": "2026-06-03T14:00:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    },
+    {
+      "id": 6,
+      "incident_id": 14,
+      "incident_name": "ADSC",
+      "description": "Eseguito ADSC per 346346 all'operazione 2345",
+      "fab": "WSIC",
+      "created_at": "2026-06-03T14:00:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    },
+    {
+      "id": 4,
+      "incident_id": 2,
+      "incident_name": "Reset Interfaccia",
+      "description": "Communication down",
+      "fab": "M5",
+      "created_at": "2026-06-03T10:55:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    },
+    {
+      "id": 3,
+      "incident_id": 5,
+      "incident_name": "ADSC",
+      "description": "Richiesto ADSC per 5627572 allo step 3000",
+      "fab": "M5",
+      "created_at": "2026-06-03T10:42:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    },
+    {
+      "id": 2,
+      "incident_id": 5,
+      "incident_name": "ADSC",
+      "description": "Richiesto ADSC per 226872 allo step 3999",
+      "fab": "NRK",
+      "created_at": "2026-06-03T10:42:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    },
+    {
+      "id": 1,
+      "incident_id": 5,
+      "incident_name": "ADSC",
+      "description": "Richiesto ADSC per 221616 allo step 1000",
+      "fab": "L1",
+      "created_at": "2026-06-01T10:41:00+00:00",
+      "severity": 1,
+      "owner_user_id": 1,
+      "owner_team": "A",
+      "can_edit": true
+    }
+  ],
+  "counters": {
+    "user": 6,
+    "category": 4,
+    "incident": 14,
+    "ticket": 6
+  },
+  "ui_colors": {
+    "charts": {
+      "fabDay": {
+        "light": "#0C5F8C",
+        "dark": "#24A0D8"
+      },
+      "catDay": {
+        "light": "#16A0B6",
+        "dark": "#2EC4D6"
+      },
+      "fabYear": {
+        "light": "#355A84",
+        "dark": "#1FB6FF"
+      },
+      "catYear": {
+        "light": "#6B4EA6",
+        "dark": "#9B6CFF"
+      },
+      "teamYear": {
+        "light": "#D97706",
+        "dark": "#F59E0B"
+      },
+      "severityYear": {
+        "light": "#BE185D",
+        "dark": "#EC4899"
+      }
+    },
+    "bars": [],
+    "labels": {
+      "categories": {
+        "light": {},
+        "dark": {}
+      },
+      "fabs": {
+        "light": {},
+        "dark": {}
+      },
+      "teams": {
+        "light": {},
+        "dark": {}
+      },
+      "severities": {
+        "light": {},
+        "dark": {}
+      }
+    }
+  }
 }
