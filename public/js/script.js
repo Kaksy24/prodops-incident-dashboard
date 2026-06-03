@@ -156,11 +156,16 @@ function themeKey() {
   return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
 }
 
-function getChartColor(chartId) {
+function themeFallbackOrder() {
   const theme = themeKey();
+  return theme === 'dark' ? ['dark', 'light'] : ['light', 'dark'];
+}
+
+function getChartColor(chartId) {
+  const [theme, fallbackTheme] = themeFallbackOrder();
   const fallback = defaultUiColors().charts[chartId];
-  const custom = uiColors?.charts?.[chartId]?.[theme];
-  return normalizeHexColor(custom) || fallback?.[theme] || '#0c5f8c';
+  const custom = uiColors?.charts?.[chartId]?.[theme] || uiColors?.charts?.[chartId]?.[fallbackTheme];
+  return normalizeHexColor(custom) || fallback?.[theme] || fallback?.[fallbackTheme] || '#0c5f8c';
 }
 
 function chartGroupForId(chartId) {
@@ -181,20 +186,20 @@ function chartGroupForId(chartId) {
 }
 
 function getLabelColor(group, label) {
-  const theme = themeKey();
+  const [theme, fallbackTheme] = themeFallbackOrder();
   const normalizedLabel = String(label || '');
-  const custom = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+  const custom = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel] || uiColors?.labels?.[group]?.[fallbackTheme]?.[normalizedLabel];
   return normalizeHexColor(custom) || colorForLabel(normalizedLabel);
 }
 
 function getBarColor(chartId, label) {
-  const theme = themeKey();
+  const [theme, fallbackTheme] = themeFallbackOrder();
   const normalizedLabel = String(label || '');
-  const custom = uiColors?.bars?.[chartId]?.[theme]?.[normalizedLabel];
+  const custom = uiColors?.bars?.[chartId]?.[theme]?.[normalizedLabel] || uiColors?.bars?.[chartId]?.[fallbackTheme]?.[normalizedLabel];
   if (normalizeHexColor(custom)) return normalizeHexColor(custom);
   const group = chartGroupForId(chartId);
   if (group) {
-    const groupColor = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+    const groupColor = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel] || uiColors?.labels?.[group]?.[fallbackTheme]?.[normalizedLabel];
     if (normalizeHexColor(groupColor)) return normalizeHexColor(groupColor);
   }
   return colorForLabel(normalizedLabel);

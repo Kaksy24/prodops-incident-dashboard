@@ -156,11 +156,15 @@ function colorForLabel(label) {
   return palette[Math.abs(hash) % palette.length];
 }
 
+function adminThemeFallbackOrder() {
+  return adminColorEditTheme === 'dark' ? ['dark', 'light'] : ['light', 'dark'];
+}
+
 function getAdminThemeColor(group, label) {
   ensureAdminUiColors();
-  const theme = adminColorEditTheme;
+  const [theme, fallbackTheme] = adminThemeFallbackOrder();
   const normalizedLabel = String(label || '');
-  const color = adminUiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+  const color = adminUiColors?.labels?.[group]?.[theme]?.[normalizedLabel] || adminUiColors?.labels?.[group]?.[fallbackTheme]?.[normalizedLabel];
   return normalizeHexColor(color) || colorForLabel(normalizedLabel);
 }
 
@@ -174,8 +178,8 @@ function chartGroupForId(chartId) {
 
 function getSelectedColor() {
   if (!adminColorSelection) return '';
-  const theme = adminColorEditTheme;
-  return normalizeHexColor(adminUiColors?.labels?.[adminColorSelection.group]?.[theme]?.[adminColorSelection.label]) || getAdminThemeColor(adminColorSelection.group, adminColorSelection.label);
+  const [theme, fallbackTheme] = adminThemeFallbackOrder();
+  return normalizeHexColor(adminUiColors?.labels?.[adminColorSelection.group]?.[theme]?.[adminColorSelection.label]) || normalizeHexColor(adminUiColors?.labels?.[adminColorSelection.group]?.[fallbackTheme]?.[adminColorSelection.label]) || getAdminThemeColor(adminColorSelection.group, adminColorSelection.label);
 }
 
 function setSelectedColor(color) {
