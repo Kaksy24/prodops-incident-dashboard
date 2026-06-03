@@ -115,7 +115,7 @@ UNLOCK TABLES;
 
 LOCK TABLES `app_settings` WRITE;
 /*!40000 ALTER TABLE `app_settings` DISABLE KEYS */;
-INSERT INTO `app_settings` VALUES ('ui_colors','{\"charts\":{\"fabDay\":{\"light\":\"#0c5f8c\",\"dark\":\"#24a0d8\"},\"catDay\":{\"light\":\"#16a0b6\",\"dark\":\"#2ec4d6\"},\"fabYear\":{\"light\":\"#355a84\",\"dark\":\"#1fb6ff\"},\"catYear\":{\"light\":\"#6b4ea6\",\"dark\":\"#9b6cff\"}},\"labels\":{\"categories\":{\"light\":{},\"dark\":{}},\"fabs\":{\"light\":{},\"dark\":{}}}}');
+INSERT INTO `app_settings` VALUES ('ui_colors','{\"charts\":{\"fabDay\":{\"light\":\"#0c5f8c\",\"dark\":\"#24a0d8\"},\"catDay\":{\"light\":\"#16a0b6\",\"dark\":\"#2ec4d6\"},\"fabYear\":{\"light\":\"#355a84\",\"dark\":\"#1fb6ff\"},\"catYear\":{\"light\":\"#6b4ea6\",\"dark\":\"#9b6cff\"},\"teamYear\":{\"light\":\"#d97706\",\"dark\":\"#f59e0b\"},\"severityYear\":{\"light\":\"#be185d\",\"dark\":\"#ec4899\"}},\"bars\":{},\"labels\":{\"categories\":{\"light\":{},\"dark\":{}},\"fabs\":{\"light\":{},\"dark\":{}},\"teams\":{\"light\":{},\"dark\":{}},\"severities\":{\"light\":{},\"dark\":{}}}}');
 /*!40000 ALTER TABLE `app_settings` ENABLE KEYS */;
 UNLOCK TABLES;
 

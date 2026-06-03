@@ -17,9 +17,9 @@ const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
-const chartColorSettings = document.getElementById('chartColorSettings');
-const categoryColorSettings = document.getElementById('categoryColorSettings');
-const fabColorSettings = document.getElementById('fabColorSettings');
+const adminChartsPreview = document.getElementById('adminChartsPreview');
+const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
+const adminColorPicker = document.getElementById('adminColorPicker');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 
 let dragCategoryId = null;
@@ -31,6 +31,8 @@ let adminModalCloseTimer = null;
 let currentAdminUser = null;
 let adminCategoriesCache = [];
 let adminUiColors = null;
+let adminChartStats = null;
+let adminColorEditTheme = 'light';
 const adminCharts = [
   { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
   { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
@@ -75,11 +77,16 @@ function defaultUiColors() {
       fabDay: { light: '#0c5f8c', dark: '#24a0d8' },
       catDay: { light: '#16a0b6', dark: '#2ec4d6' },
       fabYear: { light: '#355a84', dark: '#1fb6ff' },
-      catYear: { light: '#6b4ea6', dark: '#9b6cff' }
+      catYear: { light: '#6b4ea6', dark: '#9b6cff' },
+      teamYear: { light: '#d97706', dark: '#f59e0b' },
+      severityYear: { light: '#be185d', dark: '#ec4899' }
     },
+    bars: {},
     labels: {
       categories: { light: {}, dark: {} },
-      fabs: { light: {}, dark: {} }
+      fabs: { light: {}, dark: {} },
+      teams: { light: {}, dark: {} },
+      severities: { light: {}, dark: {} }
     }
   };
 }
@@ -93,7 +100,8 @@ function normalizeUiColors(input) {
   const defaults = defaultUiColors();
   const out = {
     charts: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } }
+    bars: {},
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = { ...defaults.charts[key] };
@@ -105,7 +113,7 @@ function normalizeUiColors(input) {
       if (next) out.charts[key][theme] = next;
     });
   });
-  ['categories', 'fabs'].forEach((group) => {
+  ['categories', 'fabs', 'teams', 'severities'].forEach((group) => {
     ['light', 'dark'].forEach((theme) => {
       const rows = input?.labels?.[group]?.[theme];
       if (!rows || typeof rows !== 'object') return;
@@ -115,6 +123,19 @@ function normalizeUiColors(input) {
       });
     });
   });
+  if (input?.bars && typeof input.bars === 'object') {
+    Object.keys(input.bars).forEach((chartKey) => {
+      if (!out.bars[chartKey]) out.bars[chartKey] = { light: {}, dark: {} };
+      ['light', 'dark'].forEach((theme) => {
+        const rows = input.bars?.[chartKey]?.[theme];
+        if (!rows || typeof rows !== 'object') return;
+        Object.keys(rows).forEach((label) => {
+          const next = normalizeHexColor(rows[label]);
+          if (next) out.bars[chartKey][theme][label] = next;
+        });
+      });
+    });
+  }
   return out;
 }
 
@@ -123,59 +144,103 @@ function ensureAdminUiColors() {
   adminUiColors = normalizeUiColors(adminUiColors);
 }
 
-function buildColorRow(label, lightValue, darkValue, dataKind, dataKey) {
-  return `
-    <div class="color-setting-row${dataKind === 'chart' ? '' : ' is-compact'}" data-kind="${dataKind}" data-key="${dataKey}">
-      <strong>${escapeHtml(label)}</strong>
-      <label>Light
-        <input type="color" value="${escapeHtml(lightValue)}" data-theme="light" />
-      </label>
-      <label>Dark
-        <input type="color" value="${escapeHtml(darkValue)}" data-theme="dark" />
-      </label>
-    </div>
-  `;
+function colorForLabel(label) {
+  let hash = 0;
+  const text = String(label || '');
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
+  const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#17becf', '#bcbd22', '#8c564b', '#e377c2', '#7f7f7f'];
+  return palette[Math.abs(hash) % palette.length];
 }
 
-function syncColorInputPreview(input) {
-  const row = input.closest('.color-setting-row');
-  if (!row) return;
-  const color = input.value;
-  const preview = input.closest('label')?.querySelector('.color-setting-preview');
-  if (preview) preview.style.background = color;
+function getAdminThemeColor(group, label) {
+  ensureAdminUiColors();
+  const theme = adminColorEditTheme;
+  const normalizedLabel = String(label || '');
+  const color = adminUiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+  return normalizeHexColor(color) || colorForLabel(normalizedLabel);
+}
+
+function syncAdminColorToggle() {
+  if (!uiColorThemeToggleBtn) return;
+  const thumb = uiColorThemeToggleBtn.querySelector('.switch-thumb');
+  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? 'D' : 'L';
+  uiColorThemeToggleBtn.setAttribute('aria-pressed', String(adminColorEditTheme === 'dark'));
+}
+
+function applyAdminColorTheme(theme) {
+  adminColorEditTheme = theme === 'dark' ? 'dark' : 'light';
+  syncAdminColorToggle();
+  renderColorSettings();
+}
+
+function renderAdminChart(chart, stats) {
+  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  const card = document.createElement('section');
+  card.className = 'panel admin-chart-card';
+  card.dataset.chartId = chart.key;
+  card.innerHTML = `
+    <div class="panel-heading-row">
+      <div>
+        <h3>${escapeHtml(chart.label)}</h3>
+        <p class="muted">Clicca una colonna per cambiarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
+      </div>
+    </div>
+  `;
+
+  const chartWrap = document.createElement('div');
+  chartWrap.className = 'chart vertical-chart';
+  const inner = document.createElement('div');
+  inner.className = 'chart-inner';
+  const axis = document.createElement('div');
+  axis.className = 'chart-y-axis';
+  const tickValues = Array.from({ length: 5 }, (_, i) => Math.round((max * (4 - i)) / 4));
+  axis.innerHTML = tickValues.map((value) => `<span>${value}</span>`).join('');
+  const barsWrap = document.createElement('div');
+  barsWrap.className = 'chart-bars-wrap';
+  const group = chart.key.indexOf('fab') === 0 ? 'fabs' : chart.key.indexOf('cat') === 0 ? 'categories' : chart.key === 'teamYear' ? 'teams' : 'severities';
+  sortedStats.forEach((item) => {
+    const label = String(item.label || '');
+    const total = Number(item.total || 0);
+    const height = Math.round((total / max) * 180);
+    const pct = totalAll > 0 ? Math.round((total / totalAll) * 100) : 0;
+    const color = getAdminThemeColor(group, label);
+    const bar = document.createElement('button');
+    bar.type = 'button';
+    bar.className = 'bar admin-bar-button';
+    bar.dataset.group = group;
+    bar.dataset.label = label;
+    bar.dataset.chartId = chart.key;
+    bar.innerHTML = `<span class="bar-value">${total}</span><div class="bar-fill" style="height:${height}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(label)}</span>`;
+    bar.addEventListener('click', () => {
+      if (!adminColorPicker) return;
+      const currentColor = getAdminThemeColor(group, label);
+      adminColorPicker.value = currentColor || '#000000';
+      adminColorPicker.dataset.group = group;
+      adminColorPicker.dataset.label = label;
+      if (typeof adminColorPicker.showPicker === 'function') {
+        adminColorPicker.showPicker();
+      } else {
+        adminColorPicker.click();
+      }
+    });
+    barsWrap.appendChild(bar);
+  });
+  inner.appendChild(axis);
+  inner.appendChild(barsWrap);
+  chartWrap.appendChild(inner);
+  card.appendChild(chartWrap);
+  return card;
 }
 
 function renderColorSettings() {
-  if (!chartColorSettings || !categoryColorSettings || !fabColorSettings) return;
+  if (!adminChartsPreview || !adminChartStats) return;
   ensureAdminUiColors();
-  const themeSafe = adminUiColors;
-  chartColorSettings.innerHTML = adminCharts.map((chart) => buildColorRow(
-    chart.label,
-    themeSafe.charts[chart.key].light,
-    themeSafe.charts[chart.key].dark,
-    'chart',
-    chart.key
-  )).join('');
-
-  categoryColorSettings.innerHTML = adminCategoriesCache.map((cat) => buildColorRow(
-    cat.name,
-    themeSafe.labels.categories.light[cat.name] || '#5c6b7d',
-    themeSafe.labels.categories.dark[cat.name] || '#9db1c9',
-    'category',
-    cat.name
-  )).join('');
-
-  fabColorSettings.innerHTML = adminFabList.map((fab) => buildColorRow(
-    fab,
-    themeSafe.labels.fabs.light[fab] || '#5c6b7d',
-    themeSafe.labels.fabs.dark[fab] || '#9db1c9',
-    'fab',
-    fab
-  )).join('');
-
-  document.querySelectorAll('.color-setting-row input[type="color"]').forEach((input) => {
-    input.addEventListener('input', () => syncColorInputPreview(input));
-    syncColorInputPreview(input);
+  adminChartsPreview.innerHTML = '';
+  adminCharts.forEach((chart) => {
+    const card = renderAdminChart(chart, adminChartStats[chart.key] || []);
+    adminChartsPreview.appendChild(card);
   });
 }
 
@@ -185,30 +250,36 @@ async function loadUiColors() {
   renderColorSettings();
 }
 
+async function loadAdminChartsPreviewData() {
+  try {
+    const [fabDay, catDay, fabYear, catYear, teamYear, severityYear] = await Promise.all([
+      fetchJson('/api/stats/fab/current-day'),
+      fetchJson('/api/stats/category/current-day'),
+      fetchJson('/api/stats/fab/current-year?mode=months'),
+      fetchJson('/api/stats/category/current-year?mode=months'),
+      fetchJson('/api/stats/team/current-year?mode=months'),
+      fetchJson('/api/stats/severity/current-year?mode=months')
+    ]);
+    adminChartStats = {
+      fabDay: fabDay.stats || [],
+      catDay: catDay.stats || [],
+      fabYear: fabYear.stats || [],
+      catYear: catYear.stats || [],
+      teamYear: teamYear.stats || [],
+      severityYear: severityYear.stats || []
+    };
+    renderColorSettings();
+  } catch (error) {
+    adminChartStats = {};
+    if (adminChartsPreview) {
+      adminChartsPreview.innerHTML = `<p class="muted">Impossibile caricare l'anteprima dei grafici: ${escapeHtml(error.message || error)}</p>`;
+    }
+  }
+}
+
 async function saveUiColors() {
   ensureAdminUiColors();
-  const next = defaultUiColors();
-  document.querySelectorAll('.color-setting-row').forEach((row) => {
-    const kind = row.dataset.kind || '';
-    const key = row.dataset.key || '';
-    const inputs = row.querySelectorAll('input[type="color"]');
-    if (kind === 'chart') {
-      inputs.forEach((input) => {
-        const theme = input.dataset.theme || 'light';
-        const color = normalizeHexColor(input.value);
-        if (color) next.charts[key][theme] = color;
-      });
-      return;
-    }
-    if (kind === 'category' || kind === 'fab') {
-      inputs.forEach((input) => {
-        const theme = input.dataset.theme || 'light';
-        const color = normalizeHexColor(input.value);
-        if (color) next.labels[kind === 'category' ? 'categories' : 'fabs'][theme][key] = color;
-      });
-    }
-  });
-  adminUiColors = next;
+  adminUiColors = normalizeUiColors(adminUiColors);
   await fetchJson('/api/ui-colors', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -237,6 +308,8 @@ function closeIncidentModal() {
   adminIncidentModal.classList.remove('active');
   adminIncidentModal.classList.add('closing');
   adminIncidentModal.setAttribute('aria-hidden', 'true');
+  document.documentElement.classList.remove('modal-open');
+  document.body.classList.remove('modal-open');
   editingIncidentId = null;
   adminIncidentForm?.reset();
   adminModalCloseTimer = setTimeout(() => {
@@ -260,6 +333,8 @@ function openIncidentModal(incident) {
   adminSeverityModeSelect.value = incident.severity_mode || 'default';
   adminFabDefaultSelect.value = incident.fab_default || '';
   adminIncidentModal.setAttribute('aria-hidden', 'false');
+  document.documentElement.classList.add('modal-open');
+  document.body.classList.add('modal-open');
   requestAnimationFrame(() => {
     adminIncidentModal.classList.add('active');
   });
@@ -492,7 +567,6 @@ async function loadAdminMenu(state = captureAdminUiState()) {
 
   bindAdminActions();
   restoreAdminUiState(state);
-  renderColorSettings();
 }
 
 function bindAdminActions() {
@@ -658,7 +732,8 @@ userCreateForm?.addEventListener('submit', async (e) => {
 
 (async function initAdminPage() {
   await loadCurrentAdmin();
-  await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors()]);
+  syncAdminColorToggle();
+  await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors(), loadAdminChartsPreviewData()]);
 })();
 
 function insertAtCursor(textarea, text) {
@@ -694,4 +769,21 @@ saveColorSettingsBtn?.addEventListener('click', async () => {
   } catch (error) {
     alert(`Errore salvataggio colori: ${error.message || error}`);
   }
+});
+
+uiColorThemeToggleBtn?.addEventListener('click', () => {
+  const next = adminColorEditTheme === 'dark' ? 'light' : 'dark';
+  applyAdminColorTheme(next);
+});
+
+adminColorPicker?.addEventListener('input', () => {
+  const group = adminColorPicker.dataset.group || '';
+  const label = adminColorPicker.dataset.label || '';
+  const color = normalizeHexColor(adminColorPicker.value);
+  if (!group || !label || !color) return;
+  ensureAdminUiColors();
+  if (!adminUiColors.labels[group]) adminUiColors.labels[group] = { light: {}, dark: {} };
+  if (!adminUiColors.labels[group][adminColorEditTheme]) adminUiColors.labels[group][adminColorEditTheme] = {};
+  adminUiColors.labels[group][adminColorEditTheme][label] = color;
+  renderColorSettings();
 });

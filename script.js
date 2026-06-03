@@ -91,9 +91,12 @@ function defaultUiColors() {
       teamYear: { light: '#d97706', dark: '#f59e0b' },
       severityYear: { light: '#be185d', dark: '#ec4899' }
     },
+    bars: {},
     labels: {
       categories: { light: {}, dark: {} },
-      fabs: { light: {}, dark: {} }
+      fabs: { light: {}, dark: {} },
+      teams: { light: {}, dark: {} },
+      severities: { light: {}, dark: {} }
     }
   };
 }
@@ -107,7 +110,8 @@ function normalizeUiColors(input) {
   const defaults = defaultUiColors();
   const out = {
     charts: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } }
+    bars: {},
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = {
@@ -122,7 +126,7 @@ function normalizeUiColors(input) {
       if (next) out.charts[key][theme] = next;
     });
   });
-  ['categories', 'fabs'].forEach((group) => {
+  ['categories', 'fabs', 'teams', 'severities'].forEach((group) => {
     ['light', 'dark'].forEach((theme) => {
       const rows = input?.labels?.[group]?.[theme];
       if (!rows || typeof rows !== 'object') return;
@@ -132,6 +136,19 @@ function normalizeUiColors(input) {
       });
     });
   });
+  if (input?.bars && typeof input.bars === 'object') {
+    Object.keys(input.bars).forEach((chartKey) => {
+      if (!out.bars[chartKey]) out.bars[chartKey] = { light: {}, dark: {} };
+      ['light', 'dark'].forEach((theme) => {
+        const rows = input.bars?.[chartKey]?.[theme];
+        if (!rows || typeof rows !== 'object') return;
+        Object.keys(rows).forEach((label) => {
+          const next = normalizeHexColor(rows[label]);
+          if (next) out.bars[chartKey][theme][label] = next;
+        });
+      });
+    });
+  }
   return out;
 }
 
@@ -146,6 +163,23 @@ function getChartColor(chartId) {
   return normalizeHexColor(custom) || fallback?.[theme] || '#0c5f8c';
 }
 
+function chartGroupForId(chartId) {
+  switch (chartId) {
+    case 'fabDay':
+    case 'fabYear':
+      return 'fabs';
+    case 'catDay':
+    case 'catYear':
+      return 'categories';
+    case 'teamYear':
+      return 'teams';
+    case 'severityYear':
+      return 'severities';
+    default:
+      return '';
+  }
+}
+
 function getLabelColor(group, label) {
   const theme = themeKey();
   const normalizedLabel = String(label || '');
@@ -153,10 +187,33 @@ function getLabelColor(group, label) {
   return normalizeHexColor(custom) || colorForLabel(normalizedLabel);
 }
 
+function getBarColor(chartId, label) {
+  const theme = themeKey();
+  const normalizedLabel = String(label || '');
+  const custom = uiColors?.bars?.[chartId]?.[theme]?.[normalizedLabel];
+  if (normalizeHexColor(custom)) return normalizeHexColor(custom);
+  const group = chartGroupForId(chartId);
+  if (group) {
+    const groupColor = uiColors?.labels?.[group]?.[theme]?.[normalizedLabel];
+    if (normalizeHexColor(groupColor)) return normalizeHexColor(groupColor);
+  }
+  return colorForLabel(normalizedLabel);
+}
+
 async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
   return uiColors;
+}
+
+function lockModalScroll() {
+  document.documentElement.classList.add('modal-open');
+  document.body.classList.add('modal-open');
+}
+
+function unlockModalScroll() {
+  document.documentElement.classList.remove('modal-open');
+  document.body.classList.remove('modal-open');
 }
 
 async function refreshColorSensitiveViews() {
@@ -371,6 +428,7 @@ function closeModal() {
   modal.classList.remove('active');
   modal.classList.add('closing');
   modal.setAttribute('aria-hidden', 'true');
+  unlockModalScroll();
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
   modalCloseTimer = setTimeout(() => {
     modal.classList.remove('show', 'closing');
@@ -387,6 +445,7 @@ function revealModal() {
   modal.classList.remove('closing');
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
+  lockModalScroll();
   requestAnimationFrame(() => {
     modal.classList.add('active');
   });
@@ -731,7 +790,6 @@ function renderVerticalChart(target, stats) {
   target.innerHTML = '';
   const panelTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
   chartExportState[target.id] = { title: panelTitle, stats: sortedStats.map((item) => ({ label: item.label, total: item.total })) };
-  const chartColor = getChartColor(target.id);
 
   const steps = 4;
   const tickValues = Array.from({ length: steps + 1 }, (_, i) => Math.round((max * (steps - i)) / steps));
@@ -751,7 +809,8 @@ function renderVerticalChart(target, stats) {
     const pct = totalAll > 0 ? Math.round((s.total / totalAll) * 100) : 0;
     const row = document.createElement('div');
     row.className = 'bar';
-    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${chartColor}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${s.label}</span>`;
+    const color = getBarColor(target.id, s.label);
+    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${s.label}</span>`;
     barsWrap.appendChild(row);
   });
 

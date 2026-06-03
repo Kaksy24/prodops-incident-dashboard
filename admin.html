@@ -56,15 +56,17 @@
       </section>
 
       <section class="panel">
-        <h3>Colori Dashboard</h3>
-        <p class="muted">Imposta i colori separatamente per tema chiaro e scuro.</p>
-        <div id="chartColorSettings" class="color-settings-stack"></div>
-
-        <h3>Colori Categorie</h3>
-        <div id="categoryColorSettings" class="color-settings-stack"></div>
-
-        <h3>Colori FAB</h3>
-        <div id="fabColorSettings" class="color-settings-stack"></div>
+        <div class="panel-heading-row">
+          <div>
+            <h3>Colori grafici</h3>
+            <p class="muted">Clicca una colonna per cambiarne il colore. Il toggle decide se stai salvando il tema light o dark.</p>
+          </div>
+          <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
+            <span class="switch-track"><span class="switch-thumb">L</span></span>
+          </button>
+        </div>
+        <div id="adminChartsPreview" class="charts-grid admin-charts-grid"></div>
+        <input id="adminColorPicker" class="color-picker-proxy" type="color" aria-hidden="true" tabindex="-1" />
 
         <div class="form-actions" style="justify-content:flex-start; margin-top:14px;">
           <button type="button" id="saveColorSettingsBtn" class="primary">Salva colori</button>
@@ -130,6 +132,6 @@
   </div>
 
   <script src="admin.js"></script>
-  <div class="app-version-badge">v0.6.0</div>
+  <div class="app-version-badge">v0.7.1</div>
 </body>
 </html>

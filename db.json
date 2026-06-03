@@ -2,19 +2,23 @@
     "categories": [
         {
             "id": 1,
-            "name": "AUTOMATION"
+            "name": "AUTOMATION",
+            "sort_order": 1
         },
         {
             "id": 2,
-            "name": "WMM"
+            "name": "WMM",
+            "sort_order": 2
         },
         {
             "id": 3,
-            "name": "SICMA"
+            "name": "SICMA",
+            "sort_order": 3
         },
         {
             "id": 4,
-            "name": "ROBOTIZATION"
+            "name": "ROBOTIZATION",
+            "sort_order": 4
         }
     ],
     "incidents": [
@@ -25,7 +29,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 1
         },
         {
             "id": 4,
@@ -34,7 +39,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 1
         },
         {
             "id": 7,
@@ -43,7 +49,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 1
         },
         {
             "id": 3,
@@ -52,7 +59,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 2
         },
         {
             "id": 5,
@@ -61,7 +69,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 2
         },
         {
             "id": 8,
@@ -70,7 +79,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 2
         },
         {
             "id": 6,
@@ -79,7 +89,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 3
         },
         {
             "id": 9,
@@ -88,7 +99,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 3
         },
         {
             "id": 10,
@@ -97,7 +109,8 @@
             "severity_default": 1,
             "severity_mode": "default",
             "fab_default": "",
-            "presets": []
+            "presets": [],
+            "sort_order": 3
         }
     ],
     "tickets": [
@@ -357,38 +370,47 @@
     "ui_colors": {
         "charts": {
             "fabDay": {
-                "light": "#0c5f8c",
-                "dark": "#24a0d8"
+                "light": "#0C5F8C",
+                "dark": "#24A0D8"
             },
             "catDay": {
-                "light": "#16a0b6",
-                "dark": "#2ec4d6"
+                "light": "#16A0B6",
+                "dark": "#2EC4D6"
             },
             "fabYear": {
-                "light": "#355a84",
-                "dark": "#1fb6ff"
+                "light": "#355A84",
+                "dark": "#1FB6FF"
             },
             "catYear": {
-                "light": "#6b4ea6",
-                "dark": "#9b6cff"
+                "light": "#6B4EA6",
+                "dark": "#9B6CFF"
             },
             "teamYear": {
-                "light": "#d97706",
-                "dark": "#f59e0b"
+                "light": "#D97706",
+                "dark": "#F59E0B"
             },
             "severityYear": {
-                "light": "#be185d",
-                "dark": "#ec4899"
+                "light": "#BE185D",
+                "dark": "#EC4899"
             }
         },
+        "bars": [],
         "labels": {
             "categories": {
-                "light": {},
-                "dark": {}
+                "light": [],
+                "dark": []
             },
             "fabs": {
-                "light": {},
-                "dark": {}
+                "light": [],
+                "dark": []
+            },
+            "teams": {
+                "light": [],
+                "dark": []
+            },
+            "severities": {
+                "light": [],
+                "dark": []
             }
         }
     }

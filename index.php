@@ -76,9 +76,12 @@ function default_ui_colors()
             'teamYear' => array('light' => '#d97706', 'dark' => '#f59e0b'),
             'severityYear' => array('light' => '#be185d', 'dark' => '#ec4899')
         ),
+        'bars' => array(),
         'labels' => array(
             'categories' => array('light' => array(), 'dark' => array()),
-            'fabs' => array('light' => array(), 'dark' => array())
+            'fabs' => array('light' => array(), 'dark' => array()),
+            'teams' => array('light' => array(), 'dark' => array()),
+            'severities' => array('light' => array(), 'dark' => array())
         )
     );
 }
@@ -103,7 +106,8 @@ function normalize_ui_colors($colors)
         }
     }
 
-    foreach (array('categories', 'fabs') as $group) {
+    $groupDefaults = array('categories', 'fabs', 'teams', 'severities');
+    foreach ($groupDefaults as $group) {
         foreach (array('light', 'dark') as $theme) {
             if (!isset($colors['labels'][$group][$theme]) || !is_array($colors['labels'][$group][$theme])) continue;
             foreach ($colors['labels'][$group][$theme] as $label => $color) {
@@ -111,6 +115,25 @@ function normalize_ui_colors($colors)
                 $cleanColor = sanitize_hex_color($color);
                 if ($cleanLabel !== '' && $cleanColor !== '') {
                     $out['labels'][$group][$theme][$cleanLabel] = $cleanColor;
+                }
+            }
+        }
+    }
+
+    if (isset($colors['bars']) && is_array($colors['bars'])) {
+        foreach ($colors['bars'] as $chartKey => $themeMap) {
+            $cleanChartKey = trim(strval($chartKey));
+            if ($cleanChartKey === '') continue;
+            if (!isset($out['bars'][$cleanChartKey])) $out['bars'][$cleanChartKey] = array('light' => array(), 'dark' => array());
+            if (!is_array($themeMap)) continue;
+            foreach (array('light', 'dark') as $theme) {
+                if (!isset($themeMap[$theme]) || !is_array($themeMap[$theme])) continue;
+                foreach ($themeMap[$theme] as $label => $color) {
+                    $cleanLabel = trim(strval($label));
+                    $cleanColor = sanitize_hex_color($color);
+                    if ($cleanLabel !== '' && $cleanColor !== '') {
+                        $out['bars'][$cleanChartKey][$theme][$cleanLabel] = $cleanColor;
+                    }
                 }
             }
         }
