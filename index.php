@@ -39,7 +39,12 @@ load_env_file(__DIR__ . DIRECTORY_SEPARATOR . '.env');
 function remote_api_base()
 {
     $base = getenv('REMOTE_API_BASE');
-    return $base ? rtrim($base, '/') : '';
+    if ($base) return rtrim($base, '/');
+    $host = isset($_SERVER['HTTP_HOST']) ? strtolower($_SERVER['HTTP_HOST']) : '';
+    if ($host && preg_match('/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/', $host)) {
+        return 'https://prodops-web-production.up.railway.app';
+    }
+    return '';
 }
 
 function supabase_enabled()
