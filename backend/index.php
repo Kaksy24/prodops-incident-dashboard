@@ -465,6 +465,41 @@ function mysql_conn()
     return $conn;
 }
 
+function mysql_db_snapshot($conn)
+{
+    $snapshot = array(
+        'connected' => false,
+        'server_version' => null,
+        'database' => null,
+        'tables' => array()
+    );
+    if (!$conn) return $snapshot;
+
+    $snapshot['connected'] = true;
+    if (function_exists('mysqli_get_server_info')) {
+        $snapshot['server_version'] = @mysqli_get_server_info($conn);
+    }
+    if (function_exists('mysqli_query')) {
+        $dbName = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
+        $snapshot['database'] = $dbName !== false ? $dbName : null;
+        $tables = array('app_users', 'app_settings', 'categories', 'incidents', 'incident_presets', 'tickets');
+        foreach ($tables as $table) {
+            $count = null;
+            $safeTable = '`' . str_replace('`', '``', $table) . '`';
+            $result = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM " . $safeTable);
+            if ($result) {
+                $row = @mysqli_fetch_assoc($result);
+                if (is_array($row) && isset($row['c'])) {
+                    $count = intval($row['c']);
+                }
+                @mysqli_free_result($result);
+            }
+            $snapshot['tables'][$table] = $count;
+        }
+    }
+    return $snapshot;
+}
+
 function mysql_ensure_schema($conn)
 {
     $schemaPath = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
@@ -1219,6 +1254,16 @@ if ($path === '/api/ui-colors' && $method === 'PUT') {
     $db['ui_colors'] = normalize_ui_colors($incoming);
     save_db($db);
     json_response(array('ok' => true, 'ui_colors' => $db['ui_colors']), 200);
+}
+
+if ($path === '/api/admin/db-check' && $method === 'GET') {
+    require_api_auth('admin');
+    $conn = mysql_conn();
+    $snapshot = mysql_db_snapshot($conn);
+    if (!$snapshot['connected']) {
+        json_response(array('ok' => false, 'error' => 'Connessione database non disponibile', 'snapshot' => $snapshot), 200);
+    }
+    json_response(array('ok' => true, 'snapshot' => $snapshot), 200);
 }
 
 if ($path === '/api/users' && $method === 'GET') {

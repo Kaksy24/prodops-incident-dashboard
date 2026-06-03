@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="/public/css/styles.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -79,8 +79,10 @@
         <div id="adminChartsPreview" class="charts-grid admin-charts-grid"></div>
 
         <div class="form-actions" style="justify-content:flex-start; margin-top:14px;">
+          <button type="button" id="checkDbBtn" class="secondary">Controlla DB</button>
           <button type="button" id="saveColorSettingsBtn" class="primary">Salva colori</button>
         </div>
+        <div id="dbCheckResult" class="db-check-result" aria-live="polite"></div>
       </section>
     </main>
   </div>
@@ -141,7 +143,7 @@
     </div>
   </div>
 
-  <script src="js/admin.js"></script>
-  <div class="app-version-badge">v0.8.1</div>
+  <script src="/public/js/admin.js"></script>
+  <div class="app-version-badge">v0.8.2</div>
 </body>
 </html>

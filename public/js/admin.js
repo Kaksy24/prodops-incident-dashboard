@@ -23,6 +23,8 @@ const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch')
 const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
+const checkDbBtn = document.getElementById('checkDbBtn');
+const dbCheckResult = document.getElementById('dbCheckResult');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 
@@ -510,6 +512,28 @@ function renderColorSettings() {
   updateColorEditor();
 }
 
+function renderDbCheckResult(payload) {
+  if (!dbCheckResult) return;
+  if (!payload) {
+    dbCheckResult.innerHTML = '';
+    return;
+  }
+  const snapshot = payload.snapshot || {};
+  const tables = snapshot.tables || {};
+  const tableItems = Object.keys(tables).map((table) => {
+    const value = tables[table];
+    return `<li><strong>${escapeHtml(table)}</strong>: ${value === null || typeof value === 'undefined' ? 'n/d' : escapeHtml(value)}</li>`;
+  }).join('');
+  dbCheckResult.innerHTML = `
+    <div class="db-check-card ${payload.ok ? 'ok' : 'error'}">
+      <div class="db-check-title">${payload.ok ? 'DB collegato' : 'DB non disponibile'}</div>
+      <div class="db-check-meta">Server: ${escapeHtml(snapshot.server_version || 'n/d')} · Database: ${escapeHtml(snapshot.database || 'n/d')}</div>
+      <ul class="db-check-list">${tableItems}</ul>
+      ${payload.error ? `<div class="db-check-error">${escapeHtml(payload.error)}</div>` : ''}
+    </div>
+  `;
+}
+
 async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   adminUiColors = normalizeUiColors(data.ui_colors || data || {});
@@ -557,6 +581,21 @@ async function saveUiColors() {
     // ignore storage issues
   }
   alert('Colori salvati.');
+}
+
+async function checkDatabase() {
+  if (!checkDbBtn) return;
+  checkDbBtn.disabled = true;
+  checkDbBtn.textContent = 'Controllo...';
+  try {
+    const result = await fetchJson('/api/admin/db-check');
+    renderDbCheckResult(result);
+  } catch (error) {
+    renderDbCheckResult({ ok: false, error: error.message || String(error), snapshot: { tables: {} } });
+  } finally {
+    checkDbBtn.disabled = false;
+    checkDbBtn.textContent = 'Controlla DB';
+  }
 }
 
 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -1005,7 +1044,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   await loadCurrentAdmin();
   loadChartTypes();
   syncAdminColorToggle();
-  await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors(), loadAdminChartsPreviewData()]);
+  await Promise.all([loadAdminMenu(null), loadUsers(), loadUiColors(), loadAdminChartsPreviewData(), checkDatabase()]);
 })();
 
 function insertAtCursor(textarea, text) {
@@ -1041,6 +1080,10 @@ saveColorSettingsBtn?.addEventListener('click', async () => {
   } catch (error) {
     alert(`Errore salvataggio colori: ${error.message || error}`);
   }
+});
+
+checkDbBtn?.addEventListener('click', async () => {
+  await checkDatabase();
 });
 
 uiColorThemeToggleBtn?.addEventListener('click', () => {

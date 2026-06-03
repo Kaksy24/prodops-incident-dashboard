@@ -333,6 +333,44 @@ body.theme-dark .chart-export-option {
   border: 1px solid var(--border);
   background: var(--panel);
 }
+.db-check-result {
+  margin-top: 14px;
+}
+.db-check-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.55);
+}
+body.theme-dark .db-check-card {
+  background: rgba(255,255,255,.04);
+}
+.db-check-card.ok {
+  border-color: rgba(40, 167, 69, .35);
+}
+.db-check-card.error {
+  border-color: rgba(220, 53, 69, .35);
+}
+.db-check-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.db-check-meta {
+  color: var(--muted);
+  font-size: .9rem;
+  margin-bottom: 8px;
+}
+.db-check-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.db-check-error {
+  margin-top: 8px;
+  color: #c0392b;
+  font-weight: 600;
+}
 .admin-bar-button {
   appearance: none;
   border: 0;
