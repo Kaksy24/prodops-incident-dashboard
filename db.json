@@ -371,6 +371,14 @@
             "catYear": {
                 "light": "#6b4ea6",
                 "dark": "#9b6cff"
+            },
+            "teamYear": {
+                "light": "#d97706",
+                "dark": "#f59e0b"
+            },
+            "severityYear": {
+                "light": "#be185d",
+                "dark": "#ec4899"
             }
         },
         "labels": {

@@ -26,6 +26,8 @@ const fabDayChart = document.getElementById('fabDayChart');
 const fabYearChart = document.getElementById('fabYearChart');
 const catDayChart = document.getElementById('catDayChart');
 const catYearChart = document.getElementById('catYearChart');
+const teamYearChart = document.getElementById('teamYearChart');
+const severityYearChart = document.getElementById('severityYearChart');
 const ticketTimestampInput = document.getElementById('ticketTimestamp');
 const ticketModalTitle = document.getElementById('ticketModalTitle');
 const ticketSeveritySelect = document.getElementById('ticketSeverity');
@@ -37,6 +39,8 @@ const fabs = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 let fabYearMode = 'months';
 let catYearMode = 'months';
+let teamYearMode = 'months';
+let severityYearMode = 'months';
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
@@ -83,7 +87,9 @@ function defaultUiColors() {
       fabDay: { light: '#0c5f8c', dark: '#24a0d8' },
       catDay: { light: '#16a0b6', dark: '#2ec4d6' },
       fabYear: { light: '#355a84', dark: '#1fb6ff' },
-      catYear: { light: '#6b4ea6', dark: '#9b6cff' }
+      catYear: { light: '#6b4ea6', dark: '#9b6cff' },
+      teamYear: { light: '#d97706', dark: '#f59e0b' },
+      severityYear: { light: '#be185d', dark: '#ec4899' }
     },
     labels: {
       categories: { light: {}, dark: {} },
@@ -966,16 +972,20 @@ async function loadPreviousShifts() {
 setupChartExportControls();
 
 async function loadCharts() {
-  const [fabDay, fabYear, catDay, catYear] = await Promise.all([
+  const [fabDay, fabYear, catDay, catYear, teamYear, severityYear] = await Promise.all([
     fetchJson('/api/stats/fab/current-day'),
     fetchJson(`/api/stats/fab/current-year?mode=${fabYearMode}`),
     fetchJson('/api/stats/category/current-day'),
-    fetchJson(`/api/stats/category/current-year?mode=${catYearMode}`)
+    fetchJson(`/api/stats/category/current-year?mode=${catYearMode}`),
+    fetchJson(`/api/stats/team/current-year?mode=${teamYearMode}`),
+    fetchJson(`/api/stats/severity/current-year?mode=${severityYearMode}`)
   ]);
   renderVerticalChart(fabDayChart, fabDay.stats);
   renderVerticalChart(fabYearChart, fabYear.stats);
   renderVerticalChart(catDayChart, catDay.stats);
   renderVerticalChart(catYearChart, catYear.stats);
+  renderVerticalChart(teamYearChart, teamYear.stats);
+  renderVerticalChart(severityYearChart, severityYear.stats);
 }
 
 document.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeModal));
@@ -1010,6 +1020,8 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
     btn.classList.add('active');
     if (target === 'fabYear') fabYearMode = mode;
     if (target === 'catYear') catYearMode = mode;
+    if (target === 'teamYear') teamYearMode = mode;
+    if (target === 'severityYear') severityYearMode = mode;
     await loadCharts();
   });
 });

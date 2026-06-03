@@ -72,7 +72,9 @@ function default_ui_colors()
             'fabDay' => array('light' => '#0c5f8c', 'dark' => '#24a0d8'),
             'catDay' => array('light' => '#16a0b6', 'dark' => '#2ec4d6'),
             'fabYear' => array('light' => '#355a84', 'dark' => '#1fb6ff'),
-            'catYear' => array('light' => '#6b4ea6', 'dark' => '#9b6cff')
+            'catYear' => array('light' => '#6b4ea6', 'dark' => '#9b6cff'),
+            'teamYear' => array('light' => '#d97706', 'dark' => '#f59e0b'),
+            'severityYear' => array('light' => '#be185d', 'dark' => '#ec4899')
         ),
         'labels' => array(
             'categories' => array('light' => array(), 'dark' => array()),
@@ -1014,6 +1016,57 @@ function summarize_by_category($tickets, $categories, $incidents)
     return $out;
 }
 
+function summarize_by_team($tickets)
+{
+    $teams = array('A', 'B', 'C', 'D', 'E');
+    $counts = array();
+    foreach ($teams as $team) $counts[$team] = 0;
+    foreach ($tickets as $t) {
+        $team = normalize_team(isset($t['owner_team']) ? $t['owner_team'] : 'A');
+        if (!isset($counts[$team])) $counts[$team] = 0;
+        $counts[$team]++;
+    }
+    $out = array();
+    foreach ($teams as $team) $out[] = array('label' => $team, 'total' => isset($counts[$team]) ? $counts[$team] : 0);
+    return $out;
+}
+
+function summarize_by_severity($tickets)
+{
+    $labels = array(
+        1 => '1 - Low',
+        2 => '2 - Medium',
+        3 => '3 - High',
+        4 => '4 - Extreme'
+    );
+    $counts = array(1 => 0, 2 => 0, 3 => 0, 4 => 0);
+    foreach ($tickets as $t) {
+        $severity = isset($t['severity']) ? intval($t['severity']) : 1;
+        if (!isset($counts[$severity])) $counts[$severity] = 0;
+        $counts[$severity]++;
+    }
+    $out = array();
+    foreach ($labels as $severity => $label) {
+        $out[] = array('label' => $label, 'total' => isset($counts[$severity]) ? $counts[$severity] : 0);
+    }
+    return $out;
+}
+
+function year_range_from_mode($year, $mode)
+{
+    $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
+    if (isset($quarter[$mode])) {
+        $q = $quarter[$mode];
+        $start = gmdate('c', gmmktime(0, 0, 0, $q[0], $q[1], $year));
+        $endYear = ($mode === 'q4') ? $year + 1 : $year;
+        $end = gmdate('c', gmmktime(0, 0, 0, $q[2], $q[3], $endYear));
+        return array($start, $end);
+    }
+    $start = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year));
+    $end = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year + 1));
+    return array($start, $end);
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
@@ -1657,16 +1710,7 @@ if ($path === '/api/stats/category/current-day' && $method === 'GET') {
 if ($path === '/api/stats/fab/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
-    if (isset($quarter[$mode])) {
-        $q = $quarter[$mode];
-        $start = gmdate('c', gmmktime(0, 0, 0, $q[0], $q[1], $year));
-        $endYear = ($mode === 'q4') ? $year + 1 : $year;
-        $end = gmdate('c', gmmktime(0, 0, 0, $q[2], $q[3], $endYear));
-    } else {
-        $start = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year));
-        $end = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year + 1));
-    }
+    list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_fab($tickets, $fabs)), 200);
@@ -1675,19 +1719,28 @@ if ($path === '/api/stats/fab/current-year' && $method === 'GET') {
 if ($path === '/api/stats/category/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
-    if (isset($quarter[$mode])) {
-        $q = $quarter[$mode];
-        $start = gmdate('c', gmmktime(0, 0, 0, $q[0], $q[1], $year));
-        $endYear = ($mode === 'q4') ? $year + 1 : $year;
-        $end = gmdate('c', gmmktime(0, 0, 0, $q[2], $q[3], $endYear));
-    } else {
-        $start = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year));
-        $end = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year + 1));
-    }
+    list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_category($tickets, $db['categories'], $db['incidents'])), 200);
+}
+
+if ($path === '/api/stats/team/current-year' && $method === 'GET') {
+    $year = intval(gmdate('Y'));
+    $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
+    list($start, $end) = year_range_from_mode($year, $mode);
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
+    json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_team($tickets)), 200);
+}
+
+if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
+    $year = intval(gmdate('Y'));
+    $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
+    list($start, $end) = year_range_from_mode($year, $mode);
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
+    json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_severity($tickets)), 200);
 }
 
 json_response(array('error' => 'Endpoint non trovato'), 404);

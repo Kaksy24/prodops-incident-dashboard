@@ -35,7 +35,9 @@ const adminCharts = [
   { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
   { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
   { key: 'fabYear', label: 'Ticket per FAB' },
-  { key: 'catYear', label: 'Ticket per categoria' }
+  { key: 'catYear', label: 'Ticket per categoria' },
+  { key: 'teamYear', label: 'Ticket per Team' },
+  { key: 'severityYear', label: 'Severity Ticket' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 
