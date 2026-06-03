@@ -897,6 +897,14 @@ function ticket_with_permissions($ticket, $user)
     return $ticket;
 }
 
+function require_ticket_owner($ticket, $user, $action)
+{
+    $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
+    if ($ownerId <= 0 || intval($user['id']) !== $ownerId) {
+        json_response(array('error' => 'Puoi ' . $action . ' solo i ticket che hai inserito'), 403);
+    }
+}
+
 function summarize_by_fab($tickets, $fabs)
 {
     $out = array();
@@ -1446,11 +1454,7 @@ if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
         }
     }
     if ($idx < 0) json_response(array('error' => 'Ticket non trovato'), 404);
-    $owner = isset($db['tickets'][$idx]['owner_user_id']) ? intval($db['tickets'][$idx]['owner_user_id']) : 0;
-    if ($owner !== intval($user['id'])) {
-        if ($method === 'DELETE') json_response(array('error' => 'Puoi eliminare solo i ticket che hai inserito'), 403);
-        json_response(array('error' => 'Puoi modificare solo i ticket che hai inserito'), 403);
-    }
+    require_ticket_owner($db['tickets'][$idx], $user, $method === 'DELETE' ? 'eliminare' : 'modificare');
     if ($method === 'PUT') {
         $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
         $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
