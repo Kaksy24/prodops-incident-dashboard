@@ -685,6 +685,7 @@ async function loadUsers() {
           <span class="user-row-id">ID ${Number(user.id)}</span>
           <span>${escapeHtml(user.username)}</span>
           <strong>${escapeHtml(user.role)}</strong>
+          <input class="user-password-input" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" ${isSelf ? 'disabled' : ''} />
           <select class="user-team-select" data-user-id="${Number(user.id)}" ${isSelf ? 'disabled' : ''}>
             ${['A', 'B', 'C', 'D', 'E'].map((team) => `<option value="${team}" ${String(user.team || 'A') === team ? 'selected' : ''}>${team}</option>`).join('')}
           </select>
@@ -700,13 +701,18 @@ async function loadUsers() {
         if (!userId) return;
         const row = btn.closest('.user-row');
         const teamSelect = row?.querySelector('.user-team-select');
+        const passwordInput = row?.querySelector('.user-password-input');
         const team = teamSelect?.value || 'A';
+        const password = (passwordInput?.value || '').trim();
         try {
+          const payload = { team };
+          if (password) payload.password = password;
           await fetchJson(`/api/users/${userId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ team })
+            body: JSON.stringify(payload)
           });
+          if (passwordInput) passwordInput.value = '';
           await loadUsers();
         } catch (error) {
           alert(`Errore salvataggio team: ${error.message || error}`);

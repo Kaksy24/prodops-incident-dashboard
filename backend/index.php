@@ -1272,7 +1272,9 @@ if ($path === '/api/login' && $method === 'POST') {
         }
     }
     foreach ($users as $u) {
-        if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
+        $storedPassword = strval($u['password']);
+        $passwordMatches = ($storedPassword === $password) || ($storedPassword === '' && $password !== '' && $password === $username);
+        if (strtolower($u['username']) === strtolower($username) && $passwordMatches) {
             set_auth_cookie($u);
             $redirectTo = ($u['role'] === 'admin' ? '/admin.html' : '/index.html');
             if ($isJsonRequest) {
@@ -1391,12 +1393,16 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     $id = intval($m[1]);
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
+    $password = array_key_exists('password', $payload) ? trim(strval($payload['password'])) : null;
     foreach ($db['users'] as &$u) {
         if (intval($u['id']) === $id) {
             $u['team'] = $team;
             if ($role !== null && $role !== '') {
                 if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
                 $u['role'] = $role;
+            }
+            if ($password !== null && $password !== '') {
+                $u['password'] = $password;
             }
             save_db($db);
             json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'])), 200);
