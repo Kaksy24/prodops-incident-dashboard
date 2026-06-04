@@ -78,6 +78,22 @@ function getLabelColor(group, label) {
   return normalizeHexColor(uiColors?.labels?.[group]?.[theme]?.[label]) || colorForLabel(label);
 }
 
+function ticketMatchesLocal(ticket, query, categoryName = '') {
+  const needle = String(query || '').trim().toLowerCase();
+  if (!needle) return true;
+  const fields = [
+    ticket?.incident_name,
+    categoryName,
+    ticket?.description,
+    ticket?.fab,
+    ticket?.created_at,
+    ticket?.incident_id != null ? String(ticket.incident_id) : '',
+    ticket?.owner_team,
+    ticket?.severity != null ? String(ticket.severity) : ''
+  ];
+  return fields.some((value) => String(value || '').toLowerCase().includes(needle));
+}
+
 async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
@@ -169,9 +185,40 @@ async function runTicketSearch() {
     if (from || to) parts.push(`date ${from || '...'} → ${to || '...'}`);
     ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
-  const data = await fetchJson(`/api/tickets/search${suffix}`);
+  let data = await fetchJson(`/api/tickets/search${suffix}`);
+  let results = data.tickets || [];
+  let usedLocalFallback = false;
+
+  if (query && !results.length) {
+    const allParams = new URLSearchParams();
+    if (from) allParams.set('from', from);
+    if (to) allParams.set('to', to);
+    const allSuffix = allParams.toString() ? `?${allParams.toString()}` : '';
+    const allData = await fetchJson(`/api/tickets/search${allSuffix}`);
+    results = (allData.tickets || []).filter((ticket) => {
+      const incidentId = Number(ticket.incident_id || 0);
+      const incidentName = String(incidentIdToNameMap[String(incidentId)] || ticket.incident_name || '');
+      const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
+      if (from || to) {
+        const created = ticket?.created_at ? new Date(ticket.created_at).getTime() : NaN;
+        if (from) {
+          const fromTime = new Date(`${from}T00:00:00`).getTime();
+          if (!Number.isNaN(fromTime) && !Number.isNaN(created) && created < fromTime) return false;
+        }
+        if (to) {
+          const toTime = new Date(`${to}T23:59:59`).getTime();
+          if (!Number.isNaN(toTime) && !Number.isNaN(created) && created > toTime) return false;
+        }
+      }
+      return ticketMatchesLocal(ticket, query, category);
+    });
+    data = { ...allData, count: results.length };
+    usedLocalFallback = true;
+  }
+
   if (ticketSearchResults) {
-    ticketSearchResults.innerHTML = `<p class="ticket-search-count">${data.count} ticket trovati.</p>${renderSearchTickets(data.tickets || [])}`;
+    const fallbackNote = usedLocalFallback ? ' (filtrato in locale)' : '';
+    ticketSearchResults.innerHTML = `<p class="ticket-search-count">${data.count} ticket trovati${fallbackNote}.</p>${renderSearchTickets(results)}`;
   }
 }
 
