@@ -462,7 +462,7 @@ function mysql_conn()
     if ($pass === false) $pass = '';
     $db = env_first(array('MYSQL_DB', 'MYSQLDATABASE'));
     if ($db === false && isset($cfg['MYSQL_DB'])) $db = $cfg['MYSQL_DB'];
-    $useSsl = ($port === 443 || strpos($host, 'railway.app') !== false);
+    $useSsl = ($port === 443);
     $conn = @mysqli_init();
     if (!$conn) return null;
     @mysqli_options($conn, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
