@@ -675,6 +675,9 @@ function mysql_load_db($defaultUsers)
     $db['counters']['incident'] = max_id($db['incidents']);
     $db['counters']['ticket'] = max_id($db['tickets']);
     $db['counters']['user'] = max_id($db['users']);
+    if (!count($db['categories']) && !count($db['incidents']) && !count($db['tickets'])) {
+        return null;
+    }
     if (file_exists(DB_PATH)) {
         $json = file_exists(DB_PATH) ? file_get_contents(DB_PATH) : false;
         $seed = $json ? json_decode($json, true) : null;
@@ -807,6 +810,7 @@ function load_db($defaultUsers)
         return $empty;
     }
     $content = file_get_contents(DB_PATH);
+    if (substr($content, 0, 3) === "\xEF\xBB\xBF") $content = substr($content, 3);
     $db = json_decode($content, true);
     if (!is_array($db)) {
         $db = array();
