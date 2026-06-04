@@ -13,33 +13,8 @@ async function redirectIfLoggedIn() {
   window.location.replace(data.user?.role === 'admin' ? '/admin.html' : '/index.html');
 }
 
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  loginError.textContent = '';
-  const formData = new FormData(loginForm);
-  const payload = Object.fromEntries(formData.entries());
-
-  const res = await fetch('/api/login', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (!res.ok) {
-    let message = 'Utente o password non corretti.';
-    try {
-      const data = await readJsonResponse(res);
-      if (data?.error) message = data.error;
-    } catch {
-      // keep fallback message
-    }
-    loginError.textContent = message;
-    return;
-  }
-
-  const data = await readJsonResponse(res);
-  window.location.replace(data.redirectTo || '/index.html');
-});
+if (new URLSearchParams(window.location.search).get('error') === '1') {
+  loginError.textContent = 'Credenziali non valide';
+}
 
 redirectIfLoggedIn().catch(() => {});
