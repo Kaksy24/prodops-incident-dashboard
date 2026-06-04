@@ -1,3 +1,209 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Incident Dashboard</title>
+  <link rel="stylesheet" href="/public/css/styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-top"><h1>INCIDENT HUB</h1><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">?</span></span></button></div>
+      <nav class="menu" id="menu"></nav>
+      <div class="sidebar-actions">
+        <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
+        <a class="sidebar-link-btn" href="/search.html">Cerca ticket</a>
+        <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
+      </div>
+      <div class="sidebar-footer">Powered by Antonio Di Bella 2026</div>
+    </aside>
+
+    <main class="content">
+      <section class="panel previous-shifts-panel">
+        <button id="previousShiftsToggle" class="section-toggle" type="button" aria-expanded="false">
+          <span>Ticket turni precedenti</span>
+          <span class="section-toggle-icon">+</span>
+        </button>
+        <div id="previousShiftsContent" class="previous-shifts-content" hidden></div>
+      </section>
+
+      <section class="panel-grid">
+        <article class="panel">
+          <h3>Ticket turno Corrente</h3>
+          <ul id="ticketList" class="ticket-list"></ul>
+        </article>
+      </section>
+
+      <section class="charts-grid">
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Ticket per FAB (LAST 24H)</h3>
+            <div class="chart-export" data-chart-target="fabDayChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico FAB ultime 24 ore">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div id="fabDayChart" class="chart vertical-chart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Ticket per categoria (LAST 24H)</h3>
+            <div class="chart-export" data-chart-target="catDayChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico categoria ultime 24 ore">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div id="catDayChart" class="chart vertical-chart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Ticket per FAB</h3>
+            <div class="chart-export" data-chart-target="fabYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico FAB annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <button class="range-btn active year-btn" data-target="fabYear" data-mode="months">Anno</button>
+            <button class="range-btn" data-target="fabYear" data-mode="q1">Q1</button>
+            <button class="range-btn" data-target="fabYear" data-mode="q2">Q2</button>
+            <button class="range-btn" data-target="fabYear" data-mode="q3">Q3</button>
+            <button class="range-btn" data-target="fabYear" data-mode="q4">Q4</button>
+          </div>
+          <div id="fabYearChart" class="chart vertical-chart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Ticket per categoria</h3>
+            <div class="chart-export" data-chart-target="catYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico categoria annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <button class="range-btn active year-btn" data-target="catYear" data-mode="months">Anno</button>
+            <button class="range-btn" data-target="catYear" data-mode="q1">Q1</button>
+            <button class="range-btn" data-target="catYear" data-mode="q2">Q2</button>
+            <button class="range-btn" data-target="catYear" data-mode="q3">Q3</button>
+            <button class="range-btn" data-target="catYear" data-mode="q4">Q4</button>
+          </div>
+          <div id="catYearChart" class="chart vertical-chart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Ticket per Team</h3>
+            <div class="chart-export" data-chart-target="teamYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico team annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <button class="range-btn active year-btn" data-target="teamYear" data-mode="months">Anno</button>
+            <button class="range-btn" data-target="teamYear" data-mode="q1">Q1</button>
+            <button class="range-btn" data-target="teamYear" data-mode="q2">Q2</button>
+            <button class="range-btn" data-target="teamYear" data-mode="q3">Q3</button>
+            <button class="range-btn" data-target="teamYear" data-mode="q4">Q4</button>
+          </div>
+          <div id="teamYearChart" class="chart vertical-chart"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading-row">
+            <h3>Severity Ticket</h3>
+            <div class="chart-export" data-chart-target="severityYearChart">
+              <button type="button" class="chart-export-btn" aria-haspopup="menu" aria-expanded="false">Export ▾</button>
+              <div class="chart-export-menu" role="menu" aria-label="Esporta grafico severity annuale">
+                <button type="button" class="chart-export-option" data-format="csv">.CSV</button>
+                <button type="button" class="chart-export-option" data-format="png">.png</button>
+                <button type="button" class="chart-export-option" data-format="xls">.xls</button>
+              </div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <button class="range-btn active year-btn" data-target="severityYear" data-mode="months">Anno</button>
+            <button class="range-btn" data-target="severityYear" data-mode="q1">Q1</button>
+            <button class="range-btn" data-target="severityYear" data-mode="q2">Q2</button>
+            <button class="range-btn" data-target="severityYear" data-mode="q3">Q3</button>
+            <button class="range-btn" data-target="severityYear" data-mode="q4">Q4</button>
+          </div>
+          <div id="severityYearChart" class="chart vertical-chart"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="ticketModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="ticketModalTitle">Nuovo Ticket</h3>
+        <button class="close-modal" type="button">x</button>
+      </div>
+
+      <form id="ticketForm" class="ticket-form">
+        <input id="incidentType" name="incidentType" type="hidden" />
+
+        <label for="description">Descrizione problema</label>
+        <textarea id="description" name="description" rows="7" required></textarea>
+        <div id="presetInlineComposer" class="panel" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
+
+        <div id="ticketSeverityGroup">
+          <label for="ticketSeverity">Severity</label>
+          <select id="ticketSeverity" name="ticketSeverity" required>
+            <option value="1">1 - Low</option>
+            <option value="2">2 - Medium</option>
+            <option value="3">3 - High</option>
+            <option value="4">4 - Extreme</option>
+          </select>
+          <p id="ticketSeverityHint" class="muted"></p>
+        </div>
+
+        <p class="muted">Seleziona FAB di appartenenza:</p>
+        <div id="fabButtons" class="fab-buttons"></div>
+
+        <input id="fabValue" name="fab" type="hidden" required />
+        <div class="datetime-actions-row">
+          <div class="datetime-block">
+            <label for="ticketTimestamp" class="ticket-timestamp-label">Datetime</label>
+            <input id="ticketTimestamp" class="ticket-timestamp-input" name="ticketTimestamp" type="datetime-local" required />
+          </div>
+          <div class="form-actions inline-actions">
+            <button type="button" id="deleteTicketBtn" class="danger" style="display:none">Elimina</button>
+            <button type="button" class="secondary close-modal">Annulla</button>
+            <button type="submit" id="ticketSubmitBtn" class="primary">Crea Ticket</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div id="extraTicketModals" class="extra-ticket-modals"></div>
+    <button id="addSameIncidentBtn" class="add-same-incident-btn" type="button" title="Aggiungi ticket stesso incident">+</button>
+  </div>
+
+  <script>
 const menu = document.getElementById('menu');
 const modal = document.getElementById('ticketModal');
 const mainTicketPanel = document.querySelector('#ticketModal > .modal-panel');
@@ -45,10 +251,6 @@ const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
 const incidentIdToNameMap = {};
-const incidentIdToCategoryMap = {};
-const incidentIdToPresetMap = {};
-const incidentIdToSeverityMap = {};
-const incidentIdToFabDefaultMap = {};
 const incidentPresetMap = {};
 const incidentSeverityMap = {};
 const incidentFabDefaultMap = {};
@@ -1609,5 +1811,12 @@ window.addEventListener('resize', () => {
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
 });
+
+
+
+</script>
+  <div class="app-version-badge">v0.8.2</div>
+</body>
+</html>
 
 

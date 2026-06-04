@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Incident Hub</title>
+  <link rel="stylesheet" href="/public/css/styles.css" />
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-panel">
+      <h1>INCIDENT HUB</h1>
+      <form id="loginForm" class="login-form" action="/api/login" method="post">
+        <label for="username">Utente</label>
+        <input id="username" name="username" type="text" autocomplete="username" required />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+        <p id="loginError" class="login-error" role="alert"></p>
+        <button class="primary" type="submit">Accedi</button>
+      </form>
+    </section>
+  </main>
+<script>
+const loginForm = document.getElementById('loginForm');
+const loginError = document.getElementById('loginError');
+
+async function readJsonResponse(res) {
+  const text = (await res.text()).replace(/^\uFEFF+/, '');
+  return JSON.parse(text);
+}
+
+async function redirectIfLoggedIn() {
+  const res = await fetch('/api/me', { credentials: 'same-origin' });
+  if (!res.ok) return;
+  const data = await readJsonResponse(res);
+  window.location.replace(data.user?.role === 'admin' ? '/admin.html' : '/index.html');
+}
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  loginError.textContent = '';
+  const formData = new FormData(loginForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    let message = 'Utente o password non corretti.';
+    try {
+      const data = await readJsonResponse(res);
+      if (data?.error) message = data.error;
+    } catch {
+      // keep fallback message
+    }
+    loginError.textContent = message;
+    return;
+  }
+
+  const data = await readJsonResponse(res);
+  window.location.replace(data.redirectTo || '/index.html');
+});
+
+redirectIfLoggedIn().catch(() => {});
+
+</script>
+  <div class="app-version-badge">v0.8.1</div>
+</body>
+</html>

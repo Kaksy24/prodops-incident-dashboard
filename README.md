@@ -1,29 +1,59 @@
 # ProdOps
 
-Struttura del progetto:
+Gestione ticket pensata per ambienti legacy e rete chiusa.
 
-- `public/` → pagine HTML, CSS e JavaScript del frontend
-- `backend/` → controller PHP e script di import
-- `data/` → `db.json` e dump/schema SQL
-- `router.php` → router per `php -S` e deploy Railway
-- `Dockerfile` / `Procfile` → avvio dell'app in produzione
+## Dove lavora il progetto
+- Repo locale: `C:\Users\antod\Documents\Codex\ProdOps`
+- Locale dev: `http://127.0.0.1:5500`
+- Live: `https://ticketmanager.infinityfree.io`
+- Mirror deploy: `deploy/htdocs`
 
-Avvio locale:
+## Regole operative
+- Il DB live su InfinityFree è la sorgente principale dei dati.
+- Il locale serve per sviluppo, ma non deve divergere dal live.
+- Quando cambi qualcosa di visibile online, aggiorna anche `deploy/htdocs`.
+- Se un incidente ha lo stesso nome di un altro in un’altra categoria, la logica usa l’`incident_id`.
 
+## Stack target
+- PHP 5.4
+- MySQL 5.1
+- Niente dipendenze esterne non necessarie
+
+## Avvio locale
 ```powershell
-php -S 127.0.0.1:5500 -t public router.php
+php -S 127.0.0.1:5500 router.php
 ```
 
-Note:
+## Struttura
+- `public/` → frontend HTML/CSS/JS
+- `backend/` → controller PHP e API
+- `data/` → seed locale, schema e dump SQL
+- `deploy/htdocs/` → copia pronta per l’hosting
 
-- Le API passano dal backend in `backend/index.php`
-- I file statici sono serviti da `public/`
-- Il database locale vive in `data/db.json`
+## Flusso consigliato
+1. Apri il locale e verifica la modifica.
+2. Aggiorna i file in `deploy/htdocs`.
+3. Quando vuoi pubblicare, chiedi il push live.
+4. Se il DB locale e quello live divergono, riallinea dal DB live.
 
-Staging InfinityFree:
+## Login
+- Il login deve portare sempre alla pagina corretta dopo il submit.
+- Se il browser o l’hosting alterano la risposta JSON, usa parsing BOM-safe.
 
-- Copia `backend/config.example.php` in `backend/config.php`
-- Inserisci i parametri MySQL del pannello InfinityFree
-- Carica `public/`, `backend/`, `data/` e `router.php` sul sito
-- Importa `data/mysql_schema_51.sql` nel database del pannello
-- Se vuoi partire da dati già pronti, importa anche `data/prodops_local_dump.sql`
+## Admin e dashboard
+- L’admin deve mantenere:
+  - categorie / incident
+  - utenti
+  - colori grafici
+  - anteprima grafici
+- La dashboard deve mantenere:
+  - ticket turno corrente
+  - grafici
+  - ricerca ticket
+  - apertura corretta delle modali incident
+
+## Dati
+- `data/db.json` è il seed locale/fallback.
+- `data/mysql_schema_51.sql` è lo schema MySQL 5.1.
+- `data/prodops_local_dump.sql` è il dump di riferimento.
+
