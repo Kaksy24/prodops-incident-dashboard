@@ -28,4 +28,18 @@
   </g>
 
   <text x="28" y="92" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="4.5" fill="#d9e6ff" opacity="0.95">TICKET MANAGER</text>
+
+  <g transform="translate(302 23)" filter="url(#shadow)">
+    <rect x="0" y="6" width="84" height="56" rx="10" fill="#13243d" stroke="rgba(255,255,255,0.18)" />
+    <rect x="8" y="12" width="68" height="32" rx="6" fill="url(#prodopsBlue)" fill-opacity="0.95" />
+    <rect x="31" y="63" width="22" height="6" rx="3" fill="#d9e6ff" opacity="0.9" />
+    <rect x="18" y="71" width="48" height="5" rx="2.5" fill="#d9e6ff" opacity="0.7" />
+    <rect x="14" y="46" width="8" height="8" rx="2" fill="#0c5f8c" />
+    <rect x="26" y="38" width="8" height="16" rx="2" fill="#16a0b6" />
+    <rect x="38" y="30" width="8" height="24" rx="2" fill="#24a0d8" />
+    <rect x="50" y="22" width="8" height="32" rx="2" fill="#ffd66b" />
+    <circle cx="64" cy="18" r="3" fill="#ffb829" />
+    <path d="M73 10 L84 2" stroke="#9fd6ff" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="86" cy="0" r="3" fill="#9fd6ff" opacity="0.9"/>
+  </g>
 </svg>
