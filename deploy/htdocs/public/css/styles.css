@@ -32,7 +32,8 @@ body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--tex
 .app-layout { min-height: 100vh; display: grid; grid-template-columns: 310px 1fr; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 24px 18px; color: #eef6ff; overflow: auto; display: flex; flex-direction: column; background: linear-gradient(170deg, var(--side-1), var(--side-2)); border-right: 1px solid #2c3f58; }
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 18px; }
-.sidebar h1 { margin: 0; font-size: 1.15rem; letter-spacing: .8px; }
+.brand-logo { display: block; width: min(100%, 250px); height: auto; max-height: 74px; object-fit: contain; }
+.login-brand-logo { width: min(100%, 360px); max-height: 128px; margin: 0 auto 12px; }
 .sidebar-actions {
   margin-top: auto;
   display: grid;

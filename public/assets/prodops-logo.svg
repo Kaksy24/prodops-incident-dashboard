@@ -1,0 +1,31 @@
+<svg width="420" height="118" viewBox="0 0 420 118" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">PRODOPS Ticket Manager</title>
+  <desc id="desc">Logo tridimensionale con enfasi su PRODOPS.</desc>
+  <defs>
+    <linearGradient id="prodopsGold" x1="0" y1="0" x2="420" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffd66b"/>
+      <stop offset="30%" stop-color="#ffb829"/>
+      <stop offset="65%" stop-color="#ff8f1f"/>
+      <stop offset="100%" stop-color="#ff6a00"/>
+    </linearGradient>
+    <linearGradient id="prodopsBlue" x1="0" y1="28" x2="420" y2="94" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8f6ff"/>
+      <stop offset="100%" stop-color="#9fd6ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#07111f" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="412" height="110" rx="22" fill="#08111f" fill-opacity="0.18"/>
+  <rect x="10" y="10" width="400" height="98" rx="20" fill="url(#prodopsBlue)" fill-opacity="0.06" stroke="rgba(255,255,255,0.14)"/>
+
+  <g filter="url(#shadow)">
+    <text x="26" y="60" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="44" font-weight="900" letter-spacing="2.5" fill="#08111f" opacity="0.55" transform="translate(4,5)">PRODOPS</text>
+    <text x="26" y="60" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="44" font-weight="900" letter-spacing="2.5" fill="#0f2138" opacity="0.55" transform="translate(2,3)">PRODOPS</text>
+    <text x="26" y="60" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="44" font-weight="900" letter-spacing="2.5" fill="url(#prodopsGold)" stroke="#fff0c8" stroke-width="1.2" paint-order="stroke fill">PRODOPS</text>
+  </g>
+
+  <text x="28" y="92" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="4.5" fill="#d9e6ff" opacity="0.95">TICKET MANAGER</text>
+</svg>
