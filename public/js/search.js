@@ -119,7 +119,7 @@ async function fetchJson(url, options) {
     throw new Error('Accesso non consentito');
   }
   if (!res.ok) {
-    const text = await res.text();
+    const text = (await res.text()).replace(/^\uFEFF+/, '');
     try {
       const parsed = JSON.parse(text);
       throw new Error(parsed.error || text);
@@ -127,7 +127,12 @@ async function fetchJson(url, options) {
       throw new Error(text);
     }
   }
-  return res.json();
+  const text = (await res.text()).replace(/^\uFEFF+/, '');
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error('Risposta JSON non valida');
+  }
 }
 
 function renderSearchTickets(tickets) {
@@ -225,7 +230,12 @@ async function runTicketSearch() {
 function applyTicketSearchListeners() {
   ticketSearchForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await runTicketSearch();
+    try {
+      await runTicketSearch();
+    } catch (error) {
+      if (ticketSearchSummary) ticketSearchSummary.textContent = `Errore ricerca: ${error.message || error}`;
+      if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+    }
   });
 
   ticketSearchResetBtn?.addEventListener('click', async () => {
