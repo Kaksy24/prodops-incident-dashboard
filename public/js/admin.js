@@ -73,7 +73,7 @@ function applyTheme(theme) {
   document.body.classList.toggle('theme-dark', theme === 'dark');
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+  if (thumb) thumb.textContent = theme === 'dark' ? '☾' : '☀';
 }
 
 function defaultUiColors() {
@@ -308,7 +308,7 @@ function selectAdminColorTarget(chartId, label) {
 function syncAdminColorToggle() {
   if (!uiColorThemeToggleBtn) return;
   const thumb = uiColorThemeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? 'D' : 'L';
+  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? '☾' : '☀';
   uiColorThemeToggleBtn.setAttribute('aria-pressed', String(adminColorEditTheme === 'dark'));
   updateColorEditor();
 }

@@ -63,6 +63,7 @@ let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
 let currentShiftAutoRefreshTimer = null;
 let currentShiftAutoRefreshBusy = false;
+let ticketSubmitBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const chartPalette = [
   '#1f77b4',
@@ -553,6 +554,33 @@ function closeModal() {
   }, 260);
 }
 
+function setThemeToggleIcon(button, theme) {
+  if (!button) return;
+  button.setAttribute('aria-pressed', String(theme === 'dark'));
+  const thumb = button.querySelector('.switch-thumb');
+  if (thumb) thumb.textContent = theme === 'dark' ? '☾' : '☀';
+}
+
+function setTicketSubmitState(isBusy) {
+  ticketSubmitBusy = Boolean(isBusy);
+  if (ticketSubmitBtn) {
+    ticketSubmitBtn.disabled = ticketSubmitBusy;
+    ticketSubmitBtn.textContent = editingTicketId
+      ? (ticketSubmitBusy ? 'Salvataggio...' : 'Conferma Modifica')
+      : (ticketSubmitBusy ? 'Creazione...' : 'Crea Ticket');
+  }
+  document.querySelectorAll('.extra-submit-btn').forEach((btn) => {
+    btn.disabled = ticketSubmitBusy;
+    btn.textContent = ticketSubmitBusy ? 'Creazione...' : 'Crea Ticket';
+  });
+}
+
+function beginTicketSubmitLock() {
+  if (ticketSubmitBusy) return false;
+  setTicketSubmitState(true);
+  return true;
+}
+
 function revealModal() {
   if (modalCloseTimer) {
     clearTimeout(modalCloseTimer);
@@ -629,6 +657,7 @@ function clearExtraTicketCards() {
   if (extraTicketModals) extraTicketModals.innerHTML = '';
   extraTicketCounter = 0;
   applyMultiModalLayout();
+  setTicketSubmitState(false);
 }
 
 function renderPresetForTargets(template, descriptionInput, composerContainer) {
@@ -801,11 +830,40 @@ function createExtraTicketCard(incidentId) {
     positionAddSameIncidentBtn();
   });
   panel.querySelector('.extra-submit-btn')?.addEventListener('click', () => {
+    if (ticketSubmitBusy) return;
     ticketForm.requestSubmit();
   });
   extraTicketModals.appendChild(panel);
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
+}
+
+function collectExtraTicketPayloads(incidentId, defaultSeverity) {
+  const payloads = [];
+  const panels = [...document.querySelectorAll('.extra-ticket-modal')];
+  for (let index = 0; index < panels.length; index += 1) {
+    const panel = panels[index];
+    const extraDesc = panel.querySelector('.extra-description')?.value?.trim() || '';
+    const extraFab = panel.querySelector('.extra-fab')?.value || '';
+    const extraDt = panel.querySelector('.extra-datetime')?.value || '';
+    const userSeverity = panel.querySelector('.extra-severity')?.value;
+    const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || defaultSeverity || 1);
+    if (!extraDesc || !extraFab || !extraDt) {
+      const missing = [];
+      if (!extraDesc) missing.push('descrizione');
+      if (!extraFab) missing.push('FAB');
+      if (!extraDt) missing.push('data/ora');
+      throw new Error(`Ticket extra ${index + 1} incompleto: manca ${missing.join(', ')}`);
+    }
+    payloads.push({
+      incident_id: incidentId,
+      description: extraDesc,
+      fab: extraFab,
+      ticket_time: new Date(extraDt).toISOString(),
+      severity: extraSeverity
+    });
+  }
+  return payloads;
 }
 
 function openModal(incidentId) {
@@ -1453,13 +1511,16 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
 
 ticketForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!beginTicketSubmitLock()) return;
   const incident_id = Number(incidentTypeInput.value || 0);
-  const incident_name = incidentIdToNameMap[String(incident_id)] || '';
   const description = document.getElementById('description').value.trim();
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
   const ticket_time_local = ticketTimestampInput.value;
-  if (!incident_id || !description || !fab || !ticket_time_local) return alert('Compila incident, descrizione, data/ora e FAB');
+  if (!incident_id || !description || !fab || !ticket_time_local) {
+    setTicketSubmitState(false);
+    return alert('Compila incident, descrizione, data/ora e FAB');
+  }
   const ticket_time = new Date(ticket_time_local).toISOString();
   let createdTicketIds = [];
   try {
@@ -1472,21 +1533,7 @@ ticketForm.addEventListener('submit', async (e) => {
     } else {
       const payloads = [{ incident_id, description, fab, ticket_time, severity }];
       const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
-      document.querySelectorAll('.extra-ticket-modal').forEach((panel) => {
-        const extraDesc = panel.querySelector('.extra-description')?.value?.trim() || '';
-        const extraFab = panel.querySelector('.extra-fab')?.value || '';
-        const extraDt = panel.querySelector('.extra-datetime')?.value || '';
-        if (!extraDesc || !extraFab || !extraDt) return;
-        const userSeverity = panel.querySelector('.extra-severity')?.value;
-        const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || severityCfg.severity_default || 1);
-        payloads.push({
-          incident_id,
-          description: extraDesc,
-          fab: extraFab,
-          ticket_time: new Date(extraDt).toISOString(),
-          severity: extraSeverity
-        });
-      });
+      payloads.push.apply(payloads, collectExtraTicketPayloads(incident_id, severityCfg.severity_default));
 
       const createdTickets = await Promise.all(payloads.map((payload) => fetchJson('/api/tickets', {
         method: 'POST',
@@ -1505,6 +1552,15 @@ ticketForm.addEventListener('submit', async (e) => {
   } catch (error) {
     const message = String(error?.message || 'Errore durante il salvataggio ticket');
     alert(`Inserimento ticket fallito: ${message}`);
+  } finally {
+    setTicketSubmitState(false);
+  }
+});
+
+ticketSubmitBtn?.addEventListener('click', (event) => {
+  if (ticketSubmitBusy) {
+    event.preventDefault();
+    event.stopPropagation();
   }
 });
 
@@ -1543,7 +1599,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   });
 })();
 
-function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); if(themeToggleBtn){ themeToggleBtn.setAttribute('aria-pressed', String(theme==='dark')); const thumb = themeToggleBtn.querySelector('.switch-thumb'); if(thumb) thumb.textContent = theme==='dark' ? 'D' : 'L'; }}
+function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); setThemeToggleIcon(themeToggleBtn, theme); }
 const savedTheme = localStorage.getItem('theme') || 'light'; applyTheme(savedTheme);
 if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next); await refreshColorSensitiveViews();});}
 

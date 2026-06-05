@@ -447,7 +447,10 @@ function mysql_enabled()
 function mysql_conn()
 {
     static $conn = null;
-    if ($conn !== null) return $conn;
+    if ($conn !== null) {
+        if ((is_object($conn) && $conn instanceof mysqli) || is_resource($conn)) return $conn;
+        $conn = null;
+    }
     if (!mysql_enabled() || !function_exists('mysqli_connect')) return null;
     $cfg = runtime_config_values();
     $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
@@ -495,7 +498,10 @@ function mysql_conn()
             @mysqli_select_db($conn, $db);
         }
     }
-    if (!$ok) return null;
+    if (!$ok) {
+        $conn = null;
+        return null;
+    }
     @mysqli_set_charset($conn, 'utf8');
     return $conn;
 }

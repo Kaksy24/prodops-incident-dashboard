@@ -104,7 +104,7 @@ function applyTheme(theme) {
   if (themeToggleBtn) {
     themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
     const thumb = themeToggleBtn.querySelector('.switch-thumb');
-    if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+    if (thumb) thumb.textContent = theme === 'dark' ? '☾' : '☀';
   }
 }
 
