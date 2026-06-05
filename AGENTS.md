@@ -82,6 +82,15 @@ These rules apply to the entire repository.
 - Only deploy to InfinityFree when the user explicitly asks to push live.
 - If a change is only local, keep it local and do not modify the live environment.
 - GitHub should always be updated from the repository when the user asks for a push; live deploys are separate and only happen on request.
+- InfinityFree FTP details for live deploy:
+  - Site/domain: `ticketmanager.infinityfree.io`
+  - FTP host: `ftpupload.net`
+  - FTP user: `if0_42089952`
+  - FTP port: `21`
+  - Remote folder: `/htdocs`
+  - Local deploy source: `C:\Users\antod\Documents\Codex\ProdOps\deploy\htdocs`
+  - FTP password is intentionally not committed; read it from local ignored file `.codex-local/infinityfree-ftp.md` if present.
+- See `DEPLOY.md` for the repeatable deploy procedure and new-PC setup notes.
 
 ## Git
 - Keep commits focused and descriptive.
