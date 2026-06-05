@@ -465,13 +465,13 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
-  min-height: 232px;
-  padding: 0 2px 22px;
+  min-height: 258px;
+  padding: 0 2px 38px;
 }
 .chart-bars-wrap::before {
   content: "";
   position: absolute;
-  inset: 0 0 22px 0;
+  inset: 0 0 38px 0;
   background-image: linear-gradient(to top, rgba(120, 146, 176, .28) 1px, transparent 1px);
   background-size: 100% 25%;
   pointer-events: none;
@@ -601,7 +601,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 }
 .chart-line-label {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
 }
 .chart-line-value {
@@ -613,7 +613,21 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 .bar-fill { width: 100%; max-width: 54px; min-height: 0; background: linear-gradient(180deg, var(--brand-2), var(--brand)); border-radius: 4px 4px 2px 2px; }
 .bar-fill { position: relative; display: flex; align-items: center; justify-content: center; }
 .bar-pct { color: #fff; font-size: 0.68rem; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
-.bar-label { position: absolute; top: calc(100% + 5px); font-weight: 600; color: var(--muted); font-size: .88rem; white-space: nowrap; }
+.bar-label {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(76px, calc(100% + 8px));
+  text-align: center;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.1;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .bar-value { font-weight: 700; font-size: .95rem; margin-bottom: 5px; }
 .modal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(7,18,32,.58); padding: 16px; backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .26s ease; }
 .modal.show,
