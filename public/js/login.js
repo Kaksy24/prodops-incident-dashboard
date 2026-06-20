@@ -9,8 +9,8 @@ async function readJsonResponse(res) {
 async function redirectIfLoggedIn() {
   const res = await fetch('/api/me', { credentials: 'same-origin' });
   if (!res.ok) return;
-  const data = await readJsonResponse(res);
-  window.location.replace(data.user?.role === 'admin' ? '/admin.html' : '/index.html');
+  await readJsonResponse(res);
+  window.location.replace('/index.html');
 }
 
 if (new URLSearchParams(window.location.search).get('error') === '1') {

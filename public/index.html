@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incident Dashboard</title>
-  <link rel="stylesheet" href="/public/css/styles.css?v=1.1.3" />
+  <link rel="stylesheet" href="/public/css/styles.css?v=1.3.4" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
-      <div class="sidebar-top"><img class="brand-logo" src="/public/assets/prodops-logo.svg?v=1.1.3" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">☀</span></span></button></div>
+      <div class="sidebar-top"><img class="brand-logo" src="/public/assets/prodops-logo.svg?v=1.3.4" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">☀</span></span></button></div>
       <nav class="menu" id="menu"></nav>
       <div class="sidebar-actions">
         <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
@@ -22,7 +22,12 @@
     <main class="content">
       <section class="panel previous-shifts-panel">
         <button id="previousShiftsToggle" class="section-toggle" type="button" aria-expanded="false">
-          <span>Ticket turni precedenti</span>
+          <span class="section-toggle-main">
+            <span>Ticket turni precedenti</span>
+            <span id="previousShiftCounters" class="ticket-counters">
+              <span class="ticket-counter-chip"><strong id="previousShiftTotalCount">0</strong><span>Totale</span></span>
+            </span>
+          </span>
           <span class="section-toggle-icon">+</span>
         </button>
         <div id="previousShiftsContent" class="previous-shifts-content" hidden></div>
@@ -30,7 +35,14 @@
 
       <section class="panel-grid">
         <article class="panel">
-          <h3>Ticket turno Corrente</h3>
+          <div class="panel-heading-row panel-heading-with-counters">
+            <h3>Ticket turno Corrente</h3>
+            <div id="currentShiftCounters" class="ticket-counters">
+              <span class="ticket-counter-chip"><strong id="currentShiftTotalCount">0</strong><span>Totali</span></span>
+              <span class="ticket-counter-chip"><strong id="currentShiftMineCount">0</strong><span>Tuoi</span></span>
+              <span class="ticket-counter-chip"><strong id="currentShiftTeamCount">0</strong><span>Team</span></span>
+            </div>
+          </div>
           <ul id="ticketList" class="ticket-list"></ul>
         </article>
       </section>
@@ -203,10 +215,11 @@
     <button id="addSameIncidentBtn" class="add-same-incident-btn" type="button" title="Aggiungi ticket stesso incident">+</button>
   </div>
 
-  <script src="/public/js/script.js?v=1.1.3"></script>
-  <div class="app-version-badge">v1.1.3</div>
+  <script src="/public/js/script.js?v=1.3.4"></script>
+  <div class="app-version-badge">v1.3.4</div>
 </body>
 </html>
+
 
 
 

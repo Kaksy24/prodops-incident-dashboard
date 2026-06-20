@@ -1,1 +1,1013 @@
-{"users":[{"id":1,"username":"admin","password":"","role":"admin","team":"A"},{"id":2,"username":"user","password":"","role":"user","team":"A"},{"id":4,"username":"FaillaV","password":"","role":"admin","team":"D"},{"id":5,"username":"DibellaA","password":"","role":"admin","team":"B"},{"id":6,"username":"NicosiaF","password":"","role":"admin","team":"B"}],"categories":[{"id":1,"name":"AUTOMATION","sort_order":1,"incidents":[{"id":1,"category_id":1,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":[]},{"id":2,"category_id":1,"name":"Reset Interfaccia","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":2,"presets":["Richiesto Reset Interfaccia per la macchina: [[text:macchina]]\nMotivo del reset: [[select:motivo|busy,comm.down,timeout,GUI down,stato automazione non corretto]]"]},{"id":3,"category_id":1,"name":"Switch display","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":3,"presets":["Switch display per entity: [[text:macchina]] su IP: [[text:Nuovo IP]]"]}]},{"id":2,"name":"WMM","sort_order":2,"incidents":[{"id":4,"category_id":2,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":[]},{"id":19,"category_id":2,"name":"ADSC","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":2,"presets":["Effettuato ADSC per lotto: [[text:Lotto]] allo step: [[text:Step]]"]},{"id":6,"category_id":2,"name":"SLTA","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":3,"presets":["Eseguito SLTA su lotto [[text:lotto]] all' attributo [[text:attributo]] da [[text:vecchio attr]] a [[text:nuovo attr]]"]}]},{"id":3,"name":"SICMA","sort_order":3,"incidents":[{"id":7,"category_id":3,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"WSIC","sort_order":1,"presets":[]},{"id":8,"category_id":3,"name":"ADSC","severity_default":1,"severity_mode":"default","fab_default":"WSIC","sort_order":2,"presets":["Eseguito ADSC per Box/Lotto [[text:Lotto/Box]] alla sequence [[text:Sequence]]"]},{"id":9,"category_id":3,"name":"KO MONO","severity_default":1,"severity_mode":"default","fab_default":"WSIC","sort_order":3,"presets":["Segnalato KO MONO per lotto: [[text:Lotto]] eseguito FINE-PROD"]}]},{"id":4,"name":"ROBOTIZATION","sort_order":4,"incidents":[{"id":10,"category_id":4,"name":"Generic","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":1,"presets":[]},{"id":11,"category_id":4,"name":"Restart ISL41","severity_default":1,"severity_mode":"default","fab_default":"M5","sort_order":2,"presets":["Richiesto reset robotizzazione ISL41"]},{"id":12,"category_id":4,"name":"Restart ISL47 (SARA)","severity_default":1,"severity_mode":"default","fab_default":"M5","sort_order":3,"presets":["Richiesto reset Robot SARA per: [[text:Causa reset]]"]}]},{"id":6,"name":"SEALING","sort_order":5,"incidents":[{"id":18,"category_id":6,"name":"Generic","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":1,"presets":[]}]},{"id":5,"name":"On Duty","sort_order":6,"incidents":[{"id":13,"category_id":5,"name":"Robotization","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":14,"category_id":5,"name":"Application","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":2,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":15,"category_id":5,"name":"Network","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":3,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":16,"category_id":5,"name":"Automation","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":4,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":17,"category_id":5,"name":"SICMA","severity_default":1,"severity_mode":"user","fab_default":"WSIC","sort_order":5,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]}]}],"incidents":[{"id":1,"category_id":1,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":[]},{"id":2,"category_id":1,"name":"Reset Interfaccia","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":2,"presets":["Richiesto Reset Interfaccia per la macchina: [[text:macchina]]\nMotivo del reset: [[select:motivo|busy,comm.down,timeout,GUI down,stato automazione non corretto]]"]},{"id":3,"category_id":1,"name":"Switch display","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":3,"presets":["Switch display per entity: [[text:macchina]] su IP: [[text:Nuovo IP]]"]},{"id":4,"category_id":2,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":[]},{"id":19,"category_id":2,"name":"ADSC","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":2,"presets":["Effettuato ADSC per lotto: [[text:Lotto]] allo step: [[text:Step]]"]},{"id":6,"category_id":2,"name":"SLTA","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":3,"presets":["Eseguito SLTA su lotto [[text:lotto]] all' attributo [[text:attributo]] da [[text:vecchio attr]] a [[text:nuovo attr]]"]},{"id":7,"category_id":3,"name":"Generic","severity_default":1,"severity_mode":"user","fab_default":"WSIC","sort_order":1,"presets":[]},{"id":8,"category_id":3,"name":"ADSC","severity_default":1,"severity_mode":"default","fab_default":"WSIC","sort_order":2,"presets":["Eseguito ADSC per Box/Lotto [[text:Lotto/Box]] alla sequence [[text:Sequence]]"]},{"id":9,"category_id":3,"name":"KO MONO","severity_default":1,"severity_mode":"default","fab_default":"WSIC","sort_order":3,"presets":["Segnalato KO MONO per lotto: [[text:Lotto]] eseguito FINE-PROD"]},{"id":10,"category_id":4,"name":"Generic","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":1,"presets":[]},{"id":11,"category_id":4,"name":"Restart ISL41","severity_default":1,"severity_mode":"default","fab_default":"M5","sort_order":2,"presets":["Richiesto reset robotizzazione ISL41"]},{"id":12,"category_id":4,"name":"Restart ISL47 (SARA)","severity_default":1,"severity_mode":"default","fab_default":"M5","sort_order":3,"presets":["Richiesto reset Robot SARA per: [[text:Causa reset]]"]},{"id":18,"category_id":6,"name":"Generic","severity_default":1,"severity_mode":"default","fab_default":"","sort_order":1,"presets":[]},{"id":13,"category_id":5,"name":"Robotization","severity_default":1,"severity_mode":"user","fab_default":"","sort_order":1,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":14,"category_id":5,"name":"Application","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":2,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":15,"category_id":5,"name":"Network","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":3,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":16,"category_id":5,"name":"Automation","severity_default":2,"severity_mode":"user","fab_default":"","sort_order":4,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]},{"id":17,"category_id":5,"name":"SICMA","severity_default":1,"severity_mode":"user","fab_default":"WSIC","sort_order":5,"presets":["[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"]}],"tickets":[{"id":4,"incident_id":2,"incident_name":"Reset Interfaccia","description":"Communication down","fab":"M5","created_at":"2026-06-03T10:55:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":5,"incident_id":14,"incident_name":"Application","description":"Eseguito ADSC per 235626 all'operazione 4444","fab":"WSIC","created_at":"2026-06-03T14:00:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":6,"incident_id":14,"incident_name":"Application","description":"Eseguito ADSC per 346346 all'operazione 2345","fab":"WSIC","created_at":"2026-06-03T14:00:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":7,"incident_id":1,"incident_name":"Generic","description":"Prova problema high","fab":"L1","created_at":"2026-06-04T05:42:00+00:00","severity":3,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":8,"incident_id":4,"incident_name":"Generic","description":"richiesto reboot","fab":"M5","created_at":"2026-06-04T05:44:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":9,"incident_id":13,"incident_name":"Robotization","description":"[16:00]: Contattato reperibile\n\n[17:00]: Arrivo Reperibile in sede\n\n[17:30]: Veniamo informati dal reperibile che la problematica riguarda la cinghia del manipolatore\n\n[18:00]: Fine intervento","fab":"M5","created_at":"2026-06-04T06:14:00+00:00","severity":3,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":10,"incident_id":18,"incident_name":"Generic","description":"test prova ews","fab":"EWS","created_at":"2026-06-04T06:17:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":11,"incident_id":8,"incident_name":"ADSC","description":"Eseguito ADSC per Box/Lotto 8CRM1974 alla sequence 23","fab":"WSIC","created_at":"2026-06-04T06:18:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":12,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: 526262 allo step: 4000","fab":"NRK","created_at":"2026-06-04T06:21:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":13,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: 3246346 allo step: 1000","fab":"L1","created_at":"2026-06-04T06:21:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":14,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: 5925000 allo step: BEGIN","fab":"M5","created_at":"2026-06-04T06:38:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":15,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: V666312 allo step: 9999","fab":"L1","created_at":"2026-06-04T06:39:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":16,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: P501050 allo step: 20","fab":"WSIC","created_at":"2026-06-04T06:39:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":17,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: 363636 allo step: 2444","fab":"L1","created_at":"2026-06-04T06:47:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":18,"incident_id":19,"incident_name":"ADSC","description":"Effettuato ADSC per lotto: 36664636 allo step: 637","fab":"NRK","created_at":"2026-06-04T06:47:00+00:00","severity":1,"owner_user_id":1,"owner_team":"A","can_edit":true},{"id":19,"incident_id":13,"incident_name":"Robotization","description":"[17:00]: Contattato reperibile\n\n[17:30]: Arrivo Reperibile in sede\n\n[22:20]: Veniamo informati dal reperibile che la problematica riguarda bla bla bla bla\n\n[23:00]: Fine intervento","fab":"M5","created_at":"2026-06-04T06:49:00+00:00","severity":4,"owner_user_id":1,"owner_team":"A","can_edit":true}],"counters":{"user":6,"category":6,"incident":19,"ticket":19},"ui_colors":{"charts":{"fabDay":{"light":"#0C5F8C","dark":"#24A0D8"},"catDay":{"light":"#16A0B6","dark":"#2EC4D6"},"fabYear":{"light":"#355A84","dark":"#1FB6FF"},"catYear":{"light":"#6B4EA6","dark":"#9B6CFF"},"teamYear":{"light":"#D97706","dark":"#F59E0B"},"severityYear":{"light":"#BE185D","dark":"#EC4899"}},"bars":{"fabDay":{"light":{"WSIC":"#640080","NRK":"#C25E00","M5":"#FF2E2E"},"dark":[]},"fabYear":{"light":{"WSIC":"#640080","NRK":"#C25E00","M5":"#FF2E2E"},"dark":[]},"catDay":{"light":{"SEALING":"#28BAD7","AUTOMATION":"#4ED728","On Duty":"#FF0F1B","SICMA":"#D606E5"},"dark":[]},"catYear":{"light":{"SEALING":"#28BAD7","AUTOMATION":"#4ED728","On Duty":"#FF0F1B","SICMA":"#D606E5"},"dark":[]}},"labels":{"categories":{"light":{"SEALING":"#28BAD7","AUTOMATION":"#4ED728","On Duty":"#FF0F1B","SICMA":"#D606E5"},"dark":[]},"fabs":{"light":{"WSIC":"#640080","NRK":"#C25E00","M5":"#FF2E2E"},"dark":[]},"teams":{"light":[],"dark":[]},"severities":{"light":[],"dark":[]}}}}
+{
+    "users": [
+        {
+            "id": 1,
+            "username": "admin",
+            "password": "admin",
+            "role": "admin",
+            "team": "A"
+        },
+        {
+            "id": 5,
+            "username": "DibellaA",
+            "password": "DibellaA",
+            "role": "admin",
+            "team": "B"
+        },
+        {
+            "id": 6,
+            "username": "NicosiaF",
+            "password": "NicosiaF",
+            "role": "admin",
+            "team": "B"
+        },
+        {
+            "id": 7,
+            "username": "user",
+            "password": "user",
+            "role": "user",
+            "team": "A"
+        }
+    ],
+    "categories": [
+        {
+            "id": 2,
+            "name": "WMM",
+            "sort_order": 1,
+            "incidents": [
+                {
+                    "id": 4,
+                    "category_id": 2,
+                    "name": "Generic",
+                    "severity_default": 1,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 1,
+                    "presets": []
+                },
+                {
+                    "id": 19,
+                    "category_id": 2,
+                    "name": "ADSC",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 2,
+                    "presets": [
+                        "Effettuato ADSC per lotto: [[text:Lotto]] allo step: [[text:Step]]"
+                    ]
+                },
+                {
+                    "id": 6,
+                    "category_id": 2,
+                    "name": "SLTA",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 3,
+                    "presets": [
+                        "Eseguito SLTA su lotto [[text:lotto]] all' attributo [[text:attributo]] da [[text:vecchio attr]] a [[text:nuovo attr]]"
+                    ]
+                }
+            ],
+            "hidden": false
+        },
+        {
+            "id": 1,
+            "name": "AUTOMATION",
+            "sort_order": 2,
+            "incidents": [
+                {
+                    "id": 1,
+                    "category_id": 1,
+                    "name": "Generic",
+                    "severity_default": 1,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 1,
+                    "presets": []
+                },
+                {
+                    "id": 2,
+                    "category_id": 1,
+                    "name": "Reset Interfaccia",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 2,
+                    "presets": [
+                        "Richiesto Reset Interfaccia per la macchina: [[text:macchina]]\nMotivo del reset: [[select:motivo|busy,comm.down,timeout,GUI down,stato automazione non corretto]]"
+                    ]
+                },
+                {
+                    "id": 3,
+                    "category_id": 1,
+                    "name": "Switch display",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 3,
+                    "presets": [
+                        "Switch display per entity: [[text:macchina]] su IP: [[text:Nuovo IP]]"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "name": "SICMA",
+            "sort_order": 3,
+            "incidents": [
+                {
+                    "id": 7,
+                    "category_id": 3,
+                    "name": "Generic",
+                    "severity_default": 1,
+                    "severity_mode": "user",
+                    "fab_default": "WSIC",
+                    "sort_order": 1,
+                    "presets": []
+                },
+                {
+                    "id": 8,
+                    "category_id": 3,
+                    "name": "ADSC",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "WSIC",
+                    "sort_order": 2,
+                    "presets": [
+                        "Eseguito ADSC per Box\/Lotto [[text:Lotto\/Box]] alla sequence [[text:Sequence]]"
+                    ]
+                },
+                {
+                    "id": 9,
+                    "category_id": 3,
+                    "name": "KO MONO",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "WSIC",
+                    "sort_order": 3,
+                    "presets": [
+                        "Segnalato KO MONO per lotto: [[text:Lotto]] eseguito FINE-PROD"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "name": "ROBOTIZATION",
+            "sort_order": 4,
+            "incidents": [
+                {
+                    "id": 10,
+                    "category_id": 4,
+                    "name": "Generic",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 1,
+                    "presets": []
+                },
+                {
+                    "id": 11,
+                    "category_id": 4,
+                    "name": "Restart ISL41",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "M5",
+                    "sort_order": 2,
+                    "presets": [
+                        "Richiesto reset robotizzazione ISL41"
+                    ]
+                },
+                {
+                    "id": 12,
+                    "category_id": 4,
+                    "name": "Restart ISL47 (SARA)",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "M5",
+                    "sort_order": 3,
+                    "presets": [
+                        "Richiesto reset Robot SARA per: [[text:Causa reset]]"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 6,
+            "name": "SEALING",
+            "sort_order": 5,
+            "incidents": [
+                {
+                    "id": 18,
+                    "category_id": 6,
+                    "name": "Generic",
+                    "severity_default": 1,
+                    "severity_mode": "default",
+                    "fab_default": "",
+                    "sort_order": 1,
+                    "presets": []
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "name": "On Duty",
+            "sort_order": 6,
+            "incidents": [
+                {
+                    "id": 13,
+                    "category_id": 5,
+                    "name": "Robotization",
+                    "severity_default": 1,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 1,
+                    "presets": [
+                        "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+                    ]
+                },
+                {
+                    "id": 14,
+                    "category_id": 5,
+                    "name": "Application",
+                    "severity_default": 2,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 2,
+                    "presets": [
+                        "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+                    ]
+                },
+                {
+                    "id": 15,
+                    "category_id": 5,
+                    "name": "Network",
+                    "severity_default": 2,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 3,
+                    "presets": [
+                        "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+                    ]
+                },
+                {
+                    "id": 16,
+                    "category_id": 5,
+                    "name": "Automation",
+                    "severity_default": 2,
+                    "severity_mode": "user",
+                    "fab_default": "",
+                    "sort_order": 4,
+                    "presets": [
+                        "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+                    ]
+                },
+                {
+                    "id": 17,
+                    "category_id": 5,
+                    "name": "SICMA",
+                    "severity_default": 1,
+                    "severity_mode": "user",
+                    "fab_default": "WSIC",
+                    "sort_order": 5,
+                    "presets": [
+                        "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 7,
+            "name": "prova nascosta",
+            "hidden": true,
+            "sort_order": 7
+        }
+    ],
+    "incidents": [
+        {
+            "id": 1,
+            "category_id": 1,
+            "name": "Generic",
+            "severity_default": 1,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 1,
+            "presets": []
+        },
+        {
+            "id": 2,
+            "category_id": 1,
+            "name": "Reset Interfaccia",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 2,
+            "presets": [
+                "Richiesto Reset Interfaccia per la macchina: [[dbselect:Macchina]]\nMotivo del reset: [[dbselect:Motivo]]"
+            ]
+        },
+        {
+            "id": 3,
+            "category_id": 1,
+            "name": "Switch display",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 3,
+            "presets": [
+                "Switch display per entity: [[text:macchina]] su IP: [[text:Nuovo IP]]"
+            ]
+        },
+        {
+            "id": 4,
+            "category_id": 2,
+            "name": "Generic",
+            "severity_default": 1,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 1,
+            "presets": []
+        },
+        {
+            "id": 19,
+            "category_id": 2,
+            "name": "ADSC",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 2,
+            "presets": [
+                "Effettuato ADSC per lotto: [[text:Lotto]] allo step: [[text:Step]]"
+            ]
+        },
+        {
+            "id": 6,
+            "category_id": 2,
+            "name": "SLTA",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 3,
+            "presets": [
+                "Eseguito SLTA su lotto [[text:lotto]] all' attributo [[text:attributo]] da [[text:vecchio attr]] a [[text:nuovo attr]]"
+            ]
+        },
+        {
+            "id": 7,
+            "category_id": 3,
+            "name": "Generic",
+            "severity_default": 1,
+            "severity_mode": "user",
+            "fab_default": "WSIC",
+            "sort_order": 1,
+            "presets": []
+        },
+        {
+            "id": 8,
+            "category_id": 3,
+            "name": "ADSC",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "WSIC",
+            "sort_order": 2,
+            "presets": [
+                "Eseguito ADSC per Box\/Lotto [[text:Lotto\/Box]] alla sequence [[text:Sequence]]"
+            ]
+        },
+        {
+            "id": 9,
+            "category_id": 3,
+            "name": "KO MONO",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "WSIC",
+            "sort_order": 3,
+            "presets": [
+                "Segnalato KO MONO per lotto: [[text:Lotto]] eseguito FINE-PROD"
+            ]
+        },
+        {
+            "id": 10,
+            "category_id": 4,
+            "name": "Generic",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 1,
+            "presets": []
+        },
+        {
+            "id": 11,
+            "category_id": 4,
+            "name": "Restart ISL41",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "M5",
+            "sort_order": 2,
+            "presets": [
+                "Richiesto reset robotizzazione ISL41"
+            ]
+        },
+        {
+            "id": 12,
+            "category_id": 4,
+            "name": "Restart ISL47 (SARA)",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "M5",
+            "sort_order": 3,
+            "presets": [
+                "Richiesto reset Robot SARA per: [[text:Causa reset]]"
+            ]
+        },
+        {
+            "id": 18,
+            "category_id": 6,
+            "name": "Generic",
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 1,
+            "presets": []
+        },
+        {
+            "id": 13,
+            "category_id": 5,
+            "name": "Robotization",
+            "severity_default": 1,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 1,
+            "presets": [
+                "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+            ]
+        },
+        {
+            "id": 14,
+            "category_id": 5,
+            "name": "Application",
+            "severity_default": 2,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 2,
+            "presets": [
+                "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+            ]
+        },
+        {
+            "id": 15,
+            "category_id": 5,
+            "name": "Network",
+            "severity_default": 2,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 3,
+            "presets": [
+                "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+            ]
+        },
+        {
+            "id": 16,
+            "category_id": 5,
+            "name": "Automation",
+            "severity_default": 2,
+            "severity_mode": "user",
+            "fab_default": "",
+            "sort_order": 4,
+            "presets": [
+                "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+            ]
+        },
+        {
+            "id": 17,
+            "category_id": 5,
+            "name": "SICMA",
+            "severity_default": 1,
+            "severity_mode": "user",
+            "fab_default": "WSIC",
+            "sort_order": 5,
+            "presets": [
+                "[[[text:Orario inizio intervento]]]: Contattato reperibile\n\n[[[text:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[text:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[text:Orario fine intervento]]]: Fine intervento"
+            ]
+        },
+        {
+            "id": 20,
+            "category_id": 2,
+            "name": "prova nascosta",
+            "hidden": true,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "sort_order": 4,
+            "presets": []
+        }
+    ],
+    "tickets": [
+        {
+            "id": 4,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Communication down",
+            "fab": "M5",
+            "created_at": "2026-06-03T12:55:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 5,
+            "incident_id": 14,
+            "incident_name": "Application",
+            "description": "Eseguito ADSC per 235626 all'operazione 4444",
+            "fab": "WSIC",
+            "created_at": "2026-06-03T16:00:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 6,
+            "incident_id": 14,
+            "incident_name": "Application",
+            "description": "Eseguito ADSC per 346346 all'operazione 2345",
+            "fab": "WSIC",
+            "created_at": "2026-06-03T16:00:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 7,
+            "incident_id": 1,
+            "incident_name": "Generic",
+            "description": "Prova problema high",
+            "fab": "L1",
+            "created_at": "2026-06-04T07:42:00+02:00",
+            "severity": 3,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 8,
+            "incident_id": 4,
+            "incident_name": "Generic",
+            "description": "richiesto reboot",
+            "fab": "M5",
+            "created_at": "2026-06-04T07:44:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 9,
+            "incident_id": 13,
+            "incident_name": "Robotization",
+            "description": "[16:00]: Contattato reperibile\n\n[17:00]: Arrivo Reperibile in sede\n\n[17:30]: Veniamo informati dal reperibile che la problematica riguarda la cinghia del manipolatore\n\n[18:00]: Fine intervento",
+            "fab": "M5",
+            "created_at": "2026-06-04T08:14:00+02:00",
+            "severity": 3,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 10,
+            "incident_id": 18,
+            "incident_name": "Generic",
+            "description": "test prova ews",
+            "fab": "EWS",
+            "created_at": "2026-06-04T08:17:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 11,
+            "incident_id": 8,
+            "incident_name": "ADSC",
+            "description": "Eseguito ADSC per Box\/Lotto 8CRM1974 alla sequence 23",
+            "fab": "WSIC",
+            "created_at": "2026-06-04T08:18:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 12,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: 526262 allo step: 4000",
+            "fab": "NRK",
+            "created_at": "2026-06-04T08:21:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 13,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: 3246346 allo step: 1000",
+            "fab": "L1",
+            "created_at": "2026-06-04T08:21:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 14,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: 5925000 allo step: BEGIN",
+            "fab": "M5",
+            "created_at": "2026-06-04T08:38:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 15,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: V666312 allo step: 9999",
+            "fab": "L1",
+            "created_at": "2026-06-04T08:39:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 16,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: P501050 allo step: 20",
+            "fab": "WSIC",
+            "created_at": "2026-06-04T08:39:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 17,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: 363636 allo step: 2444",
+            "fab": "L1",
+            "created_at": "2026-06-04T08:47:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 18,
+            "incident_id": 19,
+            "incident_name": "ADSC",
+            "description": "Effettuato ADSC per lotto: 36664636 allo step: 637",
+            "fab": "NRK",
+            "created_at": "2026-06-04T08:47:00+02:00",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 19,
+            "incident_id": 13,
+            "incident_name": "Robotization",
+            "description": "[17:00]: Contattato reperibile\n\n[17:30]: Arrivo Reperibile in sede\n\n[22:20]: Veniamo informati dal reperibile che la problematica riguarda bla bla bla bla\n\n[23:00]: Fine intervento",
+            "fab": "M5",
+            "created_at": "2026-06-04T08:49:00+02:00",
+            "severity": 4,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "can_edit": true
+        },
+        {
+            "id": 20,
+            "incident_id": 1,
+            "incident_name": "Generic",
+            "description": "main ticket",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-06-05T15:02:00+02:00"
+        },
+        {
+            "id": 21,
+            "incident_id": 1,
+            "incident_name": "Generic",
+            "description": "extra 1",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-06-05T15:02:00+02:00"
+        },
+        {
+            "id": 22,
+            "incident_id": 1,
+            "incident_name": "Generic",
+            "description": "extra 2",
+            "fab": "L1",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-06-05T15:02:00+02:00"
+        },
+        {
+            "id": 23,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-05T13:23:00+00:00"
+        },
+        {
+            "id": 24,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "L1",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-05T13:23:00+00:00"
+        },
+        {
+            "id": 25,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "EWS",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-05T13:23:00+00:00"
+        },
+        {
+            "id": 26,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: DIS05\nMotivo del reset: Busy",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-06-11T14:07:00+00:00"
+        },
+        {
+            "id": 27,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: wos04\nMotivo del reset: Busy",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-06-11T14:12:00+00:00"
+        },
+        {
+            "id": 28,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: wos04\nMotivo del reset: Busy",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-20T12:27:00+00:00"
+        },
+        {
+            "id": 29,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: dis05\nMotivo del reset: no comm",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-20T12:27:00+00:00"
+        },
+        {
+            "id": 30,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: lm05\nMotivo del reset: eqm001",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-06-20T12:27:00+00:00"
+        }
+    ],
+    "counters": {
+        "user": 7,
+        "category": 7,
+        "incident": 20,
+        "ticket": 30,
+        "preset_option_request": 6
+    },
+    "ui_colors": {
+        "charts": {
+            "fabDay": {
+                "light": "#0C5F8C",
+                "dark": "#24A0D8"
+            },
+            "catDay": {
+                "light": "#16A0B6",
+                "dark": "#2EC4D6"
+            },
+            "fabYear": {
+                "light": "#355A84",
+                "dark": "#1FB6FF"
+            },
+            "catYear": {
+                "light": "#6B4EA6",
+                "dark": "#9B6CFF"
+            },
+            "teamYear": {
+                "light": "#D97706",
+                "dark": "#F59E0B"
+            },
+            "severityYear": {
+                "light": "#BE185D",
+                "dark": "#EC4899"
+            }
+        },
+        "bars": {
+            "fabDay": {
+                "light": {
+                    "WSIC": "#640080",
+                    "NRK": "#C25E00",
+                    "M5": "#FF2E2E"
+                },
+                "dark": []
+            },
+            "fabYear": {
+                "light": {
+                    "WSIC": "#640080",
+                    "NRK": "#C25E00",
+                    "M5": "#FF2E2E"
+                },
+                "dark": []
+            },
+            "catDay": {
+                "light": {
+                    "SEALING": "#28BAD7",
+                    "AUTOMATION": "#4ED728",
+                    "On Duty": "#FF0F1B",
+                    "SICMA": "#D606E5"
+                },
+                "dark": []
+            },
+            "catYear": {
+                "light": {
+                    "SEALING": "#28BAD7",
+                    "AUTOMATION": "#4ED728",
+                    "On Duty": "#FF0F1B",
+                    "SICMA": "#D606E5"
+                },
+                "dark": []
+            }
+        },
+        "labels": {
+            "categories": {
+                "light": {
+                    "SEALING": "#28BAD7",
+                    "AUTOMATION": "#4ED728",
+                    "On Duty": "#FF0F1B",
+                    "SICMA": "#D606E5"
+                },
+                "dark": []
+            },
+            "fabs": {
+                "light": {
+                    "WSIC": "#640080",
+                    "NRK": "#C25E00",
+                    "M5": "#FF2E2E"
+                },
+                "dark": []
+            },
+            "teams": {
+                "light": [],
+                "dark": []
+            },
+            "severities": {
+                "light": [],
+                "dark": []
+            }
+        }
+    },
+    "preset_options": {
+        "motivo": [
+            "Busy",
+            "eqm001",
+            "no comm"
+        ],
+        "macchina": [
+            "dis05",
+            "wos04",
+            "lm05"
+        ]
+    },
+    "preset_option_requests": [
+        {
+            "id": 1,
+            "field_key": "motivo",
+            "field_label": "Motivo",
+            "value": "Busy",
+            "incident_id": 2,
+            "requested_by_user_id": 1,
+            "requested_by_username": "admin",
+            "status": "approved",
+            "created_at": "2026-06-11T14:07:51+00:00",
+            "reviewed_by_user_id": 1,
+            "reviewed_at": "2026-06-11T14:08:15+00:00"
+        },
+        {
+            "id": 2,
+            "field_key": "macchina",
+            "field_label": "Macchina",
+            "value": "DIS05",
+            "incident_id": 2,
+            "requested_by_user_id": 1,
+            "requested_by_username": "admin",
+            "status": "approved",
+            "created_at": "2026-06-11T14:07:58+00:00",
+            "reviewed_by_user_id": 1,
+            "reviewed_at": "2026-06-11T14:08:16+00:00"
+        },
+        {
+            "id": 3,
+            "field_key": "macchina",
+            "field_label": "Macchina",
+            "value": "wos04",
+            "incident_id": 2,
+            "requested_by_user_id": 1,
+            "requested_by_username": "admin",
+            "status": "approved",
+            "created_at": "2026-06-11T14:13:50+00:00",
+            "reviewed_by_user_id": 1,
+            "reviewed_at": "2026-06-11T14:14:54+00:00"
+        },
+        {
+            "id": 4,
+            "field_key": "motivo",
+            "field_label": "Motivo",
+            "value": "no comm",
+            "incident_id": 2,
+            "requested_by_user_id": 5,
+            "requested_by_username": "DibellaA",
+            "status": "approved",
+            "created_at": "2026-06-20T12:27:50+00:00",
+            "reviewed_by_user_id": 5,
+            "reviewed_at": "2026-06-20T12:28:55+00:00"
+        },
+        {
+            "id": 5,
+            "field_key": "macchina",
+            "field_label": "Macchina",
+            "value": "lm05",
+            "incident_id": 2,
+            "requested_by_user_id": 5,
+            "requested_by_username": "DibellaA",
+            "status": "approved",
+            "created_at": "2026-06-20T12:28:04+00:00",
+            "reviewed_by_user_id": 5,
+            "reviewed_at": "2026-06-20T12:28:54+00:00"
+        },
+        {
+            "id": 6,
+            "field_key": "motivo",
+            "field_label": "Motivo",
+            "value": "eqm001",
+            "incident_id": 2,
+            "requested_by_user_id": 5,
+            "requested_by_username": "DibellaA",
+            "status": "approved",
+            "created_at": "2026-06-20T12:28:14+00:00",
+            "reviewed_by_user_id": 5,
+            "reviewed_at": "2026-06-20T12:28:54+00:00"
+        }
+    ]
+}

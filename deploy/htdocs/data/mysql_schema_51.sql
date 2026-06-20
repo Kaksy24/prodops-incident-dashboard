@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS categories (
   id INT UNSIGNED NOT NULL,
   name VARCHAR(120) NOT NULL,
+  hidden TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_categories_sort (sort_order)
@@ -10,6 +11,7 @@ CREATE TABLE IF NOT EXISTS incidents (
   id INT UNSIGNED NOT NULL,
   category_id INT UNSIGNED NOT NULL,
   name VARCHAR(180) NOT NULL,
+  hidden TINYINT(1) NOT NULL DEFAULT 0,
   severity_default TINYINT UNSIGNED NOT NULL DEFAULT 1,
   severity_mode VARCHAR(20) NOT NULL DEFAULT 'default',
   fab_default VARCHAR(12) NOT NULL DEFAULT '',

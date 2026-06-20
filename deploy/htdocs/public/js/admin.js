@@ -4,6 +4,8 @@ const backToDashboardBtn = document.getElementById('backToDashboardBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const adminIncidentModal = document.getElementById('adminIncidentModal');
 const adminIncidentForm = document.getElementById('adminIncidentForm');
+const userCreateModal = document.getElementById('userCreateModal');
+const openUserCreateModalBtn = document.getElementById('openUserCreateModalBtn');
 const adminIncidentNameInput = document.getElementById('adminIncidentName');
 const adminIncidentPresetInput = document.getElementById('adminIncidentPreset');
 const adminSeverityDefaultSelect = document.getElementById('adminSeverityDefault');
@@ -13,6 +15,7 @@ const addPresetTextFieldBtn = document.getElementById('addPresetTextFieldBtn');
 const addPresetSelectFieldBtn = document.getElementById('addPresetSelectFieldBtn');
 const userCreateForm = document.getElementById('userCreateForm');
 const usersList = document.getElementById('usersList');
+const usersSummary = document.getElementById('usersSummary');
 const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
@@ -24,7 +27,23 @@ const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
+const currentAdminBadge = document.getElementById('currentAdminBadge');
+const catalogSummary = document.getElementById('catalogSummary');
+const adminTabButtons = [...document.querySelectorAll('[data-admin-tab]')];
+const adminTabPanels = [...document.querySelectorAll('[data-admin-panel]')];
+const userSearchInput = document.getElementById('userSearchInput');
+const userRoleFilter = document.getElementById('userRoleFilter');
+const userTeamFilter = document.getElementById('userTeamFilter');
+const usersTotalStat = document.getElementById('usersTotalStat');
+const usersAdminStat = document.getElementById('usersAdminStat');
+const usersOperatorStat = document.getElementById('usersOperatorStat');
+const usersTeamStat = document.getElementById('usersTeamStat');
+const presetRequestsList = document.getElementById('presetRequestsList');
+const presetRequestsSummary = document.getElementById('presetRequestsSummary');
+const presetOptionsManager = document.getElementById('presetOptionsManager');
+const presetOptionsSummary = document.getElementById('presetOptionsSummary');
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
+const adminTabStorageKey = 'prodops_admin_tab';
 
 let dragCategoryId = null;
 let dragIncidentId = null;
@@ -32,12 +51,16 @@ let dragIncidentCategoryId = null;
 let editingIncidentId = null;
 let adminOverlayPressStarted = false;
 let adminModalCloseTimer = null;
+let userCreateOverlayPressStarted = false;
+let userCreateModalCloseTimer = null;
 let currentAdminUser = null;
 let adminCategoriesCache = [];
 let adminUiColors = null;
 let adminChartStats = null;
 let adminColorEditTheme = 'light';
 let adminColorSelection = null;
+let adminUsersCache = [];
+let presetOptionsCache = [];
 const adminCharts = [
   { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
   { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
@@ -47,6 +70,25 @@ const adminCharts = [
   { key: 'severityYear', label: 'Severity Ticket' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
+
+function setAdminTab(tabName) {
+  const nextTab = adminTabPanels.some((panel) => panel.dataset.adminPanel === tabName) ? tabName : 'catalog';
+  adminTabButtons.forEach((button) => {
+    const isActive = button.dataset.adminTab === nextTab;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+  adminTabPanels.forEach((panel) => {
+    const isActive = panel.dataset.adminPanel === nextTab;
+    panel.classList.toggle('active', isActive);
+    panel.hidden = !isActive;
+  });
+  try {
+    localStorage.setItem(adminTabStorageKey, nextTab);
+  } catch (error) {
+    // ignore storage issues
+  }
+}
 
 function captureAdminUiState() {
   const openCategoryIds = [...adminMenu.querySelectorAll('.menu-category.open[data-category-id]')]
@@ -611,6 +653,40 @@ function openIncidentModal(incident) {
   });
 }
 
+function closeUserCreateModal() {
+  if (!userCreateModal) return;
+  if (userCreateModalCloseTimer) clearTimeout(userCreateModalCloseTimer);
+  userCreateModal.classList.remove('active');
+  userCreateModal.classList.add('closing');
+  userCreateModal.setAttribute('aria-hidden', 'true');
+  document.documentElement.classList.remove('modal-open');
+  document.body.classList.remove('modal-open');
+  userCreateModalCloseTimer = setTimeout(() => {
+    userCreateModal.classList.remove('show', 'closing');
+    userCreateModalCloseTimer = null;
+  }, 260);
+}
+
+function openUserCreateModal() {
+  if (!userCreateModal) return;
+  if (userCreateModalCloseTimer) {
+    clearTimeout(userCreateModalCloseTimer);
+    userCreateModalCloseTimer = null;
+  }
+  userCreateForm?.reset();
+  if (newUserRoleSelect) newUserRoleSelect.value = 'user';
+  if (newUserTeamSelect) newUserTeamSelect.value = 'A';
+  userCreateModal.classList.remove('closing');
+  userCreateModal.classList.add('show');
+  userCreateModal.setAttribute('aria-hidden', 'false');
+  document.documentElement.classList.add('modal-open');
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(() => {
+    userCreateModal.classList.add('active');
+    newUsernameInput?.focus();
+  });
+}
+
 async function fetchJson(url, options, attempt = 0) {
   const res = await fetch(url, options);
   const text = (await res.text()).replace(/^\uFEFF+/, '');
@@ -665,78 +741,329 @@ async function loadCurrentAdmin() {
   try {
     const data = await fetchJson('/api/me');
     currentAdminUser = data.user || null;
+    if (currentAdminBadge) currentAdminBadge.textContent = currentAdminUser ? `${currentAdminUser.username} · ${currentAdminUser.team || 'A'}` : 'Profilo non disponibile';
   } catch (error) {
     currentAdminUser = null;
+    if (currentAdminBadge) currentAdminBadge.textContent = 'Profilo non disponibile';
   }
+}
+
+function renderUsers() {
+  if (!usersList) return;
+  const search = String(userSearchInput?.value || '').trim().toLowerCase();
+  const roleFilter = String(userRoleFilter?.value || '');
+  const teamFilter = String(userTeamFilter?.value || '');
+  const adminCount = adminUsersCache.filter((user) => String(user.role || '') === 'admin').length;
+  const activeTeams = new Set(adminUsersCache.map((user) => String(user.team || 'A')));
+  const users = adminUsersCache.filter((user) => {
+    const matchesSearch = !search || String(user.username || '').toLowerCase().includes(search) || String(user.id).includes(search);
+    return matchesSearch && (!roleFilter || user.role === roleFilter) && (!teamFilter || user.team === teamFilter);
+  });
+
+  if (usersSummary) usersSummary.textContent = `${adminUsersCache.length} utenti configurati · ${users.length} visualizzati`;
+  if (usersTotalStat) usersTotalStat.textContent = String(adminUsersCache.length);
+  if (usersAdminStat) usersAdminStat.textContent = String(adminCount);
+  if (usersOperatorStat) usersOperatorStat.textContent = String(adminUsersCache.length - adminCount);
+  if (usersTeamStat) usersTeamStat.textContent = String(activeTeams.size);
+
+  if (!users.length) {
+    usersList.innerHTML = '<div class="users-empty muted">Nessun utente corrisponde ai filtri selezionati.</div>';
+    return;
+  }
+
+  const rows = users.map((user) => {
+    const isSelf = Number(user.id) === Number(currentAdminUser?.id);
+    const role = String(user.role || 'user');
+    const team = String(user.team || 'A');
+    const lastAdmin = role === 'admin' && adminCount <= 1;
+    const roleLocked = isSelf || lastAdmin;
+    const deleteLocked = isSelf || lastAdmin;
+    const lockReason = isSelf ? 'Il tuo ruolo non può essere modificato qui' : 'Deve restare almeno un amministratore';
+    const username = escapeHtml(user.username);
+    const initial = escapeHtml(String(user.username || '?').charAt(0).toUpperCase());
+    return `
+      <tr class="user-table-row ${isSelf ? 'current-user-row' : ''}" data-user-id="${Number(user.id)}">
+        <td>
+          <div class="user-table-identity">
+            <span class="user-avatar" aria-hidden="true">${initial}</span>
+            <div>
+              <div class="user-table-name">${username} ${isSelf ? '<span class="current-user-pill">Tu</span>' : ''}</div>
+              <div class="user-card-meta"><span class="user-status"><i></i> Attivo</span><span class="user-row-id">ID #${Number(user.id)}</span></div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <select class="user-role-select" aria-label="Ruolo ${username}" data-user-id="${Number(user.id)}" ${roleLocked ? `disabled title="${lockReason}"` : ''}>
+            ${['user', 'admin'].map((item) => `<option value="${item}" ${role === item ? 'selected' : ''}>${item === 'admin' ? 'Amministratore' : 'Operatore'}</option>`).join('')}
+          </select>
+        </td>
+        <td>
+          <select class="user-team-select" aria-label="Team ${username}" data-user-id="${Number(user.id)}">
+            ${['A', 'B', 'C', 'D', 'E'].map((item) => `<option value="${item}" ${team === item ? 'selected' : ''}>Team ${item}</option>`).join('')}
+          </select>
+        </td>
+        <td><input class="user-password-input" aria-label="Nuova password ${username}" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" autocomplete="new-password" /></td>
+        <td><span class="user-table-note">${roleLocked ? escapeHtml(lockReason) : 'Modificabile'}</span></td>
+        <td>
+          <div class="user-actions-cell">
+            <button type="button" class="save-user-btn primary" data-user-id="${Number(user.id)}">Salva</button>
+            <button type="button" class="delete-user-btn" data-user-id="${Number(user.id)}" data-username="${username}" ${deleteLocked ? `disabled title="${lockReason}"` : ''}>Elimina</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  usersList.innerHTML = `
+    <div class="users-table-wrap">
+      <table class="users-table">
+        <thead>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Nuova password</th><th>Protezioni</th><th>Azioni</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+
+  usersList.querySelectorAll('.save-user-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const userId = Number(btn.dataset.userId);
+      const row = btn.closest('.user-table-row');
+      const roleSelect = row?.querySelector('.user-role-select');
+      const teamSelect = row?.querySelector('.user-team-select');
+      const passwordInput = row?.querySelector('.user-password-input');
+      const current = adminUsersCache.find((user) => Number(user.id) === userId);
+      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A' };
+      const password = (passwordInput?.value || '').trim();
+      if (password) payload.password = password;
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Salvataggio...';
+        await fetchJson(`/api/users/${userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        await loadUsers();
+      } catch (error) {
+        alert(`Errore salvataggio utente: ${error.message || error}`);
+        btn.disabled = false;
+        btn.textContent = 'Salva';
+      }
+    });
+  });
+
+  usersList.querySelectorAll('.delete-user-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const userId = Number(btn.dataset.userId);
+      const username = btn.dataset.username || '';
+      if (!userId || !confirm(`Eliminare definitivamente l'utente "${username}"?`)) return;
+      try {
+        await fetchJson(`/api/users/${userId}`, { method: 'DELETE' });
+        await loadUsers();
+      } catch (error) {
+        alert(`Errore eliminazione utente: ${error.message || error}`);
+      }
+    });
+  });
 }
 
 async function loadUsers() {
   if (!usersList) return;
   try {
-    const users = await fetchJson('/api/users');
-    if (!users.length) {
-      usersList.innerHTML = '<div class="user-row"><span class="muted">Nessun utente</span></div>';
+    adminUsersCache = await fetchJson('/api/users');
+    renderUsers();
+  } catch (error) {
+    if (usersSummary) usersSummary.textContent = 'Impossibile caricare gli utenti.';
+    usersList.innerHTML = `<div class="users-empty muted">Errore caricamento utenti: ${escapeHtml(error.message || error)}</div>`;
+  }
+}
+
+async function loadPresetOptionRequests() {
+  if (!presetRequestsList) return;
+  try {
+    const requests = await fetchJson('/api/admin/preset-option-requests');
+    if (presetRequestsSummary) presetRequestsSummary.textContent = `${requests.length} richieste pending`;
+    if (!requests.length) {
+      presetRequestsList.innerHTML = '<div class="users-empty muted">Nessuna nuova opzione da revisionare.</div>';
       return;
     }
-    usersList.innerHTML = users.map((user) => {
-      const isSelf = Number(user.id) === Number(currentAdminUser?.id);
-      return `
-        <div class="user-row">
-          <span class="user-row-id">ID ${Number(user.id)}</span>
-          <span>${escapeHtml(user.username)}</span>
-          <strong>${escapeHtml(user.role)}</strong>
-          <input class="user-password-input" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" ${isSelf ? 'disabled' : ''} />
-          <select class="user-team-select" data-user-id="${Number(user.id)}" ${isSelf ? 'disabled' : ''}>
-            ${['A', 'B', 'C', 'D', 'E'].map((team) => `<option value="${team}" ${String(user.team || 'A') === team ? 'selected' : ''}>${team}</option>`).join('')}
-          </select>
-          <button type="button" class="save-user-team-btn" data-user-id="${Number(user.id)}" ${isSelf ? 'disabled' : ''}>Salva</button>
-          <button type="button" class="delete-user-btn" data-user-id="${Number(user.id)}" data-username="${escapeHtml(user.username)}" ${isSelf ? 'disabled' : ''}>X</button>
+    presetRequestsList.innerHTML = requests.map((request) => `
+      <article class="preset-request-card" data-request-id="${Number(request.id)}">
+        <div class="preset-request-main">
+          <span class="preset-request-field">${escapeHtml(request.field_label || request.field_key)}</span>
+          <strong>${escapeHtml(request.value)}</strong>
+          <span class="muted">Proposto da ${escapeHtml(request.requested_by_username || `utente #${request.requested_by_user_id}`)}${Number(request.incident_id) > 0 ? ` · Incident #${Number(request.incident_id)}` : ''}</span>
         </div>
-      `;
-    }).join('');
+        <div class="preset-request-actions">
+          <button type="button" class="reject-preset-request-btn" data-request-id="${Number(request.id)}">Rifiuta</button>
+          <button type="button" class="approve-preset-request-btn primary" data-request-id="${Number(request.id)}">Approva e aggiungi al DB</button>
+        </div>
+      </article>
+    `).join('');
 
-    usersList.querySelectorAll('.save-user-team-btn').forEach((btn) => {
+    presetRequestsList.querySelectorAll('.approve-preset-request-btn, .reject-preset-request-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const userId = Number(btn.dataset.userId);
-        if (!userId) return;
-        const row = btn.closest('.user-row');
-        const teamSelect = row?.querySelector('.user-team-select');
-        const passwordInput = row?.querySelector('.user-password-input');
-        const team = teamSelect?.value || 'A';
-        const password = (passwordInput?.value || '').trim();
+        const requestId = Number(btn.dataset.requestId);
+        const action = btn.classList.contains('approve-preset-request-btn') ? 'approve' : 'reject';
         try {
-          const payload = { team };
-          if (password) payload.password = password;
-          await fetchJson(`/api/users/${userId}`, {
+          btn.disabled = true;
+          await fetchJson(`/api/admin/preset-option-requests/${requestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ action })
           });
-          if (passwordInput) passwordInput.value = '';
-          await loadUsers();
+          await loadPresetOptionRequests();
         } catch (error) {
-          alert(`Errore salvataggio team: ${error.message || error}`);
-        }
-      });
-    });
-
-    usersList.querySelectorAll('.delete-user-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const userId = Number(btn.dataset.userId);
-        const username = btn.dataset.username || '';
-        if (!userId) return;
-        const ok = confirm(`Eliminare utente "${username}"?`);
-        if (!ok) return;
-        try {
-          await fetchJson(`/api/users/${userId}`, { method: 'DELETE' });
-          await loadUsers();
-        } catch (error) {
-          alert(`Errore eliminazione utente: ${error.message || error}`);
+          alert(`Errore revisione opzione: ${error.message || error}`);
+          btn.disabled = false;
         }
       });
     });
   } catch (error) {
-    usersList.innerHTML = `<div class="user-row"><span class="muted">Errore caricamento utenti: ${escapeHtml(error.message || error)}</span></div>`;
+    if (presetRequestsSummary) presetRequestsSummary.textContent = 'Errore caricamento';
+    presetRequestsList.innerHTML = `<div class="users-empty muted">Errore caricamento richieste: ${escapeHtml(error.message || error)}</div>`;
+  }
+}
+
+function renderPresetOptionsManager() {
+  if (!presetOptionsManager) return;
+  const fields = Array.isArray(presetOptionsCache) ? presetOptionsCache : [];
+  const totalOptions = fields.reduce((sum, field) => sum + (Array.isArray(field.options) ? field.options.length : 0), 0);
+  if (presetOptionsSummary) presetOptionsSummary.textContent = `${fields.length} menu · ${totalOptions} opzioni`;
+  if (!fields.length) {
+    presetOptionsManager.innerHTML = '<div class="users-empty muted">Nessun menu approvato presente nel database.</div>';
+    return;
+  }
+  presetOptionsManager.innerHTML = `<div class="preset-options-grid">${fields.map((field) => {
+    const options = Array.isArray(field.options) ? field.options : [];
+    const rows = options.length ? options.map((option) => `
+      <tr data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">
+        <td class="preset-option-value-cell">${escapeHtml(option)}</td>
+        <td>
+          <div class="preset-option-actions">
+            <button type="button" class="secondary preset-option-edit-btn" data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">Modifica</button>
+            <button type="button" class="preset-option-delete-btn" data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">Elimina</button>
+          </div>
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="2" class="preset-option-empty muted">Nessuna opzione approvata.</td></tr>`;
+    return `
+      <article class="preset-option-card" data-field-key="${escapeHtml(field.field_key)}">
+        <div class="preset-option-card-header">
+          <div>
+            <h4>${escapeHtml(field.field_label || field.field_key)}</h4>
+            <div class="preset-option-key">${escapeHtml(field.field_key)}</div>
+          </div>
+          <div class="admin-summary-chip preset-option-count">${options.length} elementi</div>
+        </div>
+        <div class="preset-option-add-row">
+          <input type="text" class="preset-option-new-input" data-field-key="${escapeHtml(field.field_key)}" placeholder="Nuovo elemento approvato" />
+          <button type="button" class="primary preset-option-add-btn" data-field-key="${escapeHtml(field.field_key)}" data-field-label="${escapeHtml(field.field_label || field.field_key)}">Aggiungi</button>
+        </div>
+        <table class="preset-option-table">
+          <thead>
+            <tr>
+              <th>Valore</th>
+              <th>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </article>
+    `;
+  }).join('')}</div>`;
+
+  presetOptionsManager.querySelectorAll('.preset-option-add-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const fieldKey = btn.dataset.fieldKey || '';
+      const fieldLabel = btn.dataset.fieldLabel || fieldKey;
+      const input = presetOptionsManager.querySelector(`.preset-option-new-input[data-field-key="${fieldKey}"]`);
+      const value = (input?.value || '').trim();
+      if (!value) {
+        alert('Inserisci un nuovo elemento da aggiungere.');
+        return;
+      }
+      try {
+        btn.disabled = true;
+        await fetchJson('/api/admin/preset-options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field_key: fieldKey, field_label: fieldLabel, value })
+        });
+        await loadPresetOptionsManager();
+      } catch (error) {
+        alert(`Errore aggiunta elemento: ${error.message || error}`);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  presetOptionsManager.querySelectorAll('.preset-option-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const fieldKey = btn.dataset.fieldKey || '';
+      const originalValue = btn.dataset.optionValue || '';
+      const row = btn.closest('tr');
+      if (!row) return;
+      row.innerHTML = `
+        <td><input type="text" class="preset-option-edit-input" value="${escapeHtml(originalValue)}" /></td>
+        <td>
+          <div class="preset-option-actions">
+            <button type="button" class="primary preset-option-save-btn">Salva</button>
+            <button type="button" class="secondary preset-option-cancel-btn">Annulla</button>
+          </div>
+        </td>
+      `;
+      row.querySelector('.preset-option-save-btn')?.addEventListener('click', async () => {
+        const nextValue = (row.querySelector('.preset-option-edit-input')?.value || '').trim();
+        if (!nextValue) {
+          alert('Il valore non puo essere vuoto.');
+          return;
+        }
+        try {
+          await fetchJson('/api/admin/preset-options', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field_key: fieldKey, original_value: originalValue, value: nextValue })
+          });
+          await loadPresetOptionsManager();
+        } catch (error) {
+          alert(`Errore modifica elemento: ${error.message || error}`);
+        }
+      });
+      row.querySelector('.preset-option-cancel-btn')?.addEventListener('click', renderPresetOptionsManager);
+    });
+  });
+
+  presetOptionsManager.querySelectorAll('.preset-option-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const fieldKey = btn.dataset.fieldKey || '';
+      const value = btn.dataset.optionValue || '';
+      if (!confirm(`Eliminare "${value}" dal menu "${fieldKey}"?`)) return;
+      try {
+        btn.disabled = true;
+        await fetchJson('/api/admin/preset-options', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field_key: fieldKey, value })
+        });
+        await loadPresetOptionsManager();
+      } catch (error) {
+        alert(`Errore eliminazione elemento: ${error.message || error}`);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function loadPresetOptionsManager() {
+  if (!presetOptionsManager) return;
+  try {
+    presetOptionsCache = await fetchJson('/api/admin/preset-options');
+    renderPresetOptionsManager();
+  } catch (error) {
+    if (presetOptionsSummary) presetOptionsSummary.textContent = 'Errore caricamento';
+    presetOptionsManager.innerHTML = `<div class="users-empty muted">Errore caricamento opzioni approvate: ${escapeHtml(error.message || error)}</div>`;
   }
 }
 
@@ -767,6 +1094,12 @@ async function loadAdminMenu(state = captureAdminUiState()) {
     throw error;
   }
   adminCategoriesCache = categories;
+  if (catalogSummary) {
+    const incidentCount = categories.reduce((total, category) => total + (Array.isArray(category.incidents) ? category.incidents.length : 0), 0);
+    const hiddenCategoryCount = categories.filter((category) => category.hidden).length;
+    const hiddenIncidentCount = categories.reduce((total, category) => total + (Array.isArray(category.incidents) ? category.incidents.filter((incident) => incident.hidden).length : 0), 0);
+    catalogSummary.textContent = `${categories.length} categorie · ${incidentCount} incident · ${hiddenCategoryCount + hiddenIncidentCount} nascosti`;
+  }
   adminMenu.innerHTML = '';
 
   categories.forEach((cat) => {
@@ -801,7 +1134,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
     catBtn.setAttribute('role', 'button');
     catBtn.tabIndex = 0;
     catBtn.setAttribute('aria-expanded', 'false');
-    catBtn.innerHTML = `<span>${cat.name}</span><span class="admin-actions"><button type="button" class="tiny-edit" aria-label="Modifica categoria" title="Modifica categoria" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}">&#9998;</button><button type="button" class="tiny-add" data-type="incident" data-id="${cat.id}" title="Nuovo incident">+</button><button type="button" class="tiny-delete" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" title="Elimina categoria">x</button></span>`;
+    catBtn.innerHTML = `<span>${cat.name}${cat.hidden ? '<span class="admin-hidden-badge">Nascosta</span>' : ''}</span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" title="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">${cat.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica categoria" title="Modifica categoria" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">&#9998;</button><button type="button" class="tiny-add" data-type="incident" data-id="${cat.id}" title="Nuovo incident">+</button><button type="button" class="tiny-delete" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" title="Elimina categoria">x</button></span>`;
 
     const ul = document.createElement('ul');
     ul.className = 'incident-list';
@@ -810,7 +1143,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
       li.dataset.incidentId = String(inc.id);
       li.draggable = true;
       const firstPreset = Array.isArray(inc.presets) ? (inc.presets[0] || '') : '';
-      li.innerHTML = `<div class="incident-btn"><span>${inc.name}</span><span class="admin-actions"><button type="button" class="tiny-edit" aria-label="Modifica incident" title="Modifica incident" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-preset="${firstPreset.replace(/"/g, '&quot;')}" data-severity-default="${Number(inc.severity_default || 1)}" data-severity-mode="${inc.severity_mode || 'default'}" data-fab-default="${inc.fab_default || ''}">&#9998;</button><button type="button" class="tiny-delete" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" title="Elimina incident">x</button></span></div>`;
+      li.innerHTML = `<div class="incident-btn"><span>${inc.name}${inc.hidden ? '<span class="admin-hidden-badge">Nascosto</span>' : ''}</span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" title="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}">${inc.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica incident" title="Modifica incident" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}" data-preset="${firstPreset.replace(/"/g, '&quot;')}" data-severity-default="${Number(inc.severity_default || 1)}" data-severity-mode="${inc.severity_mode || 'default'}" data-fab-default="${inc.fab_default || ''}">&#9998;</button><button type="button" class="tiny-delete" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" title="Elimina incident">x</button></span></div>`;
 
       li.addEventListener('dragstart', () => {
         dragIncidentId = inc.id;
@@ -951,6 +1284,41 @@ function bindAdminActions() {
     });
   });
 
+  document.querySelectorAll('.tiny-toggle-hide').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const type = btn.dataset.type;
+        const id = Number(btn.dataset.id);
+        const name = btn.dataset.name || '';
+        const isHidden = btn.dataset.hidden === '1';
+        if (type === 'category') {
+          await fetchJson(`/api/categories/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hidden: !isHidden, name })
+          });
+        } else {
+          const editBtn = btn.parentElement?.querySelector('.tiny-edit');
+          await fetchJson(`/api/incidents/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              hidden: !isHidden,
+              severity_default: Number(editBtn?.dataset.severityDefault || 1),
+              severity_mode: editBtn?.dataset.severityMode || 'default',
+              fab_default: editBtn?.dataset.fabDefault || ''
+            })
+          });
+        }
+        await loadAdminMenu();
+      } catch (error) {
+        alert(`Errore aggiornamento visibilita: ${error.message || error}`);
+      }
+    });
+  });
+
   const addCategoryBtn = document.getElementById('addCategoryBtn');
   if (addCategoryBtn) {
     addCategoryBtn.addEventListener('click', async () => {
@@ -974,6 +1342,27 @@ document.querySelectorAll('.close-modal').forEach((btn) => {
   btn.addEventListener('click', closeIncidentModal);
 });
 
+adminTabButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    setAdminTab(button.dataset.adminTab);
+    if (button.dataset.adminTab === 'review') {
+      loadPresetOptionRequests();
+      loadPresetOptionsManager();
+    }
+  });
+});
+
+[userSearchInput, userRoleFilter, userTeamFilter].forEach((control) => {
+  control?.addEventListener('input', renderUsers);
+  control?.addEventListener('change', renderUsers);
+});
+
+openUserCreateModalBtn?.addEventListener('click', openUserCreateModal);
+
+document.querySelectorAll('.close-user-modal').forEach((btn) => {
+  btn.addEventListener('click', closeUserCreateModal);
+});
+
 adminIncidentModal?.addEventListener('mousedown', (e) => {
   adminOverlayPressStarted = e.target === adminIncidentModal;
 });
@@ -981,6 +1370,15 @@ adminIncidentModal?.addEventListener('mousedown', (e) => {
 adminIncidentModal?.addEventListener('mouseup', (e) => {
   if (e.target === adminIncidentModal && adminOverlayPressStarted) closeIncidentModal();
   adminOverlayPressStarted = false;
+});
+
+userCreateModal?.addEventListener('mousedown', (e) => {
+  userCreateOverlayPressStarted = e.target === userCreateModal;
+});
+
+userCreateModal?.addEventListener('mouseup', (e) => {
+  if (e.target === userCreateModal && userCreateOverlayPressStarted) closeUserCreateModal();
+  userCreateOverlayPressStarted = false;
 });
 
 adminIncidentForm?.addEventListener('submit', async (e) => {
@@ -1029,6 +1427,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
     userCreateForm.reset();
     if (newUserRoleSelect) newUserRoleSelect.value = 'user';
     if (newUserTeamSelect) newUserTeamSelect.value = 'A';
+    closeUserCreateModal();
     await loadUsers();
   } catch (error) {
     alert(`Errore creazione utente: ${error.message || error}`);
@@ -1036,12 +1435,21 @@ userCreateForm?.addEventListener('submit', async (e) => {
 });
 
 (async function initAdminPage() {
+  let savedAdminTab = 'catalog';
+  try {
+    savedAdminTab = localStorage.getItem(adminTabStorageKey) || 'catalog';
+  } catch (error) {
+    // ignore storage issues
+  }
+  setAdminTab(savedAdminTab);
   await loadCurrentAdmin();
   loadChartTypes();
   syncAdminColorToggle();
   await Promise.allSettled([
     loadAdminMenu(null),
     loadUsers(),
+    loadPresetOptionRequests(),
+    loadPresetOptionsManager(),
     loadUiColors(),
     loadAdminChartsPreviewData()
   ]);
@@ -1067,11 +1475,7 @@ addPresetTextFieldBtn?.addEventListener('click', () => {
 addPresetSelectFieldBtn?.addEventListener('click', () => {
   const label = prompt('Nome menu tendina (es. Motivo):');
   if (!label || !label.trim()) return;
-  const optionsRaw = prompt('Opzioni separate da virgola (es. timeout,reset,busy):');
-  if (!optionsRaw || !optionsRaw.trim()) return;
-  const options = optionsRaw.split(',').map((x) => x.trim()).filter(Boolean);
-  if (!options.length) return;
-  insertAtCursor(adminIncidentPresetInput, `[[select:${label.trim()}|${options.join(',')}]]`);
+  insertAtCursor(adminIncidentPresetInput, `[[dbselect:${label.trim()}]]`);
 });
 
 saveColorSettingsBtn?.addEventListener('click', async () => {

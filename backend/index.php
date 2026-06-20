@@ -113,6 +113,13 @@ function normalize_team($team)
     return in_array($team, $allowed, true) ? $team : 'A';
 }
 
+function normalize_preset_field_key($value)
+{
+    $value = strtolower(trim(strval($value)));
+    $value = preg_replace('/[^a-z0-9_-]+/', '_', $value);
+    return trim($value, '_');
+}
+
 function default_ui_colors()
 {
     return array(
@@ -558,7 +565,9 @@ function mysql_ensure_schema($conn)
     $alterStatements = array(
         "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8",
         "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
-        "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id"
+        "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
+        "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
+        "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"
     );
     foreach ($alterStatements as $statement) {
         if (@mysqli_query($conn, $statement)) continue;
@@ -587,7 +596,9 @@ function mysql_load_db($defaultUsers)
         'tickets' => array(),
         'users' => array(),
         'ui_colors' => default_ui_colors(),
-        'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 0)
+        'preset_options' => array(),
+        'preset_option_requests' => array(),
+        'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 0, 'preset_option_request' => 0)
     );
 
     $presetsByIncident = array();
@@ -601,19 +612,20 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rp);
     }
 
-    $rc = @mysqli_query($conn, "SELECT id, name, sort_order FROM categories ORDER BY sort_order ASC, id ASC");
+    $rc = @mysqli_query($conn, "SELECT id, name, hidden, sort_order FROM categories ORDER BY sort_order ASC, id ASC");
     if ($rc) {
         while ($row = mysqli_fetch_assoc($rc)) {
             $db['categories'][] = array(
                 'id' => intval($row['id']),
                 'name' => $row['name'],
+                'hidden' => !empty($row['hidden']),
                 'sort_order' => intval($row['sort_order'])
             );
         }
         mysqli_free_result($rc);
     }
 
-    $ri = @mysqli_query($conn, "SELECT id, category_id, name, severity_default, severity_mode, fab_default, sort_order FROM incidents ORDER BY sort_order ASC, id ASC");
+    $ri = @mysqli_query($conn, "SELECT id, category_id, name, hidden, severity_default, severity_mode, fab_default, sort_order FROM incidents ORDER BY sort_order ASC, id ASC");
     if ($ri) {
         while ($row = mysqli_fetch_assoc($ri)) {
             $iid = intval($row['id']);
@@ -621,6 +633,7 @@ function mysql_load_db($defaultUsers)
                 'id' => $iid,
                 'category_id' => intval($row['category_id']),
                 'name' => $row['name'],
+                'hidden' => !empty($row['hidden']),
                 'severity_default' => intval($row['severity_default'] ? $row['severity_default'] : 1),
                 'severity_mode' => $row['severity_mode'] ? $row['severity_mode'] : 'default',
                 'fab_default' => $row['fab_default'] ? $row['fab_default'] : '',
@@ -667,11 +680,14 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($ru);
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_value FROM app_settings WHERE setting_key = 'ui_colors' LIMIT 1");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_options','preset_option_requests')");
     if ($rs) {
-        if ($row = mysqli_fetch_assoc($rs)) {
+        while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
-            if (is_array($parsed)) $db['ui_colors'] = normalize_ui_colors($parsed);
+            if (!is_array($parsed)) continue;
+            if ($row['setting_key'] === 'ui_colors') $db['ui_colors'] = normalize_ui_colors($parsed);
+            if ($row['setting_key'] === 'preset_options') $db['preset_options'] = $parsed;
+            if ($row['setting_key'] === 'preset_option_requests') $db['preset_option_requests'] = $parsed;
         }
         mysqli_free_result($rs);
     }
@@ -681,6 +697,7 @@ function mysql_load_db($defaultUsers)
     $db['counters']['incident'] = max_id($db['incidents']);
     $db['counters']['ticket'] = max_id($db['tickets']);
     $db['counters']['user'] = max_id($db['users']);
+    $db['counters']['preset_option_request'] = max_id($db['preset_option_requests']);
     if (!count($db['categories']) && !count($db['incidents']) && !count($db['tickets'])) {
         return null;
     }
@@ -721,6 +738,10 @@ function mysql_save_db($db)
         $uiColors = normalize_ui_colors(isset($db['ui_colors']) && is_array($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors());
         $uiJson = mysql_escape($conn, json_encode($uiColors));
         if (!mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('ui_colors', '$uiJson')")) { $ok = false; }
+        $presetOptionsJson = mysql_escape($conn, json_encode(isset($db['preset_options']) && is_array($db['preset_options']) ? $db['preset_options'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_options', '$presetOptionsJson')")) { $ok = false; }
+        $presetRequestsJson = mysql_escape($conn, json_encode(isset($db['preset_option_requests']) && is_array($db['preset_option_requests']) ? $db['preset_option_requests'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_requests', '$presetRequestsJson')")) { $ok = false; }
     }
 
     if ($ok) {
@@ -728,7 +749,8 @@ function mysql_save_db($db)
         foreach ($db['categories'] as $c) {
             $id = intval($c['id']);
             $name = mysql_escape($conn, $c['name']);
-            if (!mysqli_query($conn, "INSERT INTO categories (id,name,sort_order) VALUES ($id,'$name',$order)")) { $ok = false; break; }
+            $hidden = !empty($c['hidden']) ? 1 : 0;
+            if (!mysqli_query($conn, "INSERT INTO categories (id,name,hidden,sort_order) VALUES ($id,'$name',$hidden,$order)")) { $ok = false; break; }
             $order++;
         }
     }
@@ -741,11 +763,12 @@ function mysql_save_db($db)
             $sortByCat[$cat]++;
             $id = intval($i['id']);
             $name = mysql_escape($conn, $i['name']);
+            $hidden = !empty($i['hidden']) ? 1 : 0;
             $sev = isset($i['severity_default']) ? intval($i['severity_default']) : 1;
             $mode = mysql_escape($conn, isset($i['severity_mode']) ? $i['severity_mode'] : 'default');
             $fab = mysql_escape($conn, isset($i['fab_default']) ? $i['fab_default'] : '');
             $so = intval($sortByCat[$cat]);
-            if (!mysqli_query($conn, "INSERT INTO incidents (id,category_id,name,severity_default,severity_mode,fab_default,sort_order) VALUES ($id,$cat,'$name',$sev,'$mode','" . ($fab === '' ? '' : $fab) . "',$so)")) { $ok = false; break; }
+            if (!mysqli_query($conn, "INSERT INTO incidents (id,category_id,name,hidden,severity_default,severity_mode,fab_default,sort_order) VALUES ($id,$cat,'$name',$hidden,$sev,'$mode','" . ($fab === '' ? '' : $fab) . "',$so)")) { $ok = false; break; }
 
             if ($ok && isset($i['presets']) && is_array($i['presets'])) {
                 $po = 1;
@@ -810,7 +833,9 @@ function load_db($defaultUsers)
             'incidents' => array(),
             'tickets' => array(),
             'users' => $defaultUsers,
-            'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 2)
+            'preset_options' => array(),
+            'preset_option_requests' => array(),
+            'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 2, 'preset_option_request' => 0)
         );
         file_put_contents(DB_PATH, json_encode($empty, JSON_PRETTY_PRINT));
         return $empty;
@@ -824,6 +849,8 @@ function load_db($defaultUsers)
     if (!isset($db['categories']) || !is_array($db['categories'])) $db['categories'] = array();
     if (!isset($db['incidents']) || !is_array($db['incidents'])) $db['incidents'] = array();
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
+    if (!isset($db['preset_options']) || !is_array($db['preset_options'])) $db['preset_options'] = array();
+    if (!isset($db['preset_option_requests']) || !is_array($db['preset_option_requests'])) $db['preset_option_requests'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
     if (!count($db['incidents'])) {
@@ -886,6 +913,7 @@ function load_db($defaultUsers)
     if (!isset($db['counters']['incident'])) $db['counters']['incident'] = max_id($db['incidents']);
     if (!isset($db['counters']['ticket'])) $db['counters']['ticket'] = max_id($db['tickets']);
     if (!isset($db['counters']['user'])) $db['counters']['user'] = max_id($db['users']);
+    if (!isset($db['counters']['preset_option_request'])) $db['counters']['preset_option_request'] = max_id($db['preset_option_requests']);
     return $db;
 }
 
@@ -1231,7 +1259,7 @@ if ($path === '/search.html') {
 if ($path === '/login.html') {
     $u = read_auth_user();
     if ($u) {
-        header('Location: ' . ($u['role'] === 'admin' ? '/admin.html' : '/index.html'));
+        header('Location: /index.html');
         exit;
     }
     readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'login.html');
@@ -1282,7 +1310,7 @@ if ($path === '/api/login' && $method === 'POST') {
         $passwordMatches = ($storedPassword === $password) || ($storedPassword === '' && $password !== '' && $password === $username);
         if (strtolower($u['username']) === strtolower($username) && $passwordMatches) {
             set_auth_cookie($u);
-            $redirectTo = ($u['role'] === 'admin' ? '/admin.html' : '/index.html');
+            $redirectTo = '/index.html';
             if ($isJsonRequest) {
                 json_response(array(
                     'id' => intval($u['id']),
@@ -1300,7 +1328,7 @@ if ($path === '/api/login' && $method === 'POST') {
     foreach ($defaultUsers as $u) {
         if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
             set_auth_cookie($u);
-            $redirectTo = ($u['role'] === 'admin' ? '/admin.html' : '/index.html');
+            $redirectTo = '/index.html';
             if ($isJsonRequest) {
                 json_response(array(
                     'id' => intval($u['id']),
@@ -1400,11 +1428,17 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
     $password = array_key_exists('password', $payload) ? trim(strval($payload['password'])) : null;
+    $adminCount = 0;
+    foreach ($db['users'] as $adminUser) {
+        if (isset($adminUser['role']) && $adminUser['role'] === 'admin') $adminCount++;
+    }
     foreach ($db['users'] as &$u) {
         if (intval($u['id']) === $id) {
             $u['team'] = $team;
             if ($role !== null && $role !== '') {
                 if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
+                if ($id === intval($user['id']) && $role !== $u['role']) json_response(array('error' => 'Non puoi modificare il ruolo del tuo utente'), 400);
+                if ($u['role'] === 'admin' && $role !== 'admin' && $adminCount <= 1) json_response(array('error' => 'Deve restare almeno un amministratore'), 400);
                 $u['role'] = $role;
             }
             if ($password !== null && $password !== '') {
@@ -1423,8 +1457,13 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
     if ($id === intval($user['id'])) json_response(array('error' => 'Non puoi eliminare il tuo utente'), 400);
     $kept = array();
     $found = false;
+    $adminCount = 0;
+    foreach ($db['users'] as $adminUser) {
+        if (isset($adminUser['role']) && $adminUser['role'] === 'admin') $adminCount++;
+    }
     foreach ($db['users'] as $u) {
         if (intval($u['id']) === $id) {
+            if ($u['role'] === 'admin' && $adminCount <= 1) json_response(array('error' => 'Deve restare almeno un amministratore'), 400);
             $found = true;
             continue;
         }
@@ -1436,10 +1475,177 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
     json_response(array('ok' => true), 200);
 }
 
+if ($path === '/api/preset-options' && $method === 'GET') {
+    $fieldKey = normalize_preset_field_key(isset($_GET['field_key']) ? $_GET['field_key'] : '');
+    if ($fieldKey === '') json_response(array('error' => 'Campo non valido'), 400);
+    $options = isset($db['preset_options'][$fieldKey]) && is_array($db['preset_options'][$fieldKey]) ? $db['preset_options'][$fieldKey] : array();
+    natcasesort($options);
+    json_response(array('field_key' => $fieldKey, 'options' => array_values($options)), 200);
+}
+
+if ($path === '/api/preset-option-requests' && $method === 'POST') {
+    $fieldLabel = isset($payload['field_label']) ? trim(strval($payload['field_label'])) : '';
+    $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : $fieldLabel);
+    $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
+    $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
+    if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
+    $approved = isset($db['preset_options'][$fieldKey]) && is_array($db['preset_options'][$fieldKey]) ? $db['preset_options'][$fieldKey] : array();
+    foreach ($approved as $option) {
+        if (strtolower($option) === strtolower($value)) json_response(array('ok' => true, 'already_approved' => true), 200);
+    }
+    foreach ($db['preset_option_requests'] as $request) {
+        if ($request['status'] === 'pending' && $request['field_key'] === $fieldKey && strtolower($request['value']) === strtolower($value)) {
+            json_response(array('ok' => true, 'already_pending' => true, 'request' => $request), 200);
+        }
+    }
+    $db['counters']['preset_option_request'] = intval($db['counters']['preset_option_request']) + 1;
+    $request = array(
+        'id' => $db['counters']['preset_option_request'],
+        'field_key' => $fieldKey,
+        'field_label' => $fieldLabel !== '' ? $fieldLabel : $fieldKey,
+        'value' => $value,
+        'incident_id' => $incidentId,
+        'requested_by_user_id' => intval($user['id']),
+        'requested_by_username' => isset($user['username']) ? $user['username'] : '',
+        'status' => 'pending',
+        'created_at' => gmdate('c')
+    );
+    $db['preset_option_requests'][] = $request;
+    save_db($db);
+    json_response(array('ok' => true, 'request' => $request), 200);
+}
+
+if ($path === '/api/admin/preset-option-requests' && $method === 'GET') {
+    require_api_auth('admin');
+    $pending = array();
+    foreach ($db['preset_option_requests'] as $request) {
+        if (isset($request['status']) && $request['status'] === 'pending') $pending[] = $request;
+    }
+    usort($pending, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
+    json_response($pending, 200);
+}
+
+if (preg_match('#^/api/admin/preset-option-requests/(\d+)$#', $path, $m) && $method === 'PUT') {
+    require_api_auth('admin');
+    $id = intval($m[1]);
+    $action = isset($payload['action']) ? strtolower(trim(strval($payload['action']))) : '';
+    if ($action !== 'approve' && $action !== 'reject') json_response(array('error' => 'Azione non valida'), 400);
+    foreach ($db['preset_option_requests'] as &$request) {
+        if (intval($request['id']) !== $id) continue;
+        if ($request['status'] !== 'pending') json_response(array('error' => 'Richiesta gia revisionata'), 409);
+        $request['status'] = $action === 'approve' ? 'approved' : 'rejected';
+        $request['reviewed_by_user_id'] = intval($user['id']);
+        $request['reviewed_at'] = gmdate('c');
+        if ($action === 'approve') {
+            $fieldKey = $request['field_key'];
+            if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) $db['preset_options'][$fieldKey] = array();
+            $exists = false;
+            foreach ($db['preset_options'][$fieldKey] as $option) {
+                if (strtolower($option) === strtolower($request['value'])) { $exists = true; break; }
+            }
+            if (!$exists) $db['preset_options'][$fieldKey][] = $request['value'];
+        }
+        save_db($db);
+        json_response(array('ok' => true, 'request' => $request), 200);
+    }
+    json_response(array('error' => 'Richiesta non trovata'), 404);
+}
+
+if ($path === '/api/admin/preset-options' && $method === 'GET') {
+    require_api_auth('admin');
+    $out = array();
+    foreach ($db['preset_options'] as $fieldKey => $options) {
+        if (!is_array($options)) $options = array();
+        $label = '';
+        foreach ($db['preset_option_requests'] as $request) {
+            if (
+                isset($request['field_key']) &&
+                $request['field_key'] === $fieldKey &&
+                isset($request['field_label']) &&
+                trim(strval($request['field_label'])) !== ''
+            ) {
+                $label = trim(strval($request['field_label']));
+                break;
+            }
+        }
+        if ($label === '') $label = ucwords(str_replace('_', ' ', $fieldKey));
+        natcasesort($options);
+        $out[] = array(
+            'field_key' => $fieldKey,
+            'field_label' => $label,
+            'options' => array_values($options)
+        );
+    }
+    usort($out, function($a, $b) {
+        return strcasecmp(isset($a['field_label']) ? $a['field_label'] : '', isset($b['field_label']) ? $b['field_label'] : '');
+    });
+    json_response($out, 200);
+}
+
+if ($path === '/api/admin/preset-options' && $method === 'POST') {
+    require_api_auth('admin');
+    $fieldLabel = isset($payload['field_label']) ? trim(strval($payload['field_label'])) : '';
+    $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : $fieldLabel);
+    $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
+    if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
+    if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) $db['preset_options'][$fieldKey] = array();
+    foreach ($db['preset_options'][$fieldKey] as $option) {
+        if (strtolower($option) === strtolower($value)) json_response(array('error' => 'Elemento gia presente'), 409);
+    }
+    $db['preset_options'][$fieldKey][] = $value;
+    natcasesort($db['preset_options'][$fieldKey]);
+    $db['preset_options'][$fieldKey] = array_values($db['preset_options'][$fieldKey]);
+    save_db($db);
+    json_response(array('ok' => true, 'field_key' => $fieldKey, 'value' => $value), 200);
+}
+
+if ($path === '/api/admin/preset-options' && $method === 'PUT') {
+    require_api_auth('admin');
+    $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
+    $originalValue = isset($payload['original_value']) ? trim(strval($payload['original_value'])) : '';
+    $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
+    if ($fieldKey === '' || $originalValue === '' || $value === '') json_response(array('error' => 'Campo, valore originale e nuovo valore obbligatori'), 400);
+    if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) json_response(array('error' => 'Menu non trovato'), 404);
+    $foundIndex = -1;
+    foreach ($db['preset_options'][$fieldKey] as $idx => $option) {
+        if (strtolower($option) === strtolower($value) && strtolower($option) !== strtolower($originalValue)) {
+            json_response(array('error' => 'Esiste gia un elemento con questo nome'), 409);
+        }
+        if (strtolower($option) === strtolower($originalValue)) $foundIndex = $idx;
+    }
+    if ($foundIndex < 0) json_response(array('error' => 'Elemento non trovato'), 404);
+    $db['preset_options'][$fieldKey][$foundIndex] = $value;
+    natcasesort($db['preset_options'][$fieldKey]);
+    $db['preset_options'][$fieldKey] = array_values($db['preset_options'][$fieldKey]);
+    save_db($db);
+    json_response(array('ok' => true, 'field_key' => $fieldKey, 'original_value' => $originalValue, 'value' => $value), 200);
+}
+
+if ($path === '/api/admin/preset-options' && $method === 'DELETE') {
+    require_api_auth('admin');
+    $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
+    $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
+    if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
+    if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) json_response(array('error' => 'Menu non trovato'), 404);
+    $kept = array();
+    $found = false;
+    foreach ($db['preset_options'][$fieldKey] as $option) {
+        if (strtolower($option) === strtolower($value)) {
+            $found = true;
+            continue;
+        }
+        $kept[] = $option;
+    }
+    if (!$found) json_response(array('error' => 'Elemento non trovato'), 404);
+    $db['preset_options'][$fieldKey] = array_values($kept);
+    save_db($db);
+    json_response(array('ok' => true), 200);
+}
+
 if ($path === '/api/categories' && $method === 'GET') {
     if (supabase_enabled()) {
-        $catsResp = sb_select('categories', 'id,name,sort_order', array(), 'sort_order.asc');
-        $incResp = sb_select('incidents', 'id,category_id,name,severity_default,severity_mode,fab_default,sort_order', array(), 'sort_order.asc');
+        $catsResp = sb_select('categories', 'id,name,hidden,sort_order', array(), 'sort_order.asc');
+        $incResp = sb_select('incidents', 'id,category_id,name,hidden,severity_default,severity_mode,fab_default,sort_order', array(), 'sort_order.asc');
         if ($catsResp['ok'] && $incResp['ok']) {
             $cats = is_array($catsResp['data']) ? $catsResp['data'] : array();
             $incs = is_array($incResp['data']) ? $incResp['data'] : array();
@@ -1452,13 +1658,14 @@ if ($path === '/api/categories' && $method === 'GET') {
                 foreach ($incs as $inc) {
                     if (intval($inc['category_id']) === intval($cat['id'])) {
                         if (!isset($inc['presets']) || !is_array($inc['presets'])) $inc['presets'] = array();
+                        if (!isset($inc['hidden'])) $inc['hidden'] = false;
                         if (!isset($inc['severity_default']) || $inc['severity_default'] === null) $inc['severity_default'] = 1;
                         if (!isset($inc['severity_mode']) || !$inc['severity_mode']) $inc['severity_mode'] = 'default';
                         if (!isset($inc['fab_default']) || $inc['fab_default'] === null) $inc['fab_default'] = '';
                         $items[] = $inc;
                     }
                 }
-                $outSb[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'incidents' => $items);
+                $outSb[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
             }
             json_response($outSb, 200);
             }
@@ -1476,6 +1683,7 @@ if ($path === '/api/categories' && $method === 'GET') {
         foreach ($db['incidents'] as $inc) {
             if (intval($inc['category_id']) === intval($cat['id'])) {
                 if (!isset($inc['presets']) || !is_array($inc['presets'])) $inc['presets'] = array();
+                if (!isset($inc['hidden'])) $inc['hidden'] = false;
                 if (!isset($inc['severity_default'])) $inc['severity_default'] = 1;
                 if (!isset($inc['severity_mode'])) $inc['severity_mode'] = 'default';
                 if (!isset($inc['fab_default'])) $inc['fab_default'] = '';
@@ -1489,7 +1697,7 @@ if ($path === '/api/categories' && $method === 'GET') {
             if ($ao !== $bo) return $ao - $bo;
             return intval($a['id']) - intval($b['id']);
         });
-        $out[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'incidents' => $items);
+        $out[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
     }
     json_response($out, 200);
 }
@@ -1502,7 +1710,7 @@ if ($path === '/api/categories' && $method === 'POST') {
         $row = sb_select('categories', 'sort_order', array(), 'sort_order.desc');
         $maxOrder = 0;
         if ($row['ok'] && is_array($row['data']) && count($row['data'])) $maxOrder = intval($row['data'][0]['sort_order']);
-        $ins = sb_insert('categories', array('name' => $name, 'sort_order' => $maxOrder + 1), true);
+        $ins = sb_insert('categories', array('name' => $name, 'hidden' => 0, 'sort_order' => $maxOrder + 1), true);
         if ($ins['ok']) json_response(array('id' => intval($ins['data']['id']), 'name' => $ins['data']['name']), 200);
     }
     $db['counters']['category'] = intval($db['counters']['category']) + 1;
@@ -1511,7 +1719,7 @@ if ($path === '/api/categories' && $method === 'POST') {
         $currentOrder = isset($existingCategory['sort_order']) ? intval($existingCategory['sort_order']) : 0;
         if ($currentOrder > $maxOrder) $maxOrder = $currentOrder;
     }
-    $cat = array('id' => $db['counters']['category'], 'name' => $name, 'sort_order' => $maxOrder + 1);
+    $cat = array('id' => $db['counters']['category'], 'name' => $name, 'hidden' => false, 'sort_order' => $maxOrder + 1);
     $db['categories'][] = $cat;
     save_db($db);
     json_response($cat, 200);
@@ -1556,10 +1764,12 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
     $id = intval($m[1]);
     if ($method === 'PUT') {
         $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
-        if ($name === '') json_response(array('error' => 'Dati non validi'), 400);
+        $hidden = isset($payload['hidden']) ? !!$payload['hidden'] : null;
+        if ($name === '' && $hidden === null) json_response(array('error' => 'Dati non validi'), 400);
         foreach ($db['categories'] as &$cat) {
             if (intval($cat['id']) === $id) {
-                $cat['name'] = $name;
+                if ($name !== '') $cat['name'] = $name;
+                if ($hidden !== null) $cat['hidden'] = $hidden;
                 save_db($db);
                 json_response(array('ok' => true), 200);
             }
@@ -1614,6 +1824,7 @@ if ($path === '/api/incidents' && $method === 'POST') {
         'id' => $db['counters']['incident'],
         'category_id' => $categoryId,
         'name' => $name,
+        'hidden' => false,
         'severity_default' => 1,
         'severity_mode' => 'default',
         'fab_default' => '',
@@ -1688,13 +1899,15 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
     $id = intval($m[1]);
     if ($method === 'PUT') {
         $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
-        if ($name === '') json_response(array('error' => 'Dati non validi'), 400);
+        $hidden = isset($payload['hidden']) ? !!$payload['hidden'] : null;
+        if ($name === '' && $hidden === null) json_response(array('error' => 'Dati non validi'), 400);
         foreach ($db['incidents'] as &$inc) {
             if (intval($inc['id']) === $id) {
-                $inc['name'] = $name;
-                $inc['severity_default'] = isset($payload['severity_default']) ? intval($payload['severity_default']) : 1;
-                $inc['severity_mode'] = isset($payload['severity_mode']) ? strval($payload['severity_mode']) : 'default';
-                $inc['fab_default'] = isset($payload['fab_default']) ? strtoupper(trim(strval($payload['fab_default']))) : '';
+                if ($name !== '') $inc['name'] = $name;
+                if ($hidden !== null) $inc['hidden'] = $hidden;
+                if (isset($payload['severity_default'])) $inc['severity_default'] = intval($payload['severity_default']);
+                if (isset($payload['severity_mode'])) $inc['severity_mode'] = strval($payload['severity_mode']);
+                if (isset($payload['fab_default'])) $inc['fab_default'] = strtoupper(trim(strval($payload['fab_default'])));
                 save_db($db);
                 json_response(array('ok' => true), 200);
             }
@@ -1740,10 +1953,25 @@ if ($path === '/api/tickets' && $method === 'POST') {
     $ownerRecord = user_by_id($db['users'], intval($user['id']));
     if (!$ownerRecord) $ownerRecord = $user;
     $incidentName = '';
+    $incidentHidden = false;
+    $categoryHidden = false;
+    $categoryIdByIncident = 0;
     foreach ($db['incidents'] as $inc) {
-        if (intval($inc['id']) === $incidentId) { $incidentName = $inc['name']; break; }
+        if (intval($inc['id']) === $incidentId) {
+            $incidentName = $inc['name'];
+            $incidentHidden = !empty($inc['hidden']);
+            $categoryIdByIncident = intval(isset($inc['category_id']) ? $inc['category_id'] : 0);
+            break;
+        }
     }
     if ($incidentName === '') json_response(array('error' => 'Incident non valido'), 400);
+    foreach ($db['categories'] as $cat) {
+        if (intval($cat['id']) === $categoryIdByIncident) {
+            $categoryHidden = !empty($cat['hidden']);
+            break;
+        }
+    }
+    if ($incidentHidden || $categoryHidden) json_response(array('error' => 'Incident nascosto e non selezionabile'), 409);
     $ownerTeam = normalize_team(isset($ownerRecord['team']) ? $ownerRecord['team'] : 'A');
     $db['counters']['ticket'] = intval($db['counters']['ticket']) + 1;
     $ticket = array(

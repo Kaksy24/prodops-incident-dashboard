@@ -74,6 +74,7 @@ INSERT INTO `app_users` (`id`, `username`, `password`, `role`, `team`) VALUES
 CREATE TABLE `categories` (
   `id` int(10) UNSIGNED NOT NULL,
   `name` varchar(120) NOT NULL,
+  `hidden` tinyint(1) NOT NULL DEFAULT 0,
   `sort_order` int(10) UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 
@@ -81,13 +82,13 @@ CREATE TABLE `categories` (
 -- Dump dei dati per la tabella `categories`
 --
 
-INSERT INTO `categories` (`id`, `name`, `sort_order`) VALUES
-(1, 'AUTOMATION', 1),
-(2, 'WMM', 2),
-(3, 'SICMA', 3),
-(4, 'ROBOTIZATION', 4),
-(5, 'On Duty', 6),
-(6, 'SEALING', 5);
+INSERT INTO `categories` (`id`, `name`, `hidden`, `sort_order`) VALUES
+(1, 'AUTOMATION', 0, 1),
+(2, 'WMM', 0, 2),
+(3, 'SICMA', 0, 3),
+(4, 'ROBOTIZATION', 0, 4),
+(5, 'On Duty', 0, 6),
+(6, 'SEALING', 0, 5);
 
 -- --------------------------------------------------------
 
@@ -99,6 +100,7 @@ CREATE TABLE `incidents` (
   `id` int(10) UNSIGNED NOT NULL,
   `category_id` int(10) UNSIGNED NOT NULL,
   `name` varchar(180) NOT NULL,
+  `hidden` tinyint(1) NOT NULL DEFAULT 0,
   `severity_default` tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
   `severity_mode` varchar(20) NOT NULL DEFAULT 'default',
   `fab_default` varchar(12) NOT NULL DEFAULT '',
@@ -109,25 +111,25 @@ CREATE TABLE `incidents` (
 -- Dump dei dati per la tabella `incidents`
 --
 
-INSERT INTO `incidents` (`id`, `category_id`, `name`, `severity_default`, `severity_mode`, `fab_default`, `sort_order`) VALUES
-(1, 1, 'Generic', 1, 'user', '', 1),
-(2, 1, 'Reset Interfaccia', 1, 'default', '', 2),
-(3, 1, 'Switch display', 1, 'default', '', 3),
-(4, 2, 'Generic', 1, 'user', '', 1),
-(6, 2, 'SLTA', 1, 'default', '', 3),
-(7, 3, 'Generic', 1, 'user', 'WSIC', 1),
-(8, 3, 'ADSC', 1, 'default', 'WSIC', 2),
-(9, 3, 'KO MONO', 1, 'default', 'WSIC', 3),
-(10, 4, 'Generic', 1, 'default', '', 1),
-(11, 4, 'Restart ISL41', 1, 'default', 'M5', 2),
-(12, 4, 'Restart ISL47 (SARA)', 1, 'default', 'M5', 3),
-(13, 5, 'Robotization', 1, 'user', '', 1),
-(14, 5, 'Application', 2, 'user', '', 2),
-(15, 5, 'Network', 2, 'user', '', 3),
-(16, 5, 'Automation', 2, 'user', '', 4),
-(17, 5, 'SICMA', 1, 'user', 'WSIC', 5),
-(18, 6, 'Generic', 1, 'default', '', 1),
-(19, 2, 'ADSC', 1, 'default', '', 2);
+INSERT INTO `incidents` (`id`, `category_id`, `name`, `hidden`, `severity_default`, `severity_mode`, `fab_default`, `sort_order`) VALUES
+(1, 1, 'Generic', 0, 1, 'user', '', 1),
+(2, 1, 'Reset Interfaccia', 0, 1, 'default', '', 2),
+(3, 1, 'Switch display', 0, 1, 'default', '', 3),
+(4, 2, 'Generic', 0, 1, 'user', '', 1),
+(6, 2, 'SLTA', 0, 1, 'default', '', 3),
+(7, 3, 'Generic', 0, 1, 'user', 'WSIC', 1),
+(8, 3, 'ADSC', 0, 1, 'default', 'WSIC', 2),
+(9, 3, 'KO MONO', 0, 1, 'default', 'WSIC', 3),
+(10, 4, 'Generic', 0, 1, 'default', '', 1),
+(11, 4, 'Restart ISL41', 0, 1, 'default', 'M5', 2),
+(12, 4, 'Restart ISL47 (SARA)', 0, 1, 'default', 'M5', 3),
+(13, 5, 'Robotization', 0, 1, 'user', '', 1),
+(14, 5, 'Application', 0, 2, 'user', '', 2),
+(15, 5, 'Network', 0, 2, 'user', '', 3),
+(16, 5, 'Automation', 0, 2, 'user', '', 4),
+(17, 5, 'SICMA', 0, 1, 'user', 'WSIC', 5),
+(18, 6, 'Generic', 0, 1, 'default', '', 1),
+(19, 2, 'ADSC', 0, 1, 'default', '', 2);
 
 -- --------------------------------------------------------
 

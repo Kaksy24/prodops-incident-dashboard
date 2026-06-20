@@ -14,6 +14,10 @@ const logoutBtn = document.getElementById('logoutBtn');
 const deleteTicketBtn = document.getElementById('deleteTicketBtn');
 const previousShiftsToggle = document.getElementById('previousShiftsToggle');
 const previousShiftsContent = document.getElementById('previousShiftsContent');
+const currentShiftTotalCount = document.getElementById('currentShiftTotalCount');
+const currentShiftMineCount = document.getElementById('currentShiftMineCount');
+const currentShiftTeamCount = document.getElementById('currentShiftTeamCount');
+const previousShiftTotalCount = document.getElementById('previousShiftTotalCount');
 const ticketSearchForm = document.getElementById('ticketSearchForm');
 const ticketSearchQueryInput = document.getElementById('ticketSearchQuery');
 const ticketSearchFromInput = document.getElementById('ticketSearchFrom');
@@ -61,6 +65,7 @@ let modalCloseTimer = null;
 let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
+let previousShiftsData = null;
 let currentShiftAutoRefreshTimer = null;
 let currentShiftAutoRefreshBusy = false;
 let ticketSubmitBusy = false;
@@ -87,6 +92,44 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function setTextContent(node, value) {
+  if (node) node.textContent = String(value);
+}
+
+function updateCurrentShiftCounters(tickets) {
+  const rows = Array.isArray(tickets) ? tickets : [];
+  const userId = Number(currentUser && currentUser.id ? currentUser.id : 0);
+  const userTeam = String(currentUser && currentUser.team ? currentUser.team : '').toUpperCase();
+  let mine = 0;
+  let team = 0;
+  rows.forEach((ticket) => {
+    const ownerId = Number(ticket && ticket.owner_user_id ? ticket.owner_user_id : 0);
+    const ownerTeam = String(ticket && ticket.owner_team ? ticket.owner_team : '').toUpperCase();
+    if (userId > 0 && ownerId === userId) mine += 1;
+    if (userTeam && ownerTeam === userTeam) team += 1;
+  });
+  setTextContent(currentShiftTotalCount, rows.length);
+  setTextContent(currentShiftMineCount, mine);
+  setTextContent(currentShiftTeamCount, team);
+}
+
+function updatePreviousShiftCounter(shifts) {
+  const rows = Array.isArray(shifts) ? shifts : [];
+  let total = 0;
+  rows.forEach((shift) => {
+    total += Array.isArray(shift && shift.tickets) ? shift.tickets.length : 0;
+  });
+  setTextContent(previousShiftTotalCount, total);
+}
+
+async function fetchPreviousShiftsData(forceRefresh) {
+  if (!forceRefresh && previousShiftsData) return previousShiftsData;
+  const data = await fetchJson('/api/tickets/previous-shifts');
+  previousShiftsData = data;
+  updatePreviousShiftCounter(data.shifts || []);
+  return data;
 }
 
 function escapeHtml(value) {
@@ -660,7 +703,63 @@ function clearExtraTicketCards() {
   setTicketSubmitState(false);
 }
 
-function renderPresetForTargets(template, descriptionInput, composerContainer) {
+function presetFieldKey(label) {
+  return String(label || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+async function loadDbPresetOptions(token, select) {
+  try {
+    const fieldKey = presetFieldKey(token.label);
+    const data = await fetchJson(`/api/preset-options?field_key=${encodeURIComponent(fieldKey)}`);
+    const optionMap = {};
+    [...(token.options || []), ...(data.options || [])].forEach((option) => {
+      const value = String(option || '').trim();
+      if (value === '') return;
+      const key = value.toLocaleLowerCase('it');
+      if (!optionMap[key]) optionMap[key] = value;
+    });
+    const options = Object.keys(optionMap).map((key) => optionMap[key])
+      .sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+    const currentValue = select.value;
+    const renderOptions = (filter = '') => {
+      const query = String(filter || '').trim().toLocaleLowerCase('it');
+      const filtered = query ? options.filter((option) => option.toLocaleLowerCase('it').includes(query)) : options;
+      select.innerHTML = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = filtered.length ? `Seleziona ${token.label || ''}`.trim() : 'Nessun elemento trovato';
+      select.appendChild(empty);
+      filtered.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        select.appendChild(option);
+      });
+      const propose = document.createElement('option');
+      propose.value = '__propose_new__';
+      propose.textContent = '+ Proponi nuovo elemento';
+      select.appendChild(propose);
+      if (filtered.includes(currentValue)) select.value = currentValue;
+    };
+
+    renderOptions();
+    const existingSearch = select.parentElement?.querySelector('.preset-select-search');
+    if (existingSearch) existingSearch.remove();
+    if (options.length > 5 && select.parentElement) {
+      const search = document.createElement('input');
+      search.type = 'search';
+      search.className = 'preset-select-search';
+      search.placeholder = `Cerca ${token.label || 'elemento'}...`;
+      search.setAttribute('aria-label', `Cerca ${token.label || 'elemento'}`);
+      search.addEventListener('input', () => renderOptions(search.value));
+      select.parentElement.insertBefore(search, select);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function renderPresetForTargets(template, descriptionInput, composerContainer, incidentId = 0) {
   const tokens = parsePresetTokens(template);
   if (!tokens.length) {
     composerContainer.style.display = 'none';
@@ -688,25 +787,57 @@ function renderPresetForTargets(template, descriptionInput, composerContainer) {
     fieldWrap.appendChild(fieldLabel);
 
     let input;
-    if (token.type === 'select') {
+    if (token.type === 'select' || token.type === 'dbselect') {
       input = document.createElement('select');
       const empty = document.createElement('option');
       empty.value = '';
-      empty.textContent = `Seleziona ${token.label || ''}`.trim();
+      empty.textContent = 'Caricamento opzioni...';
       input.appendChild(empty);
-      token.options.forEach((opt) => {
+      (token.options || []).forEach((opt) => {
         const option = document.createElement('option');
         option.value = opt;
         option.textContent = opt;
         input.appendChild(option);
       });
+      loadDbPresetOptions(token, input);
     } else {
       input = document.createElement('input');
       input.type = 'text';
       input.placeholder = token.label || '';
     }
     input.style.width = '100%';
-    input.addEventListener('input', () => {
+    input.addEventListener('input', async () => {
+      if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__propose_new__') {
+        const proposedValue = prompt(`Nuovo elemento per "${token.label}":`);
+        if (!proposedValue || !proposedValue.trim()) {
+          input.value = '';
+          return;
+        }
+        const value = proposedValue.trim();
+        try {
+          const result = await fetchJson('/api/preset-option-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              field_key: presetFieldKey(token.label),
+              field_label: token.label,
+              value,
+              incident_id: Number(incidentId || 0)
+            })
+          });
+          if (!result || !result.ok) throw new Error(result?.error || 'Richiesta non accettata');
+          const pendingOption = document.createElement('option');
+          pendingOption.value = value;
+          pendingOption.textContent = `${value} (in revisione)`;
+          input.insertBefore(pendingOption, input.querySelector('option[value="__propose_new__"]'));
+          input.value = value;
+          alert('Nuovo elemento inviato alla revisione admin.');
+        } catch (error) {
+          input.value = '';
+          alert(`Errore invio proposta: ${error.message || error}`);
+          return;
+        }
+      }
       tokenState[tokenIndex].value = input.value || '';
       const generated = buildDescriptionFromTemplate(template, tokenState, true);
       descriptionInput.dataset.presetAutoValue = generated;
@@ -779,11 +910,11 @@ function createExtraTicketCard(incidentId) {
   const severityGroup = panel.querySelector('.extra-severity-group');
   const severityHint = panel.querySelector('.extra-severity-hint');
   severitySelect.value = String(severityCfg.severity_default || 1);
-  if (severityHint) {
-    severityHint.textContent = severityCfg.severity_mode === 'user'
-      ? 'Severity selezionabile dall\'utente.'
-      : 'Severity impostata di default dall\'admin.';
-  }
+    if (severityHint) {
+      severityHint.textContent = severityCfg.severity_mode === 'user'
+        ? ''
+        : 'Severity impostata di default dall\'admin.';
+    }
   if (severityCfg.severity_mode !== 'user') {
     panel.dataset.fixedSeverity = String(severityCfg.severity_default || 1);
     if (severityGroup) severityGroup.style.display = 'none';
@@ -816,7 +947,7 @@ function createExtraTicketCard(incidentId) {
   const desc = panel.querySelector('.extra-description');
   const composer = panel.querySelector('.extra-composer');
   if (desc && composer) {
-    renderPresetForTargets(presetTemplate, desc, composer);
+    renderPresetForTargets(presetTemplate, desc, composer, Number(incidentId || 0));
   }
 
   panel.querySelector('.close-extra-modal-btn')?.addEventListener('click', () => {
@@ -880,11 +1011,11 @@ function openModal(incidentId) {
   const userChoice = severityCfg.severity_mode === 'user';
   if (ticketSeverityGroup) ticketSeverityGroup.style.display = userChoice ? '' : 'none';
   ticketSeveritySelect.disabled = !userChoice;
-  if (ticketSeverityHint) {
-    ticketSeverityHint.textContent = userChoice
-      ? 'Severity selezionabile dall\'utente.'
-      : 'Severity impostata di default dall\'admin.';
-  }
+    if (ticketSeverityHint) {
+      ticketSeverityHint.textContent = userChoice
+        ? ''
+        : 'Severity impostata di default dall\'admin.';
+    }
   ticketTimestampInput.value = toDatetimeLocalValue(new Date());
   editingTicketId = null;
   clearExtraTicketCards();
@@ -900,13 +1031,13 @@ function openModal(incidentId) {
 }
 
 function parsePresetTokens(template) {
-  const regex = /\[\[(text|select):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const regex = /\[\[(text|select|dbselect):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const tokens = [];
   let match;
   while ((match = regex.exec(template)) !== null) {
     const type = match[1];
     const label = (match[2] || '').trim();
-    const options = type === 'select' ? (match[3] || '').split(',').map((x) => x.trim()).filter(Boolean) : [];
+    const options = type === 'select' || type === 'dbselect' ? (match[3] || '').split(',').map((x) => x.trim()).filter(Boolean) : [];
     tokens.push({ key: `t${tokens.length}`, raw: match[0], type, label, options, value: '' });
   }
   return tokens;
@@ -925,7 +1056,7 @@ function renderPresetDynamicFields(template) {
   if (!presetInlineComposer) return;
   const descriptionInput = document.getElementById('description');
   descriptionInput.style.display = '';
-  renderPresetForTargets(template, descriptionInput, presetInlineComposer);
+  renderPresetForTargets(template, descriptionInput, presetInlineComposer, Number(incidentTypeInput.value || 0));
 }
 
 function applyPresetTemplate(template) {
@@ -1064,6 +1195,7 @@ function renderHorizontalChart(target, stats) {
 function renderPieOrDonutChart(target, stats, isDonut) {
   const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  const hideLegendValue = target && (target.id === 'fabDayChart' || target.id === 'fabYearChart');
   target.innerHTML = '';
   setChartExportState(target, sortedStats);
 
@@ -1104,7 +1236,7 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     row.innerHTML = `
       <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
       <span class="chart-pie-label">${escapeHtml(item.label)}</span>
-      <strong class="chart-pie-value">${item.total}</strong>
+      ${hideLegendValue ? '' : `<strong class="chart-pie-value">${item.total}</strong>`}
       <span class="chart-pie-percent">${pct}%</span>
     `;
     legend.appendChild(row);
@@ -1208,6 +1340,7 @@ async function loadCategories() {
   Object.keys(incidentSeverityMap).forEach((k) => delete incidentSeverityMap[k]);
   Object.keys(incidentFabDefaultMap).forEach((k) => delete incidentFabDefaultMap[k]);
   data.forEach((cat) => {
+    const visibleIncidents = [];
     const wrap = document.createElement('div');
     wrap.className = 'menu-category';
     wrap.innerHTML = `<button class="category-toggle" type="button" aria-expanded="false">${cat.name}</button>`;
@@ -1230,6 +1363,12 @@ async function loadCategories() {
         severity_mode: inc.severity_mode || 'default'
       };
       incidentFabDefaultMap[inc.name] = (inc.fab_default || '').toUpperCase();
+      if (!cat.hidden && !inc.hidden) visibleIncidents.push(inc);
+    });
+    if (cat.hidden || !visibleIncidents.length) {
+      return;
+    }
+    visibleIncidents.forEach((inc) => {
       const li = document.createElement('li');
       li.innerHTML = `<button class="incident-btn" type="button">${inc.name}</button>`;
       li.querySelector('button').addEventListener('click', () => openModal(inc.id));
@@ -1247,6 +1386,7 @@ async function loadCategories() {
 async function loadDayTickets(animatedTicketIds = []) {
   try {
     const data = await fetchJson('/api/tickets/current-shift');
+    updateCurrentShiftCounters(data.tickets || []);
     const animatedIds = new Set((animatedTicketIds || []).map(Number));
     ticketList.innerHTML = data.tickets.length ? '' : '<li>Nessun ticket nel turno corrente.</li>';
     if (!data.tickets.length) return;
@@ -1290,6 +1430,7 @@ async function loadDayTickets(animatedTicketIds = []) {
     });
   } catch (error) {
     console.error(error);
+    updateCurrentShiftCounters([]);
     if (ticketList) ticketList.innerHTML = '<li>Impossibile caricare i ticket del turno corrente.</li>';
   }
 }
@@ -1402,7 +1543,7 @@ function handleEditTicketButton(btn) {
   ticketSeveritySelect.disabled = severityCfg.severity_mode !== 'user';
   if (ticketSeverityHint) {
     ticketSeverityHint.textContent = severityCfg.severity_mode === 'user'
-      ? 'Severity selezionabile dall\'utente.'
+      ? ''
       : 'Severity impostata di default dall\'admin.';
   }
   document.getElementById('description').value = btn.dataset.description || '';
@@ -1428,8 +1569,8 @@ function handleEditTicketButton(btn) {
 async function loadPreviousShifts() {
   if (previousShiftsLoaded || previousShiftsLoading) return;
   previousShiftsLoading = true;
-  const data = await fetchJson('/api/tickets/previous-shifts');
   try {
+    const data = await fetchPreviousShiftsData();
     if (!data.shifts.length) {
       previousShiftsContent.innerHTML = '<p class="muted">Non ci sono turni precedenti nel giorno corrente.</p>';
       previousShiftsLoaded = true;
@@ -1586,6 +1727,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   renderFabButtons();
   setupChartTypeControls();
   try { await loadDayTickets(); } catch (error) { console.error(error); }
+  try { await fetchPreviousShiftsData(); } catch (error) { console.error(error); updatePreviousShiftCounter([]); }
   startCurrentShiftAutoRefresh();
   deferWork(async () => {
     try {
