@@ -9,28 +9,17 @@ These rules apply to the entire repository.
   - MySQL 5.1
 - Keep the code easy to inspect, deploy, and migrate between environments.
 - Prefer small, targeted changes over broad rewrites.
-- Treat the live InfinityFree database as the main source of truth.
-- Avoid keeping an independent writable local database when it can cause drift.
 
 ## Environments
-- Local dev: `http://127.0.0.1:5500`
-- Live staging/hosting: `https://ticketmanager.infinityfree.io`
-- Deployment mirror: `deploy/htdocs`
-- Local work should be done from the repo in `C:\Users\antod\Documents\Codex\ProdOps`.
-- The deploy mirror in `deploy/htdocs` must stay aligned with the source tree.
+- Local dev: `http://localhost:5500`
+- Local PHP server: `php -S localhost:5500 router.php`
 
 ## Source of truth
 - Root source files in `public/`, `backend/`, `data/`, `index.php`, `router.php`.
-- `deploy/htdocs/` is the deployable mirror and must be kept in sync when live-facing files change.
-- `data/db.json` is the local seed/fallback dataset.
-- `data/mysql_schema_51.sql` is the MySQL 5.1 schema reference.
-- Live data on InfinityFree is the production source of truth.
-- When local and live drift, resync the local snapshot from live before making further changes.
-- Use the admin DB export endpoint when you need to refresh the local snapshot from live.
-- Prefer one writable database source only; do not let local and live evolve independently.
+- `data/db.json` is the local seed/fallback dataset (used when MySQL is not available).
+- `data/mysql_schema_51.sql` is the MySQL schema reference.
 - All requested code changes must be applied in the Git-backed repository working tree.
-- Do not use stray copies outside the repository as the primary edit target.
-- Keep the repository state updated after every meaningful change so Git always reflects the current project version.
+- Keep the repository state updated after every meaningful change.
 
 ## Coding rules
 - Keep backend code compatible with PHP 5.4.
@@ -45,7 +34,7 @@ These rules apply to the entire repository.
 ## Login and auth
 - Login must redirect reliably to the correct page after submit.
 - Do not assume JSON parsing is safe on all hosts; preserve BOM-safe parsing where needed.
-- Keep auth flows working both locally and on InfinityFree.
+- Auth logic lives in `backend/auth.php` and is included by `backend/index.php`.
 
 ## Admin page
 - The admin page must keep these sections visible and functional:
@@ -65,32 +54,11 @@ These rules apply to the entire repository.
 ## Testing
 - Always verify changes in the browser when UI or login behavior changes.
 - Check the relevant API endpoints after backend changes.
-- Prefer testing the exact environment being affected:
-  - local for development
-  - live site for hosting regressions
 - Before saying something is fixed, actually test it in the browser or through the relevant API.
 - When a page looks empty, verify whether the issue is cache, JS loading, auth, or backend data before changing layout.
 - Always run the relevant check after a change before reporting success.
 - For UI changes, inspect the page in the browser.
 - For backend changes, hit the relevant endpoint or DB check.
-- If a fix touches both local and deploy mirror, verify both sides when practical.
-
-## Deployment
-- When updating files that affect the live site, update the deploy mirror under `deploy/htdocs` as well.
-- Keep the live-hosted HTML/JS in sync with the source tree.
-- Do not push to the web unless the user explicitly asks.
-- Only deploy to InfinityFree when the user explicitly asks to push live.
-- If a change is only local, keep it local and do not modify the live environment.
-- GitHub should always be updated from the repository when the user asks for a push; live deploys are separate and only happen on request.
-- InfinityFree FTP details for live deploy:
-  - Site/domain: `ticketmanager.infinityfree.io`
-  - FTP host: `ftpupload.net`
-  - FTP user: `if0_42089952`
-  - FTP port: `21`
-  - Remote folder: `/htdocs`
-  - Local deploy source: `C:\Users\antod\Documents\Codex\ProdOps\deploy\htdocs`
-  - FTP password is intentionally not committed; read it from local ignored file `.codex-local/infinityfree-ftp.md` if present.
-- See `DEPLOY.md` for the repeatable deploy procedure and new-PC setup notes.
 
 ## Git
 - Keep commits focused and descriptive.
