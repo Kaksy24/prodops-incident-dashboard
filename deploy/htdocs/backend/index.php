@@ -701,14 +701,6 @@ function mysql_load_db($defaultUsers)
     if (!count($db['categories']) && !count($db['incidents']) && !count($db['tickets'])) {
         return null;
     }
-    if (file_exists(DB_PATH)) {
-        $json = file_exists(DB_PATH) ? file_get_contents(DB_PATH) : false;
-        $seed = $json ? json_decode($json, true) : null;
-        if (is_array($seed) && isset($seed['categories']) && is_array($seed['categories']) && count($seed['categories']) && count($seed['categories']) > count($db['categories'])) {
-            mysql_save_db($seed);
-            return $seed;
-        }
-    }
     return $db;
 }
 
