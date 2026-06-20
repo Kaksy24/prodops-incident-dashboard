@@ -9,3 +9,5 @@ php-local-err.log
 php-local-out.log
 server.log
 .codex-local/
+.vs/
+*.log
