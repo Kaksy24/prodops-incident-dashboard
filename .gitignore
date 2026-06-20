@@ -1,13 +1,7 @@
-.env
-backend/config.php
-backend/config.local.php
+Ufficio/backend/config.php
+Ufficio/backend/config.local.php
+Locale/.env
+Locale/.codex-local/
 node_modules/
-.vercel/
-.vercel.production.env
-.railway-bin/
-php-local-err.log
-php-local-out.log
-server.log
-.codex-local/
 .vs/
 *.log
