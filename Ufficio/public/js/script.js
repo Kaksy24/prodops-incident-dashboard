@@ -1,4 +1,12 @@
-const menu = document.getElementById('menu');
+﻿const menu = document.getElementById('menu');
+const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
+
+function appUrl(path) {
+  const normalizedPath = String(path || '').charAt(0) === '/' ? String(path || '') : '/' + String(path || '');
+  if (!appBasePath || normalizedPath === appBasePath || normalizedPath.indexOf(appBasePath + '/') === 0) return normalizedPath;
+  return appBasePath + normalizedPath;
+}
+
 const modal = document.getElementById('ticketModal');
 const mainTicketPanel = document.querySelector('#ticketModal > .modal-panel');
 const incidentTypeInput = document.getElementById('incidentType');
@@ -9,9 +17,17 @@ const extraTicketModals = document.getElementById('extraTicketModals');
 const fabButtonsWrap = document.getElementById('fabButtons');
 const fabValue = document.getElementById('fabValue');
 const ticketList = document.getElementById('ticketList');
+const currentShiftToggle = document.getElementById('currentShiftToggle');
+const currentShiftFilter = document.getElementById('currentShiftFilter');
+const currentShiftFilterEmpty = document.getElementById('currentShiftFilterEmpty');
+const currentShiftSort = document.getElementById('currentShiftSort');
+const currentShiftSortDirBtn = document.getElementById('currentShiftSortDir');
 const openAdminBtn = document.getElementById('openAdminBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteTicketBtn = document.getElementById('deleteTicketBtn');
+const editFromReadBtn = document.getElementById('editFromReadBtn');
+const tsPopup = document.getElementById('tsPopup');
+const compactVisualToggle = document.getElementById('compactVisualToggle');
 const previousShiftsToggle = document.getElementById('previousShiftsToggle');
 const previousShiftsContent = document.getElementById('previousShiftsContent');
 const currentShiftTotalCount = document.getElementById('currentShiftTotalCount');
@@ -26,12 +42,15 @@ const ticketSearchResetBtn = document.getElementById('ticketSearchResetBtn');
 const ticketSearchSummary = document.getElementById('ticketSearchSummary');
 const ticketSearchResults = document.getElementById('ticketSearchResults');
 
-const fabDayChart = document.getElementById('fabDayChart');
 const fabYearChart = document.getElementById('fabYearChart');
-const catDayChart = document.getElementById('catDayChart');
 const catYearChart = document.getElementById('catYearChart');
 const teamYearChart = document.getElementById('teamYearChart');
 const severityYearChart = document.getElementById('severityYearChart');
+const personalChart = document.getElementById('personalChart');
+const personalChartUsername = document.getElementById('personalChartUsername');
+const personalTargetInput = document.getElementById('personalTargetInput');
+const personalTargetStorageKey = 'prodops_personal_target';
+let personalChartView = 'mine';
 const ticketTimestampInput = document.getElementById('ticketTimestamp');
 const ticketModalTitle = document.getElementById('ticketModalTitle');
 const ticketSeveritySelect = document.getElementById('ticketSeverity');
@@ -41,10 +60,10 @@ const presetInlineComposer = document.getElementById('presetInlineComposer');
 
 const fabs = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-let fabYearMode = 'months';
-let catYearMode = 'months';
-let teamYearMode = 'months';
-let severityYearMode = 'months';
+let fabYearMode = 'day';
+let catYearMode = 'day';
+let teamYearMode = 'day';
+let severityYearMode = 'day';
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
@@ -66,8 +85,12 @@ let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
 let previousShiftsData = null;
-let currentShiftAutoRefreshTimer = null;
+let syncLastTs = 0;
+let syncPollTimer = null;
 let currentShiftAutoRefreshBusy = false;
+let currentShiftOwnerFilter = 'all';
+let currentShiftSortKey = 'time';
+let currentShiftSortDir = 'desc';
 let ticketSubmitBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const chartPalette = [
@@ -108,7 +131,7 @@ function updateCurrentShiftCounters(tickets) {
     const ownerId = Number(ticket && ticket.owner_user_id ? ticket.owner_user_id : 0);
     const ownerTeam = String(ticket && ticket.owner_team ? ticket.owner_team : '').toUpperCase();
     if (userId > 0 && ownerId === userId) mine += 1;
-    if (userTeam && ownerTeam === userTeam) team += 1;
+    if (userTeam && ownerTeam === userTeam && ownerId !== userId) team += 1;
   });
   setTextContent(currentShiftTotalCount, rows.length);
   setTextContent(currentShiftMineCount, mine);
@@ -141,6 +164,10 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function highlightPresetValues(text) {
+  return escapeHtml(text).replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '<mark class="preset-value">$1</mark>');
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -149,11 +176,10 @@ const chartTypeStorageKey = 'prodops_chart_types';
 const chartTypeChoices = [
   { value: 'column', label: 'Colonne' },
   { value: 'bar', label: 'Barre orizzontali' },
-  { value: 'donut', label: 'Ciambella' },
-  { value: 'pie', label: 'Torta' },
-  { value: 'line', label: 'Linea' }
+  { value: 'donut', label: 'Ciambella' }
 ];
 let chartTypes = defaultChartTypes();
+
 
 function defaultChartTypes() {
   return {
@@ -167,6 +193,8 @@ function defaultChartTypes() {
 }
 
 function normalizeChartType(value) {
+  if (value === 'pie') return 'donut';
+  if (value === 'line') return 'bar';
   const allowed = new Set(chartTypeChoices.map((item) => item.value));
   return allowed.has(value) ? value : 'column';
 }
@@ -209,6 +237,96 @@ function formatTicketTimestamp(dateLike) {
   if (Number.isNaN(date.getTime())) return '';
   const pad = (value) => String(value).padStart(2, '0');
   return `[${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}]`;
+}
+
+function formatTicketDate(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatTicketTime(dateLike) {
+  const date = new Date(dateLike);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatTicketSeverity(severity) {
+  const level = Number(severity || 0);
+  if (!level || level < 1) return '';
+  return `S${level}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const color = normalizeHexColor(hex);
+  if (!color) return '';
+  const value = color.slice(1);
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function isLongTicketBody(text) {
+  const value = String(text || '');
+  return value.length > 120 || value.indexOf('\n') !== -1;
+}
+
+function setTicketModalReadMode(isReadMode) {
+  const readMode = Boolean(isReadMode);
+  if (ticketSubmitBtn) {
+    ticketSubmitBtn.hidden = readMode;
+    ticketSubmitBtn.disabled = readMode ? true : ticketSubmitBusy;
+  }
+  if (deleteTicketBtn) deleteTicketBtn.style.display = readMode ? 'none' : (editingTicketId ? 'inline-block' : 'none');
+  if (addSameIncidentBtn) addSameIncidentBtn.style.display = readMode ? 'none' : 'grid';
+  if (ticketForm) ticketForm.dataset.readMode = readMode ? '1' : '0';
+  if (editFromReadBtn) editFromReadBtn.style.display = 'none';
+}
+
+function openTicketReadModal(ticket) {
+  const item = ticket || {};
+  editingTicketId = null;
+  clearExtraTicketCards();
+  incidentTypeInput.value = String(item.incidentId || '');
+  if (ticketModalTitle) ticketModalTitle.textContent = item.incidentName || 'Dettaglio Ticket';
+  document.getElementById('description').value = String(item.description || '').replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1');
+  document.getElementById('description').readOnly = true;
+  document.getElementById('description').style.display = '';
+  document.getElementById('description').placeholder = '';
+  if (presetInlineComposer) {
+    presetInlineComposer.style.display = 'none';
+    presetInlineComposer.innerHTML = '';
+  }
+  const readSeverityCfg = incidentIdToSeverityMap[String(item.incidentId || '')] || { severity_default: 1, severity_mode: 'default' };
+  if (ticketSeverityGroup) ticketSeverityGroup.style.display = readSeverityCfg.severity_mode === 'user' ? '' : 'none';
+  ticketSeveritySelect.disabled = true;
+  ticketSeveritySelect.value = String(Number(item.severity || readSeverityCfg.severity_default || 1));
+  if (ticketSeverityHint) {
+    ticketSeverityHint.textContent = item.category ? `Categoria: ${item.category}` : '';
+  }
+  ticketTimestampInput.value = toDatetimeLocalValue(item.createdAt || new Date());
+  ticketTimestampInput.disabled = true;
+  fabValue.value = String(item.fab || '').toUpperCase();
+  fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
+    b.classList.toggle('active', b.textContent === fabValue.value);
+    b.disabled = true;
+  });
+  setTicketModalReadMode(true);
+  if (editFromReadBtn && item.canEdit) {
+    editFromReadBtn.style.display = '';
+    editFromReadBtn.dataset.ticketId = String(item.ticketId || '');
+    editFromReadBtn.dataset.incidentId = String(item.incidentId || '');
+    editFromReadBtn.dataset.incident = String(item.incidentName || '');
+    editFromReadBtn.dataset.description = String(item.description || '');
+    editFromReadBtn.dataset.fab = String(item.fab || '');
+    editFromReadBtn.dataset.createdAt = String(item.createdAt || '');
+    editFromReadBtn.dataset.severity = String(item.severity || '');
+  }
+  revealModal();
+  applyMultiModalLayout();
 }
 
 function defaultUiColors() {
@@ -601,7 +719,8 @@ function setThemeToggleIcon(button, theme) {
   if (!button) return;
   button.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = button.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = theme === 'dark' ? '☾' : '☀';
+  if (thumb) thumb.textContent = theme === 'dark' ? 'â˜¾' : 'â˜€';
+  if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
 }
 
 function setTicketSubmitState(isBusy) {
@@ -612,10 +731,6 @@ function setTicketSubmitState(isBusy) {
       ? (ticketSubmitBusy ? 'Salvataggio...' : 'Conferma Modifica')
       : (ticketSubmitBusy ? 'Creazione...' : 'Crea Ticket');
   }
-  document.querySelectorAll('.extra-submit-btn').forEach((btn) => {
-    btn.disabled = ticketSubmitBusy;
-    btn.textContent = ticketSubmitBusy ? 'Creazione...' : 'Crea Ticket';
-  });
 }
 
 function beginTicketSubmitLock() {
@@ -767,6 +882,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     descriptionInput.readOnly = false;
     descriptionInput.dataset.presetAutoSync = 'off';
     descriptionInput.dataset.presetAutoValue = '';
+    descriptionInput.dataset.presetMarkupValue = '';
     descriptionInput.placeholder = 'Inserisci descrizione problema...';
     descriptionInput.value = template || '';
     return;
@@ -800,6 +916,10 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         input.appendChild(option);
       });
       loadDbPresetOptions(token, input);
+    } else if (token.type === 'timestamp') {
+      input = document.createElement('input');
+      input.type = 'time';
+      input.placeholder = 'hh:mm';
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -841,6 +961,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       tokenState[tokenIndex].value = input.value || '';
       const generated = buildDescriptionFromTemplate(template, tokenState, true);
       descriptionInput.dataset.presetAutoValue = generated;
+      descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
       if (descriptionInput.dataset.presetAutoSync !== 'off') {
         descriptionInput.value = generated;
       }
@@ -857,6 +978,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
 
   const initialGenerated = buildDescriptionFromTemplate(template, tokenState, true);
   descriptionInput.dataset.presetAutoValue = initialGenerated;
+  descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
   descriptionInput.value = initialGenerated;
 }
 
@@ -877,19 +999,22 @@ function createExtraTicketCard(incidentId) {
       <textarea class="extra-description" rows="7"></textarea>
       <div class="panel preset-inline-composer extra-composer" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
 
-      <div class="extra-severity-group">
-        <label>Severity</label>
-        <select class="extra-severity">
-          <option value="1">1 - Low</option>
-          <option value="2">2 - Medium</option>
-          <option value="3">3 - High</option>
-          <option value="4">4 - Extreme</option>
-        </select>
-        <p class="muted extra-severity-hint"></p>
+      <div class="fab-severity-row">
+        <div class="fab-section">
+          <p class="muted">Seleziona FAB:</p>
+          <div class="fab-buttons extra-fab-buttons"></div>
+        </div>
+        <div class="extra-severity-group severity-inline-group">
+          <label>Severity</label>
+          <select class="extra-severity">
+            <option value="1">1 - Low</option>
+            <option value="2">2 - Medium</option>
+            <option value="3">3 - High</option>
+            <option value="4">4 - Extreme</option>
+          </select>
+          <p class="muted extra-severity-hint"></p>
+        </div>
       </div>
-
-      <p class="muted">Seleziona FAB di appartenenza:</p>
-      <div class="fab-buttons extra-fab-buttons"></div>
       <input type="hidden" class="extra-fab" />
 
       <div class="datetime-actions-row">
@@ -899,7 +1024,6 @@ function createExtraTicketCard(incidentId) {
         </div>
         <div class="form-actions inline-actions">
           <button type="button" class="secondary extra-cancel-btn">Annulla</button>
-          <button type="button" class="primary extra-submit-btn">Crea Ticket</button>
         </div>
       </div>
     </div>
@@ -960,10 +1084,6 @@ function createExtraTicketCard(incidentId) {
     applyMultiModalLayout();
     positionAddSameIncidentBtn();
   });
-  panel.querySelector('.extra-submit-btn')?.addEventListener('click', () => {
-    if (ticketSubmitBusy) return;
-    ticketForm.requestSubmit();
-  });
   extraTicketModals.appendChild(panel);
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
@@ -974,7 +1094,12 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
   const panels = [...document.querySelectorAll('.extra-ticket-modal')];
   for (let index = 0; index < panels.length; index += 1) {
     const panel = panels[index];
-    const extraDesc = panel.querySelector('.extra-description')?.value?.trim() || '';
+    const extraDescEl = panel.querySelector('.extra-description');
+    const extraDesc = extraDescEl
+      ? ((extraDescEl.dataset.presetAutoSync !== 'off' && extraDescEl.dataset.presetMarkupValue)
+        ? extraDescEl.dataset.presetMarkupValue
+        : (extraDescEl.value || '').trim())
+      : '';
     const extraFab = panel.querySelector('.extra-fab')?.value || '';
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
@@ -1011,6 +1136,7 @@ function openModal(incidentId) {
   const userChoice = severityCfg.severity_mode === 'user';
   if (ticketSeverityGroup) ticketSeverityGroup.style.display = userChoice ? '' : 'none';
   ticketSeveritySelect.disabled = !userChoice;
+  ticketTimestampInput.disabled = false;
     if (ticketSeverityHint) {
       ticketSeverityHint.textContent = userChoice
         ? ''
@@ -1020,8 +1146,8 @@ function openModal(incidentId) {
   editingTicketId = null;
   clearExtraTicketCards();
   if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Crea Ticket';
-  if (deleteTicketBtn) deleteTicketBtn.style.display = 'none';
-  if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'grid';
+  fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => { b.disabled = false; });
+  setTicketModalReadMode(false);
   fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
     b.classList.toggle('active', b.textContent === defaultFab);
   });
@@ -1031,7 +1157,7 @@ function openModal(incidentId) {
 }
 
 function parsePresetTokens(template) {
-  const regex = /\[\[(text|select|dbselect):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const regex = /\[\[(text|select|dbselect|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const tokens = [];
   let match;
   while ((match = regex.exec(template)) !== null) {
@@ -1048,6 +1174,15 @@ function buildDescriptionFromTemplate(template, tokens, showPlaceholders = false
   tokens.forEach((token) => {
     const fallback = showPlaceholders ? `[${token.label || 'campo'}]` : '';
     text = text.replace(token.raw, token.value || fallback);
+  });
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function buildMarkupDescription(template, tokens) {
+  let text = template;
+  tokens.forEach((token) => {
+    const display = token.value ? `ã€ˆ${token.value}ã€‰` : `[${token.label || 'campo'}]`;
+    text = text.replace(token.raw, display);
   });
   return text.replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -1080,14 +1215,14 @@ function renderFabButtons() {
 }
 
 async function fetchJson(url, options, attempt = 0) {
-  const res = await fetch(url, options);
+  const res = await fetch(appUrl(url), options);
   const text = (await res.text()).replace(/^\uFEFF+/, '');
   const contentType = res.headers.get('content-type') || '';
   const looksLikeAntiBotPage = /slowAES|aes\.js|This site requires Javascript to work/i.test(text);
   const looksLikeJson = /json/i.test(contentType) || text.startsWith('{') || text.startsWith('[');
 
   if (res.status === 401) {
-    window.location.href = '/login.html';
+    window.location.href = appUrl('/login.html');
     throw new Error('Login richiesta');
   }
   if (res.status === 403) {
@@ -1118,10 +1253,20 @@ async function loadCurrentUser() {
   const data = await fetchJson('/api/me');
   currentUser = data.user;
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  const pill = document.getElementById('userPill');
+  const pillName = document.getElementById('userPillName');
+  if (pill && pillName && currentUser) {
+    pillName.textContent = currentUser.username || '';
+    pill.style.display = '';
+  }
 }
 
 function chartTitleForTarget(target) {
-  return target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
+  const baseTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
+  const chartKey = normalizeChartKey(target && target.id);
+  if (chartKey === 'fabYear' && fabYearMode === 'day') return `${baseTitle} (24h)`;
+  if (chartKey === 'catYear' && catYearMode === 'day') return `${baseTitle} (24h)`;
+  return baseTitle;
 }
 
 function setChartExportState(target, sortedStats) {
@@ -1183,7 +1328,7 @@ function renderHorizontalChart(target, stats) {
     const color = getBarColor(target.id, item.label);
     row.innerHTML = `
       <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
-      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"><span class="bar-pct">${pct}%</span></div></div>
+      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div><span class="bar-pct">${pct}%</span></div>
       <span class="chart-horizontal-value">${item.total}</span>
     `;
     wrap.appendChild(row);
@@ -1195,7 +1340,7 @@ function renderHorizontalChart(target, stats) {
 function renderPieOrDonutChart(target, stats, isDonut) {
   const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
-  const hideLegendValue = target && (target.id === 'fabDayChart' || target.id === 'fabYearChart');
+  const hideLegendValue = target && target.id === 'fabYearChart';
   target.innerHTML = '';
   setChartExportState(target, sortedStats);
 
@@ -1279,6 +1424,62 @@ function renderLineChart(target, stats) {
   target.appendChild(svg);
 }
 
+function renderPersonalLineChart(target, stats, targetValue) {
+  target.innerHTML = '';
+  const months = stats;
+  const maxVal = Math.max(Math.max.apply(null, months.map(function(x) { return x.total; })), targetValue || 1, 1);
+  const width = 900;
+  const height = 220;
+  const padL = 36;
+  const padR = 16;
+  const padT = 28;
+  const padB = 32;
+  const usableW = width - padL - padR;
+  const usableH = height - padT - padB;
+  const n = months.length;
+  const xOf = function(i) { return padL + (usableW * i) / (n - 1); };
+  const yOf = function(v) { return padT + usableH - (v / maxVal) * usableH; };
+  const points = months.map(function(m, i) { return { x: xOf(i), y: yOf(m.total), m: m }; });
+  const linePath = points.map(function(p, i) { return (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ');
+  const targetY = yOf(targetValue || 0).toFixed(1);
+
+  var yTicks = '';
+  var tickCount = 5;
+  for (var ti = 0; ti <= tickCount; ti++) {
+    var tv = Math.round((maxVal * ti) / tickCount);
+    var ty = yOf(tv).toFixed(1);
+    yTicks += '<line x1="' + (padL - 4) + '" y1="' + ty + '" x2="' + (width - padR) + '" y2="' + ty + '" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 3"/>';
+    yTicks += '<text x="' + (padL - 6) + '" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="personal-chart-label">' + tv + '</text>';
+  }
+
+  var circles = points.map(function(p) {
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="4" class="personal-chart-point"/>' +
+      (p.m.total > 0 ? '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 9).toFixed(1) + '" text-anchor="middle" class="personal-chart-value">' + p.m.total + '</text>' : '');
+  }).join('');
+
+  var labels = points.map(function(p) {
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 14) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
+  }).join('');
+
+  var targetLine = (targetValue > 0)
+    ? '<line x1="' + padL + '" y1="' + targetY + '" x2="' + (width - padR) + '" y2="' + targetY + '" class="personal-chart-target"/>' +
+      '<text x="' + (width - padR) + '" y="' + (parseFloat(targetY) - 5) + '" text-anchor="end" class="personal-chart-target-label">Target ' + targetValue + '</text>'
+    : '';
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('class', 'personal-chart-svg');
+  svg.innerHTML =
+    yTicks +
+    '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
+    '<line x1="' + padL + '" y1="' + (height - padB) + '" x2="' + (width - padR) + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
+    targetLine +
+    '<path d="' + linePath + '" class="personal-chart-path"/>' +
+    circles +
+    labels;
+  target.appendChild(svg);
+}
+
 function renderChart(target, stats) {
   const type = getChartType(target.id);
   if (type === 'bar') return renderHorizontalChart(target, stats);
@@ -1293,9 +1494,9 @@ function renderVerticalChart(target, stats) {
 }
 
 function setupChartTypeControls() {
-  document.querySelectorAll('.chart-export[data-chart-target]').forEach((wrap) => {
-    const targetId = wrap.dataset.chartTarget || '';
-    const panelHeader = wrap.closest('.panel-heading-row');
+  document.querySelectorAll('.charts-grid .chart[id]').forEach((chart) => {
+    const targetId = chart.id || '';
+    const panelHeader = chart.closest('.panel') ? chart.closest('.panel').querySelector('.panel-heading-row') : null;
     if (!panelHeader || panelHeader.querySelector(`.chart-type-select[data-chart-target="${targetId}"]`)) return;
     const select = document.createElement('select');
     select.className = 'chart-type-select';
@@ -1308,7 +1509,7 @@ function setupChartTypeControls() {
       select.appendChild(option);
     });
     select.value = getChartType(targetId);
-    panelHeader.insertBefore(select, wrap);
+    panelHeader.appendChild(select);
   });
 
   document.querySelectorAll('.chart-type-select[data-chart-target]').forEach((select) => {
@@ -1325,6 +1526,7 @@ function setupChartTypeControls() {
     });
   });
 }
+
 
 async function loadCategories() {
   const data = await fetchJson('/api/categories');
@@ -1388,51 +1590,161 @@ async function loadDayTickets(animatedTicketIds = []) {
     const data = await fetchJson('/api/tickets/current-shift');
     updateCurrentShiftCounters(data.tickets || []);
     const animatedIds = new Set((animatedTicketIds || []).map(Number));
+    _compactFlatRows = [];
     ticketList.innerHTML = data.tickets.length ? '' : '<li>Nessun ticket nel turno corrente.</li>';
-    if (!data.tickets.length) return;
+    if (!data.tickets.length) {
+      applyCurrentShiftFilter();
+      return;
+    }
 
-  const grouped = new Map();
-  data.tickets.forEach((t) => {
+    const pad = (v) => String(v).padStart(2, '0');
+    data.tickets.forEach((t) => {
       const incidentId = Number(t.incident_id || 0);
       const incidentName = String(incidentIdToNameMap[String(incidentId)] || t.incident_name || '');
       const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
-      const key = `${category}|||${t.fab}`;
-      if (!grouped.has(key)) grouped.set(key, { category, fab: t.fab, incidents: [] });
-      grouped.get(key).incidents.push({
-        id: t.id,
-        incident_id: t.incident_id,
-        incident_name: incidentName,
-        description: String(t.description || ''),
-        fab: t.fab,
-        created_at: t.created_at,
-        severity: t.severity,
-        can_edit: Boolean(t.can_edit)
-      });
-    });
-
-    grouped.forEach((group) => {
-      const categoryColor = getLabelColor('categories', group.category);
-      const fabColor = getLabelColor('fabs', group.fab);
+      const categoryColor = getLabelColor('categories', category);
+      const fabColor = getLabelColor('fabs', t.fab);
+      const isAnimated = animatedIds.has(Number(t.id));
+      const description = String(t.description || '');
+      const d = new Date(t.created_at);
+      const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
+      const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
+      const ownerUsername = String(t.owner_username || '');
       const li = document.createElement('li');
-      const incidents = group.incidents
-        .map((item) => {
-          const isAnimated = animatedIds.has(Number(item.id));
-          const editBtn = item.can_edit
-            ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${String(item.incident_name || '').replace(/"/g, '&quot;')}" data-description="${String(item.description || '').replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
-            : '';
-          const ticketTimestamp = formatTicketTimestamp(item.created_at);
-          return `<li class="${isAnimated ? 'ticket-new-entry' : ''}" data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="ticket-entry-time">${ticketTimestamp}</span><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${escapeHtml(item.description)}</span>${editBtn}</li>`;
-        })
-        .join('');
-      li.innerHTML = `<strong class="ticket-category-label" style="color:${categoryColor}">${escapeHtml(group.category)}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${escapeHtml(group.fab)}</strong><ul>${incidents}</ul>`;
-      if (group.incidents.some((item) => animatedIds.has(Number(item.id)))) li.classList.add('ticket-new-group');
+      li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
+      li.dataset.ticketId = String(t.id);
+      li.dataset.incidentId = String(t.incident_id || '');
+      li.dataset.incident = incidentName;
+      li.dataset.description = description;
+      li.dataset.fab = String(t.fab || '');
+      li.dataset.createdAt = String(t.created_at || '');
+      li.dataset.severity = String(t.severity || '');
+      li.dataset.category = category;
+      li.dataset.canEdit = t.can_edit ? '1' : '0';
+      li.dataset.ownerUserId = String(t.owner_user_id || '');
+      li.dataset.ownerTeam = String(t.owner_team || '').toUpperCase();
+      li.dataset.ownerUsername = ownerUsername;
+      li.style.setProperty('--ticket-accent', categoryColor);
+      li.innerHTML =
+        '<div class="ticket-row-top">' +
+          '<span class="ticket-row-cat" style="color:' + categoryColor + '">' + escapeHtml(category) + '</span>' +
+          '<span class="ticket-row-sep" aria-hidden="true">|</span>' +
+          '<span class="ticket-row-fab" style="color:' + fabColor + '">' + escapeHtml(String(t.fab || '')) + '</span>' +
+        '</div>' +
+        '<div class="ticket-row-body">' +
+          '<div class="ticket-row-title">' + escapeHtml(incidentName) + '</div>' +
+          '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
+        '</div>' +
+        '<div class="ticket-row-footer">' +
+          (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
+          '<span class="ticket-row-datetime">' + dayMonth + ' ' + hhmm + '</span>' +
+        '</div>';
       ticketList.appendChild(li);
     });
+
+    ticketList.classList.toggle('ticket-list-scrollable', (data.tickets || []).length > 10);
+    applyCurrentShiftFilter();
+    sortTicketList();
   } catch (error) {
     console.error(error);
     updateCurrentShiftCounters([]);
     if (ticketList) ticketList.innerHTML = '<li>Impossibile caricare i ticket del turno corrente.</li>';
   }
+}
+
+function applyCurrentShiftFilter() {
+  if (_compactActive && _compactFlatRows.length) _compactRestoreFlat();
+  if (!ticketList || !currentShiftFilter) return;
+  const query = currentShiftFilter.value.trim().toLocaleLowerCase('it');
+  const userId = Number(currentUser && currentUser.id ? currentUser.id : 0);
+  const userTeam = String(currentUser && currentUser.team ? currentUser.team : '').toUpperCase();
+  let ticketCount = 0;
+  let visibleTicketCount = 0;
+
+  Array.from(ticketList.children).forEach((li) => {
+    if (!li.dataset.ticketId) return;
+    ticketCount += 1;
+    let ownerMatch = true;
+    if (currentShiftOwnerFilter === 'mine') {
+      ownerMatch = userId > 0 && Number(li.dataset.ownerUserId || 0) === userId;
+    } else if (currentShiftOwnerFilter === 'team') {
+      const ownerTeam = String(li.dataset.ownerTeam || '').toUpperCase();
+      const ownerId = Number(li.dataset.ownerUserId || 0);
+      ownerMatch = Boolean(userTeam && ownerTeam === userTeam && ownerId !== userId);
+    }
+    const textMatch = !query || li.textContent.toLocaleLowerCase('it').includes(query);
+    const isVisible = ownerMatch && textMatch;
+    li.style.display = isVisible ? '' : 'none';
+    if (isVisible) visibleTicketCount += 1;
+  });
+
+  if (currentShiftFilterEmpty) {
+    const hasFilter = Boolean(query) || currentShiftOwnerFilter !== 'all';
+    currentShiftFilterEmpty.hidden = !(hasFilter && ticketCount > 0 && visibleTicketCount === 0);
+  }
+  if (_compactActive) _compactBuild();
+}
+
+function updateSortDirBtn() {
+  if (!currentShiftSortDirBtn) return;
+  currentShiftSortDirBtn.textContent = currentShiftSortDir === 'asc' ? '↑' : '↓';
+}
+
+function sortTicketList() {
+  if (_compactActive && _compactFlatRows.length) _compactRestoreFlat();
+  if (!ticketList) return;
+  var items = Array.from(ticketList.children).filter(function(li) { return li.dataset.ticketId; });
+  var key = currentShiftSortKey;
+  var dir = currentShiftSortDir === 'asc' ? 1 : -1;
+  items.sort(function(a, b) {
+    var cmp;
+    if (key === 'category') {
+      cmp = String(a.dataset.category || '').localeCompare(String(b.dataset.category || ''), 'it');
+    } else if (key === 'incident') {
+      cmp = String(a.dataset.incident || '').localeCompare(String(b.dataset.incident || ''), 'it');
+    } else if (key === 'fab') {
+      cmp = String(a.dataset.fab || '').localeCompare(String(b.dataset.fab || ''), 'it');
+    } else {
+      cmp = String(a.dataset.createdAt || '').localeCompare(String(b.dataset.createdAt || ''));
+    }
+    return cmp * dir;
+  });
+  items.forEach(function(li) { ticketList.appendChild(li); });
+  if (_compactActive) _compactBuild();
+}
+
+if (currentShiftFilter) {
+  currentShiftFilter.addEventListener('input', applyCurrentShiftFilter);
+}
+
+if (currentShiftSort) {
+  currentShiftSort.addEventListener('change', function() {
+    currentShiftSortKey = currentShiftSort.value || 'time';
+    currentShiftSortDir = currentShiftSortKey === 'time' ? 'desc' : 'asc';
+    updateSortDirBtn();
+    sortTicketList();
+  });
+}
+
+if (currentShiftSortDirBtn) {
+  currentShiftSortDirBtn.addEventListener('click', function() {
+    currentShiftSortDir = currentShiftSortDir === 'asc' ? 'desc' : 'asc';
+    updateSortDirBtn();
+    sortTicketList();
+  });
+}
+
+const currentShiftCountersEl = document.getElementById('currentShiftCounters');
+if (currentShiftCountersEl) {
+  currentShiftCountersEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ticket-counter-btn[data-filter]');
+    if (!btn) return;
+    currentShiftOwnerFilter = btn.dataset.filter;
+    Array.from(currentShiftCountersEl.querySelectorAll('.ticket-counter-btn')).forEach(function (b) {
+      b.classList.toggle('active', b === btn);
+    });
+    applyCurrentShiftFilter();
+  });
 }
 
 async function refreshCurrentShiftTickets() {
@@ -1441,17 +1753,43 @@ async function refreshCurrentShiftTickets() {
   try {
     await loadDayTickets();
   } catch (error) {
-    // Silenzio: il refresh periodico riproverà al ciclo successivo.
+    // Silenzio: il refresh periodico riproverÃ  al ciclo successivo.
   } finally {
     currentShiftAutoRefreshBusy = false;
   }
 }
 
+function pingUrl() {
+  return appUrl('/api/ping?_t=' + Date.now());
+}
+
 function startCurrentShiftAutoRefresh() {
-  if (currentShiftAutoRefreshTimer) return;
-  currentShiftAutoRefreshTimer = window.setInterval(() => {
-    refreshCurrentShiftTickets().catch(() => {});
-  }, 5000);
+  if (syncPollTimer) return;
+  fetch(pingUrl())
+    .then((r) => r.json())
+    .then((data) => { syncLastTs = data.ts || 0; scheduleSyncPoll(); })
+    .catch(() => scheduleSyncPoll());
+}
+
+function scheduleSyncPoll() {
+  syncPollTimer = setTimeout(() => {
+    syncPollTimer = null;
+    fetch(pingUrl())
+      .then((r) => r.json())
+      .then((data) => {
+        const ts = data.ts || 0;
+        if (ts > syncLastTs + 0.001) {
+          syncLastTs = ts;
+          refreshCurrentShiftTickets().catch(() => {});
+          loadCharts().catch(() => {});
+          if (previousShiftsLoaded) loadPreviousShifts().catch(() => {});
+        }
+        scheduleSyncPoll();
+      })
+      .catch(() => {
+        syncPollTimer = setTimeout(() => { syncPollTimer = null; scheduleSyncPoll(); }, 5000);
+      });
+  }, 2000);
 }
 
 function renderGroupedTickets(tickets) {
@@ -1471,7 +1809,7 @@ function renderGroupedTickets(tickets) {
     const categoryColor = getLabelColor('categories', group.category);
     const fabColor = getLabelColor('fabs', group.fab);
     const rows = group.incidents
-      .map((item) => `<li><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span></li>`)
+      .map((item) => `<li><span class="incident-entry-text"><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${highlightPresetValues(item.description)}</span></li>`)
       .join('');
     return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
   }).join('');
@@ -1499,7 +1837,7 @@ function renderSearchTickets(tickets) {
       const editBtn = item.can_edit
         ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
         : '';
-      return `<li data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${item.incident_name}</span> - ${item.description}</span>${editBtn}</li>`;
+      return `<li data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${highlightPresetValues(item.description)}</span>${editBtn}</li>`;
     }).join('');
     return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
   }).join('');
@@ -1520,7 +1858,7 @@ async function runTicketSearch() {
     const parts = [];
     if (query) parts.push(`parole chiave "${query}"`);
     if (from || to) parts.push(`date ${from || '...'} ? ${to || '...'}`);
-    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' Â· ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   const data = await fetchJson(`/api/tickets/search${suffix}`);
   if (ticketSearchResults) {
@@ -1541,12 +1879,13 @@ function handleEditTicketButton(btn) {
   ticketSeveritySelect.value = String(fallbackSeverity);
   if (ticketSeverityGroup) ticketSeverityGroup.style.display = severityCfg.severity_mode === 'user' ? '' : 'none';
   ticketSeveritySelect.disabled = severityCfg.severity_mode !== 'user';
+  ticketTimestampInput.disabled = false;
   if (ticketSeverityHint) {
     ticketSeverityHint.textContent = severityCfg.severity_mode === 'user'
       ? ''
       : 'Severity impostata di default dall\'admin.';
   }
-  document.getElementById('description').value = btn.dataset.description || '';
+  document.getElementById('description').value = (btn.dataset.description || '').replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1');
   document.getElementById('description').readOnly = false;
   document.getElementById('description').style.display = '';
   document.getElementById('description').placeholder = 'Inserisci descrizione problema...';
@@ -1557,13 +1896,21 @@ function handleEditTicketButton(btn) {
   ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
   fabValue.value = (btn.dataset.fab || '').toUpperCase();
   fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
+    b.disabled = false;
     b.classList.toggle('active', b.textContent === fabValue.value);
   });
+  setTicketModalReadMode(false);
   if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
   revealModal();
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
+}
+
+if (editFromReadBtn) {
+  editFromReadBtn.addEventListener('click', function () {
+    handleEditTicketButton(editFromReadBtn);
+  });
 }
 
 async function loadPreviousShifts() {
@@ -1590,23 +1937,27 @@ setupChartExportControls();
 
 async function loadCharts() {
   try {
-    const [fabDay, fabYear, catDay, catYear, teamYear, severityYear] = await Promise.all([
-      fetchJson('/api/stats/fab/current-day'),
-      fetchJson(`/api/stats/fab/current-year?mode=${fabYearMode}`),
-      fetchJson('/api/stats/category/current-day'),
-      fetchJson(`/api/stats/category/current-year?mode=${catYearMode}`),
-      fetchJson(`/api/stats/team/current-year?mode=${teamYearMode}`),
-      fetchJson(`/api/stats/severity/current-year?mode=${severityYearMode}`)
+    const [fabYear, catYear, teamYear, severityYear, personal] = await Promise.all([
+      fetchJson(fabYearMode === 'day' ? '/api/stats/fab/current-day' : `/api/stats/fab/current-year?mode=${fabYearMode}`),
+      fetchJson(catYearMode === 'day' ? '/api/stats/category/current-day' : `/api/stats/category/current-year?mode=${catYearMode}`),
+      fetchJson(teamYearMode === 'day' ? '/api/stats/team/current-day' : `/api/stats/team/current-year?mode=${teamYearMode}`),
+      fetchJson(severityYearMode === 'day' ? '/api/stats/severity/current-day' : `/api/stats/severity/current-year?mode=${severityYearMode}`),
+      fetchJson('/api/stats/personal/current-year?view=' + personalChartView)
     ]);
-    renderChart(fabDayChart, fabDay.stats);
     renderChart(fabYearChart, fabYear.stats);
-    renderChart(catDayChart, catDay.stats);
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
     renderChart(severityYearChart, severityYear.stats);
+    if (personalChart && personal.stats) {
+      const target = Number(personalTargetInput ? personalTargetInput.value : 0) || 0;
+      renderPersonalLineChart(personalChart, personal.stats, target);
+    }
+    if (personalChartUsername && personal.username) {
+      personalChartUsername.textContent = '— ' + personal.username;
+    }
   } catch (error) {
     console.error(error);
-    [fabDayChart, fabYearChart, catDayChart, catYearChart, teamYearChart, severityYearChart].forEach((target) => {
+    [fabYearChart, catYearChart, teamYearChart, severityYearChart].forEach((target) => {
       if (target) target.innerHTML = '<p class="muted">Impossibile caricare il grafico.</p>';
     });
   }
@@ -1620,10 +1971,10 @@ modal.addEventListener('mouseup', (e) => {
   if (e.target === modal && overlayPressStarted) closeModal();
   overlayPressStarted = false;
 });
-openAdminBtn.addEventListener('click', () => { window.location.href = '/admin.html'; });
+openAdminBtn.addEventListener('click', () => { window.location.href = appUrl('/admin.html'); });
 logoutBtn?.addEventListener('click', async () => {
-  await fetch('/api/logout', { method: 'POST' });
-  window.location.href = '/login.html';
+  await fetch(appUrl('/api/logout'), { method: 'POST' });
+  window.location.href = appUrl('/login.html');
 });
 
 if (previousShiftsToggle) {
@@ -1633,6 +1984,13 @@ if (previousShiftsToggle) {
     previousShiftsToggle.querySelector('.section-toggle-icon').textContent = isOpen ? '+' : '-';
     previousShiftsContent.hidden = isOpen;
     if (!isOpen && !previousShiftsLoaded) await loadPreviousShifts();
+  });
+
+  currentShiftToggle?.addEventListener('click', () => {
+    const isOpen = currentShiftToggle.getAttribute('aria-expanded') === 'true';
+    currentShiftToggle.setAttribute('aria-expanded', String(!isOpen));
+    currentShiftToggle.classList.toggle('collapsed', isOpen);
+    ticketList.classList.toggle('ticket-list-collapsed', isOpen);
   });
 }
 
@@ -1654,7 +2012,10 @@ ticketForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!beginTicketSubmitLock()) return;
   const incident_id = Number(incidentTypeInput.value || 0);
-  const description = document.getElementById('description').value.trim();
+  const descEl = document.getElementById('description');
+  const description = (descEl.dataset.presetAutoSync !== 'off' && descEl.dataset.presetMarkupValue)
+    ? descEl.dataset.presetMarkupValue
+    : descEl.value.trim();
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
   const ticket_time_local = ticketTimestampInput.value;
@@ -1676,11 +2037,15 @@ ticketForm.addEventListener('submit', async (e) => {
       const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
       payloads.push.apply(payloads, collectExtraTicketPayloads(incident_id, severityCfg.severity_default));
 
-      const createdTickets = await Promise.all(payloads.map((payload) => fetchJson('/api/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })));
+      const createdTickets = [];
+      for (let pi = 0; pi < payloads.length; pi += 1) {
+        const ticket = await fetchJson('/api/tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloads[pi])
+        });
+        createdTickets.push(ticket);
+      }
       createdTicketIds = createdTickets.map((ticket) => ticket?.id).filter(Boolean);
     }
     ticketForm.reset();
@@ -1718,14 +2083,185 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
   if (ticketSearchResults) ticketSearchResults.innerHTML = '';
 });
 
+// --- Chart panel spans / order / drag & resize ---
+const chartSpanStorageKey = 'prodops_chart_spans';
+const chartOrderStorageKey = 'prodops_chart_order';
+const chartSpanSteps = [3, 6, 9, 12];
+let chartSpans = {};
+let dragSrcPanel = null;
+
+function defaultChartSpan(panelId) {
+  return panelId === 'chartPanelPersonal' ? 12 : 3;
+}
+
+function loadChartSpans() {
+  try { chartSpans = JSON.parse(localStorage.getItem(chartSpanStorageKey) || '{}'); } catch (e) { chartSpans = {}; }
+}
+
+function saveChartSpans() {
+  try { localStorage.setItem(chartSpanStorageKey, JSON.stringify(chartSpans)); } catch (e) {}
+}
+
+function getChartSpan(panelId) {
+  const v = Number(chartSpans[panelId]);
+  return chartSpanSteps.indexOf(v) !== -1 ? v : defaultChartSpan(panelId);
+}
+
+function applyChartSpan(panel, span) {
+  chartSpanSteps.forEach(function (s) { panel.classList.remove('chart-span-' + s); });
+  panel.classList.add('chart-span-' + span);
+}
+
+function applyAllChartSpans() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
+    applyChartSpan(panel, getChartSpan(panel.id));
+  });
+}
+
+function loadChartOrder() {
+  try {
+    const order = JSON.parse(localStorage.getItem(chartOrderStorageKey) || 'null');
+    if (!Array.isArray(order)) return;
+    const grid = document.getElementById('chartsGrid');
+    if (!grid) return;
+    order.forEach(function (panelId) {
+      const panel = document.getElementById(panelId);
+      if (panel && panel.parentElement === grid) grid.appendChild(panel);
+    });
+  } catch (e) {}
+}
+
+function saveChartOrder() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  const order = [];
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (p) { order.push(p.id); });
+  try { localStorage.setItem(chartOrderStorageKey, JSON.stringify(order)); } catch (e) {}
+}
+
+function setupChartResizeControls() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
+    const header = panel.querySelector('.panel-heading-row');
+    if (!header || header.querySelector('.chart-resize-controls')) return;
+    const controls = document.createElement('div');
+    controls.className = 'chart-resize-controls';
+    [{ dir: -1, label: '◀' }, { dir: 1, label: '▶' }].forEach(function (cfg) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chart-resize-btn';
+      btn.textContent = cfg.label;
+      btn.title = cfg.dir === -1 ? 'Riduci larghezza' : 'Espandi larghezza';
+      btn.addEventListener('click', function () {
+        const current = getChartSpan(panel.id);
+        const idx = chartSpanSteps.indexOf(current);
+        const newIdx = Math.max(0, Math.min(chartSpanSteps.length - 1, idx + cfg.dir));
+        const newSpan = chartSpanSteps[newIdx];
+        if (newSpan === current) return;
+        chartSpans[panel.id] = newSpan;
+        saveChartSpans();
+        applyChartSpan(panel, newSpan);
+      });
+      controls.appendChild(btn);
+    });
+    header.appendChild(controls);
+  });
+}
+
+function setupChartDragDrop() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid || grid.dataset.dragSetup === '1') return;
+  grid.dataset.dragSetup = '1';
+
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
+    const header = panel.querySelector('.panel-heading-row');
+    if (!header || header.querySelector('.chart-drag-handle')) return;
+    const handle = document.createElement('span');
+    handle.className = 'chart-drag-handle';
+    handle.setAttribute('draggable', 'true');
+    handle.setAttribute('title', 'Trascina per spostare');
+    handle.textContent = '⠇';
+    header.prepend(handle);
+
+    handle.addEventListener('dragstart', function (e) {
+      dragSrcPanel = panel;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', panel.id);
+      try { e.dataTransfer.setDragImage(panel, 20, 20); } catch (err) {}
+      setTimeout(function () { panel.classList.add('chart-dragging'); }, 0);
+    });
+
+    handle.addEventListener('dragend', function () {
+      if (dragSrcPanel) dragSrcPanel.classList.remove('chart-dragging');
+      grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
+      dragSrcPanel = null;
+    });
+  });
+
+  grid.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const overPanel = e.target.closest ? e.target.closest('.panel') : null;
+    if (overPanel && overPanel !== dragSrcPanel && overPanel.parentElement === grid) {
+      grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
+      overPanel.classList.add('chart-drag-over');
+    }
+  });
+
+  grid.addEventListener('dragleave', function (e) {
+    if (!grid.contains(e.relatedTarget)) {
+      grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
+    }
+  });
+
+  grid.addEventListener('drop', function (e) {
+    e.preventDefault();
+    const overPanel = e.target.closest ? e.target.closest('.panel') : null;
+    grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
+    if (!dragSrcPanel || !overPanel || dragSrcPanel === overPanel || overPanel.parentElement !== grid) return;
+    const allPanels = [];
+    grid.querySelectorAll(':scope > .panel').forEach(function (p) { allPanels.push(p); });
+    const srcIdx = allPanels.indexOf(dragSrcPanel);
+    const dstIdx = allPanels.indexOf(overPanel);
+    if (srcIdx < dstIdx) { overPanel.after(dragSrcPanel); } else { overPanel.before(dragSrcPanel); }
+    dragSrcPanel.classList.remove('chart-dragging');
+    dragSrcPanel = null;
+    saveChartOrder();
+  });
+}
+
 (async function init() {
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
   loadChartTypes();
+  loadChartSpans();
+  loadChartOrder();
+  applyAllChartSpans();
+  if (personalTargetInput) {
+    const savedTarget = localStorage.getItem(personalTargetStorageKey);
+    if (savedTarget !== null) personalTargetInput.value = savedTarget;
+    personalTargetInput.addEventListener('change', () => {
+      localStorage.setItem(personalTargetStorageKey, personalTargetInput.value);
+      loadCharts().catch(() => {});
+    });
+  }
+  document.querySelectorAll('.personal-view-toggle [data-personal-view]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      personalChartView = btn.dataset.personalView || 'mine';
+      document.querySelectorAll('.personal-view-toggle [data-personal-view]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadCharts().catch(() => {});
+    });
+  });
   try { await loadCurrentUser(); } catch (error) { console.error(error); }
   try { await loadCategories(); } catch (error) { console.error(error); }
   try { await loadUiColors(); } catch (error) { console.error(error); uiColors = normalizeUiColors({}); }
   renderFabButtons();
   setupChartTypeControls();
+  setupChartResizeControls();
+  setupChartDragDrop();
   try { await loadDayTickets(); } catch (error) { console.error(error); }
   try { await fetchPreviousShiftsData(); } catch (error) { console.error(error); updatePreviousShiftCounter([]); }
   startCurrentShiftAutoRefresh();
@@ -1770,8 +2306,23 @@ document.addEventListener('visibilitychange', () => {
 
 ticketList.addEventListener('click', async (e) => {
   const btn = e.target.closest('.edit-ticket-btn');
-  if (!btn) return;
-  handleEditTicketButton(btn);
+  if (btn) {
+    handleEditTicketButton(btn);
+    return;
+  }
+  const card = e.target.closest('.ticket-row');
+  if (!card) return;
+  openTicketReadModal({
+    ticketId: card.dataset.ticketId,
+    incidentId: card.dataset.incidentId,
+    incidentName: card.dataset.incident,
+    description: card.dataset.description,
+    fab: card.dataset.fab,
+    createdAt: card.dataset.createdAt,
+    severity: card.dataset.severity,
+    category: card.dataset.category,
+    canEdit: card.dataset.canEdit === '1'
+  });
 });
 
 ticketSearchResults?.addEventListener('click', async (e) => {
@@ -1808,4 +2359,183 @@ window.addEventListener('resize', () => {
   positionAddSameIncidentBtn();
 });
 
+// ── Compact Visual ────────────────────────────────────────────────
+var _compactActive = false;
+var _compactFlatRows = [];
+var _tsPopupTimer = null;
 
+function _compactRestoreFlat() {
+  ticketList.classList.remove('compact-visual');
+  if (!_compactFlatRows.length) return;
+  ticketList.innerHTML = '';
+  _compactFlatRows.forEach(function(r) { ticketList.appendChild(r); });
+}
+
+function _compactBuild() {
+  var allRows = Array.from(ticketList.children).filter(function(li) {
+    return !!li.dataset.ticketId;
+  });
+  _compactFlatRows = allRows.slice();
+
+  var visRows = allRows.filter(function(li) { return li.style.display !== 'none'; });
+
+  var groups = {};
+  var order = [];
+  visRows.forEach(function(row) {
+    var cat = row.dataset.category || '';
+    if (!groups[cat]) { groups[cat] = []; order.push(cat); }
+    groups[cat].push(row);
+  });
+
+  ticketList.innerHTML = '';
+  ticketList.classList.add('compact-visual');
+  ticketList.classList.remove('ticket-list-scrollable');
+
+  if (!order.length) {
+    var empty = document.createElement('li');
+    empty.style.cssText = 'color:var(--muted);padding:8px 0;';
+    empty.textContent = 'Nessun ticket corrisponde al filtro.';
+    ticketList.appendChild(empty);
+    return;
+  }
+
+  order.forEach(function(cat) {
+    var cards = groups[cat];
+    var stack = document.createElement('li');
+    stack.className = 'ticket-stack' + (cards.length === 1 ? ' single' : '');
+    stack.dataset.stackCat = cat;
+    stack._tsCards = cards;
+
+    var front = cards[0].cloneNode(true);
+    stack.appendChild(front);
+
+    if (cards.length > 1) {
+      var badge = document.createElement('span');
+      badge.className = 'ticket-stack-badge';
+      badge.textContent = String(cards.length);
+      stack.appendChild(badge);
+    }
+
+    stack.addEventListener('mouseenter', function() { _tsShowPopup(this); });
+    stack.addEventListener('mouseleave', function() {
+      _tsPopupTimer = setTimeout(_tsHidePopup, 110);
+    });
+
+    ticketList.appendChild(stack);
+  });
+}
+
+function _tsShowPopup(stack) {
+  if (_tsPopupTimer) { clearTimeout(_tsPopupTimer); _tsPopupTimer = null; }
+  var cards = stack._tsCards;
+  if (!cards || cards.length <= 1) return;
+
+  tsPopup.innerHTML = '';
+  cards.forEach(function(card) { tsPopup.appendChild(card.cloneNode(true)); });
+  tsPopup.removeAttribute('hidden');
+
+  var rect = stack.getBoundingClientRect();
+  var approxW = Math.min(cards.length * 184 + 28, window.innerWidth * 0.9);
+  var left = rect.left;
+  var top = rect.bottom + 8;
+  if (left + approxW > window.innerWidth - 10) left = Math.max(10, window.innerWidth - approxW - 10);
+  if (top + 260 > window.innerHeight) top = Math.max(10, rect.top - 268);
+  tsPopup.style.left = left + 'px';
+  tsPopup.style.top = top + 'px';
+  tsPopup.style.maxWidth = approxW + 'px';
+}
+
+function _tsHidePopup() {
+  if (tsPopup) { tsPopup.setAttribute('hidden', ''); tsPopup.innerHTML = ''; }
+}
+
+if (tsPopup) {
+  tsPopup.addEventListener('mouseenter', function() {
+    if (_tsPopupTimer) { clearTimeout(_tsPopupTimer); _tsPopupTimer = null; }
+  });
+  tsPopup.addEventListener('mouseleave', function() {
+    _tsPopupTimer = setTimeout(_tsHidePopup, 110);
+  });
+  tsPopup.addEventListener('click', function(e) {
+    var btn = e.target.closest('.edit-ticket-btn');
+    if (btn) { handleEditTicketButton(btn); _tsHidePopup(); return; }
+    var card = e.target.closest('.ticket-row');
+    if (!card) return;
+    openTicketReadModal({
+      ticketId: card.dataset.ticketId,
+      incidentId: card.dataset.incidentId,
+      incidentName: card.dataset.incident,
+      description: card.dataset.description,
+      fab: card.dataset.fab,
+      createdAt: card.dataset.createdAt,
+      severity: card.dataset.severity,
+      category: card.dataset.category,
+      canEdit: card.dataset.canEdit === '1'
+    });
+    _tsHidePopup();
+  });
+}
+
+if (compactVisualToggle) {
+  compactVisualToggle.addEventListener('change', function() {
+    _compactActive = this.checked;
+    if (_compactActive) {
+      _compactBuild();
+    } else {
+      _compactRestoreFlat();
+      _compactFlatRows = [];
+      _tsHidePopup();
+      ticketList.classList.toggle(
+        'ticket-list-scrollable',
+        Array.from(ticketList.children).filter(function(li) { return !!li.dataset.ticketId; }).length > 10
+      );
+    }
+  });
+}
+// ── Fine Compact Visual ──────────────────────────────────────────
+
+(function () {
+  var handle = document.getElementById('currentShiftResizeHandle');
+  if (!handle || !ticketList) return;
+  var STORAGE_KEY = 'currentShiftListHeight';
+  var DEFAULT_HEIGHT = 340;
+  var dragging = false;
+  var startY = 0;
+  var startH = 0;
+
+  function currentH() {
+    var raw = ticketList.style.maxHeight;
+    return raw ? parseInt(raw, 10) : DEFAULT_HEIGHT;
+  }
+
+  function applyH(h) {
+    h = Math.max(80, Math.min(h, window.innerHeight - 120));
+    ticketList.style.maxHeight = h + 'px';
+    try { localStorage.setItem(STORAGE_KEY, String(h)); } catch (e) {}
+  }
+
+  try {
+    var saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) ticketList.style.maxHeight = parseInt(saved, 10) + 'px';
+  } catch (e) {}
+
+  handle.addEventListener('mousedown', function (e) {
+    dragging = true;
+    startY = e.clientY;
+    startH = currentH();
+    handle.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    applyH(startH + (e.clientY - startY));
+  });
+
+  document.addEventListener('mouseup', function () {
+    if (dragging) {
+      dragging = false;
+      handle.classList.remove('dragging');
+    }
+  });
+}());

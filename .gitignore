@@ -1,7 +1,5 @@
 Ufficio/backend/config.php
 Ufficio/backend/config.local.php
-Locale/.env
-Locale/.codex-local/
 node_modules/
 .vs/
 *.log

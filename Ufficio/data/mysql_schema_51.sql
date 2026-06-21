@@ -42,8 +42,19 @@ CREATE TABLE IF NOT EXISTS app_users (
   password VARCHAR(160) NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'user',
   team VARCHAR(1) NOT NULL DEFAULT 'A',
+  group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps',
   PRIMARY KEY (id),
   UNIQUE KEY uq_app_users_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS preset_options (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  field_key VARCHAR(80) NOT NULL,
+  value VARCHAR(255) NOT NULL,
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_preset_options (field_key, value),
+  KEY idx_preset_options_field (field_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS tickets (

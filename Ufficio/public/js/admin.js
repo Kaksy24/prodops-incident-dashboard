@@ -1,4 +1,12 @@
-const themeToggleBtn = document.getElementById('themeToggleBtn');
+﻿const themeToggleBtn = document.getElementById('themeToggleBtn');
+const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
+
+function appUrl(path) {
+  const normalizedPath = String(path || '').charAt(0) === '/' ? String(path || '') : '/' + String(path || '');
+  if (!appBasePath || normalizedPath === appBasePath || normalizedPath.indexOf(appBasePath + '/') === 0) return normalizedPath;
+  return appBasePath + normalizedPath;
+}
+
 const adminMenu = document.getElementById('adminMenu');
 const backToDashboardBtn = document.getElementById('backToDashboardBtn');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -13,6 +21,7 @@ const adminSeverityModeSelect = document.getElementById('adminSeverityMode');
 const adminFabDefaultSelect = document.getElementById('adminFabDefault');
 const addPresetTextFieldBtn = document.getElementById('addPresetTextFieldBtn');
 const addPresetSelectFieldBtn = document.getElementById('addPresetSelectFieldBtn');
+const addPresetTimestampBtn = document.getElementById('addPresetTimestampBtn');
 const userCreateForm = document.getElementById('userCreateForm');
 const usersList = document.getElementById('usersList');
 const usersSummary = document.getElementById('usersSummary');
@@ -20,6 +29,7 @@ const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
+const newUserGroupInput = document.getElementById('newUserGroup');
 const adminColorEditorTitle = document.getElementById('adminColorEditorTitle');
 const adminColorEditorMeta = document.getElementById('adminColorEditorMeta');
 const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch');
@@ -62,9 +72,7 @@ let adminColorSelection = null;
 let adminUsersCache = [];
 let presetOptionsCache = [];
 const adminCharts = [
-  { key: 'fabDay', label: 'Ticket per FAB (LAST 24H)' },
-  { key: 'catDay', label: 'Ticket per categoria (LAST 24H)' },
-  { key: 'fabYear', label: 'Ticket per FAB' },
+      { key: 'fabYear', label: 'Ticket per FAB' },
   { key: 'catYear', label: 'Ticket per categoria' },
   { key: 'teamYear', label: 'Ticket per Team' },
   { key: 'severityYear', label: 'Severity Ticket' }
@@ -115,7 +123,7 @@ function applyTheme(theme) {
   document.body.classList.toggle('theme-dark', theme === 'dark');
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = theme === 'dark' ? '☾' : '☀';
+  if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
 }
 
 function defaultUiColors() {
@@ -231,9 +239,7 @@ const chartTypeStorageKey = 'prodops_chart_types';
 const chartTypeChoices = [
   { value: 'column', label: 'Colonne' },
   { value: 'bar', label: 'Barre orizzontali' },
-  { value: 'donut', label: 'Ciambella' },
-  { value: 'pie', label: 'Torta' },
-  { value: 'line', label: 'Linea' }
+  { value: 'donut', label: 'Ciambella' }
 ];
 let adminChartTypes = defaultChartTypes();
 
@@ -249,6 +255,8 @@ function defaultChartTypes() {
 }
 
 function normalizeChartType(value) {
+  if (value === 'pie') return 'donut';
+  if (value === 'line') return 'bar';
   const allowed = new Set(chartTypeChoices.map((item) => item.value));
   return allowed.has(value) ? value : 'column';
 }
@@ -327,7 +335,7 @@ function updateColorEditor() {
     return;
   }
   const color = getSelectedColor();
-  adminColorEditorTitle.textContent = `${adminColorSelection.chartLabel} — ${adminColorSelection.label}`;
+  adminColorEditorTitle.textContent = `${adminColorSelection.chartLabel} - ${adminColorSelection.label}`;
   adminColorEditorMeta.textContent = `Tema attivo: ${adminColorEditTheme.toUpperCase()}`;
   adminColorEditorInput.disabled = false;
   adminColorEditorInput.value = color;
@@ -350,7 +358,7 @@ function selectAdminColorTarget(chartId, label) {
 function syncAdminColorToggle() {
   if (!uiColorThemeToggleBtn) return;
   const thumb = uiColorThemeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? '☾' : '☀';
+  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? 'D' : 'L';
   uiColorThemeToggleBtn.setAttribute('aria-pressed', String(adminColorEditTheme === 'dark'));
   updateColorEditor();
 }
@@ -361,10 +369,15 @@ function applyAdminColorTheme(theme) {
   renderColorSettings();
 }
 
+function buildAdminPreviewStats(stats) {
+  const rows = Array.isArray(stats) ? stats : [];
+  return rows
+    .map((item) => ({ label: String(item && item.label ? item.label : ''), total: 1 }))
+    .filter((item) => item.label !== '');
+}
+
 function renderAdminColumnChart(target, chartKey, stats) {
-  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
-  const max = Math.max(...sortedStats.map((x) => x.total), 1);
-  const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  const sortedStats = buildAdminPreviewStats(stats).sort((a, b) => a.label.localeCompare(b.label));
   target.innerHTML = '';
   const chartWrap = document.createElement('div');
   chartWrap.className = 'chart vertical-chart';
@@ -372,16 +385,12 @@ function renderAdminColumnChart(target, chartKey, stats) {
   inner.className = 'chart-inner';
   const axis = document.createElement('div');
   axis.className = 'chart-y-axis';
-  const tickValues = Array.from({ length: 5 }, (_, i) => Math.round((max * (4 - i)) / 4));
-  axis.innerHTML = tickValues.map((value) => `<span>${value}</span>`).join('');
+  axis.innerHTML = ['100', '75', '50', '25', '0'].map((value) => `<span>${value}</span>`).join('');
   const barsWrap = document.createElement('div');
   barsWrap.className = 'chart-bars-wrap';
   const group = chartGroupForId(`${chartKey}Chart`);
   sortedStats.forEach((item) => {
     const label = String(item.label || '');
-    const total = Number(item.total || 0);
-    const height = Math.round((total / max) * 180);
-    const pct = totalAll > 0 ? Math.round((total / totalAll) * 100) : 0;
     const color = getAdminBarColor(chartKey, group, label);
     const bar = document.createElement('button');
     bar.type = 'button';
@@ -389,7 +398,7 @@ function renderAdminColumnChart(target, chartKey, stats) {
     bar.dataset.group = group;
     bar.dataset.label = label;
     bar.dataset.chartId = chartKey;
-    bar.innerHTML = `<span class="bar-value">${total}</span><div class="bar-fill" style="height:${height}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(label)}</span>`;
+    bar.innerHTML = `<span class="bar-value admin-preview-value"> </span><div class="bar-fill" style="height:90px;background:${color}"><span class="bar-pct admin-preview-pct">50%</span></div><span class="bar-label">${escapeHtml(label)}</span>`;
     bar.addEventListener('click', () => {
       selectAdminColorTarget(`${chartKey}Chart`, label);
     });
@@ -402,8 +411,7 @@ function renderAdminColumnChart(target, chartKey, stats) {
 }
 
 function renderAdminHorizontalChart(target, chartKey, stats) {
-  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
-  const max = Math.max(...sortedStats.map((x) => x.total), 1);
+  const sortedStats = buildAdminPreviewStats(stats).sort((a, b) => a.label.localeCompare(b.label));
   target.innerHTML = '';
   const wrap = document.createElement('div');
   wrap.className = 'chart-horizontal-wrap';
@@ -411,13 +419,12 @@ function renderAdminHorizontalChart(target, chartKey, stats) {
   sortedStats.forEach((item) => {
     const row = document.createElement('div');
     row.className = 'chart-horizontal-row';
-    const width = Math.round((item.total / max) * 100);
-    const pct = Math.round((item.total / Math.max(sortedStats.reduce((sum, x) => sum + x.total, 0), 1)) * 100);
+    const width = 50;
     const color = getAdminBarColor(chartKey, group, String(item.label || ''));
     row.innerHTML = `
       <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
-      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"><span class="bar-pct">${pct}%</span></div></div>
-      <span class="chart-horizontal-value">${item.total}</span>
+      <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div><span class="bar-pct admin-preview-pct">50%</span></div>
+      <span class="chart-horizontal-value admin-preview-value"> </span>
     `;
     row.addEventListener('click', () => selectAdminColorTarget(`${chartKey}Chart`, String(item.label || '')));
     wrap.appendChild(row);
@@ -426,8 +433,8 @@ function renderAdminHorizontalChart(target, chartKey, stats) {
 }
 
 function renderAdminPieOrDonutChart(target, chartKey, stats, isDonut) {
-  const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
-  const totalAll = sortedStats.reduce((sum, item) => sum + item.total, 0);
+  const sortedStats = buildAdminPreviewStats(stats).sort((a, b) => a.label.localeCompare(b.label));
+  const totalAll = sortedStats.length;
   target.innerHTML = '';
   const layout = document.createElement('div');
   layout.className = `chart-pie-layout${isDonut ? ' donut' : ' pie'}`;
@@ -436,7 +443,7 @@ function renderAdminPieOrDonutChart(target, chartKey, stats, isDonut) {
   let angle = 0;
   const gradient = sortedStats.length
     ? sortedStats.map((item) => {
-        const pct = totalAll > 0 ? (item.total / totalAll) * 100 : 0;
+        const pct = totalAll > 0 ? (100 / totalAll) : 0;
         const color = getAdminBarColor(chartKey, chartGroupForId(`${chartKey}Chart`), String(item.label || ''));
         const part = `${color} ${angle}% ${angle + pct}%`;
         angle += pct;
@@ -447,20 +454,19 @@ function renderAdminPieOrDonutChart(target, chartKey, stats, isDonut) {
   if (isDonut) {
     const center = document.createElement('div');
     center.className = 'chart-pie-center';
-    center.innerHTML = `<strong>${totalAll}</strong><span>Totale</span>`;
+    center.innerHTML = `<strong>Preview</strong><span>Colori</span>`;
     visual.appendChild(center);
   }
   const legend = document.createElement('div');
   legend.className = 'chart-pie-legend';
   sortedStats.forEach((item) => {
-    const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
     const row = document.createElement('div');
     row.className = 'chart-pie-legend-row';
     row.innerHTML = `
       <span class="chart-pie-swatch" style="background:${getAdminBarColor(chartKey, chartGroupForId(`${chartKey}Chart`), String(item.label || ''))}"></span>
       <span class="chart-pie-label">${escapeHtml(item.label)}</span>
-      <strong class="chart-pie-value">${item.total}</strong>
-      <span class="chart-pie-percent">${pct}%</span>
+      <strong class="chart-pie-value admin-preview-value"> </strong>
+      <span class="chart-pie-percent admin-preview-pct"> </span>
     `;
     row.addEventListener('click', () => selectAdminColorTarget(`${chartKey}Chart`, String(item.label || '')));
     legend.appendChild(row);
@@ -516,7 +522,7 @@ function renderAdminChart(chart, stats) {
     <div class="panel-heading-row">
       <div>
         <h3>${escapeHtml(chart.label)}</h3>
-        <p class="muted">Clicca una barra per cambiarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
+        <p class="muted">Anteprima colori: clicca un elemento per modificarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
       </div>
       <div class="chart-controls">
         <select class="chart-type-select" data-chart-target="${chart.key}" aria-label="Tipo grafico ${escapeHtml(chart.label)}">
@@ -560,17 +566,13 @@ async function loadUiColors() {
 
 async function loadAdminChartsPreviewData() {
   try {
-    const [fabDay, catDay, fabYear, catYear, teamYear, severityYear] = await Promise.all([
-      fetchJson('/api/stats/fab/current-day'),
-      fetchJson('/api/stats/category/current-day'),
+    const [fabYear, catYear, teamYear, severityYear] = await Promise.all([
       fetchJson('/api/stats/fab/current-year?mode=months'),
       fetchJson('/api/stats/category/current-year?mode=months'),
       fetchJson('/api/stats/team/current-year?mode=months'),
       fetchJson('/api/stats/severity/current-year?mode=months')
     ]);
     adminChartStats = {
-      fabDay: fabDay.stats || [],
-      catDay: catDay.stats || [],
       fabYear: fabYear.stats || [],
       catYear: catYear.stats || [],
       teamYear: teamYear.stats || [],
@@ -609,10 +611,10 @@ themeToggleBtn.addEventListener('click', () => {
   applyTheme(next);
 });
 
-backToDashboardBtn.addEventListener('click', () => { window.location.href = '/index.html'; });
+backToDashboardBtn.addEventListener('click', () => { window.location.href = appUrl('/index.html'); });
 logoutBtn?.addEventListener('click', async () => {
-  await fetch('/api/logout', { method: 'POST' });
-  window.location.href = '/login.html';
+  await fetch(appUrl('/api/logout'), { method: 'POST' });
+  window.location.href = appUrl('/login.html');
 });
 
 function closeIncidentModal() {
@@ -688,18 +690,18 @@ function openUserCreateModal() {
 }
 
 async function fetchJson(url, options, attempt = 0) {
-  const res = await fetch(url, options);
+  const res = await fetch(appUrl(url), options);
   const text = (await res.text()).replace(/^\uFEFF+/, '');
   const contentType = res.headers.get('content-type') || '';
   const looksLikeAntiBotPage = /slowAES|aes\.js|This site requires Javascript to work/i.test(text);
   const looksLikeJson = /json/i.test(contentType) || text.startsWith('{') || text.startsWith('[');
   if (res.status === 401) {
-    window.location.href = '/login.html';
+    window.location.href = appUrl('/login.html');
     throw new Error('Login richiesta');
   }
   if (res.status === 403) {
     alert('Accesso admin richiesto.');
-    window.location.href = '/index.html';
+    window.location.href = appUrl('/index.html');
     throw new Error('Accesso admin richiesto');
   }
   if (looksLikeAntiBotPage || !looksLikeJson) {
@@ -741,7 +743,7 @@ async function loadCurrentAdmin() {
   try {
     const data = await fetchJson('/api/me');
     currentAdminUser = data.user || null;
-    if (currentAdminBadge) currentAdminBadge.textContent = currentAdminUser ? `${currentAdminUser.username} · ${currentAdminUser.team || 'A'}` : 'Profilo non disponibile';
+    if (currentAdminBadge) currentAdminBadge.textContent = currentAdminUser ? `${currentAdminUser.username} - ${currentAdminUser.team || 'A'}` : 'Profilo non disponibile';
   } catch (error) {
     currentAdminUser = null;
     if (currentAdminBadge) currentAdminBadge.textContent = 'Profilo non disponibile';
@@ -760,7 +762,7 @@ function renderUsers() {
     return matchesSearch && (!roleFilter || user.role === roleFilter) && (!teamFilter || user.team === teamFilter);
   });
 
-  if (usersSummary) usersSummary.textContent = `${adminUsersCache.length} utenti configurati · ${users.length} visualizzati`;
+  if (usersSummary) usersSummary.textContent = `${adminUsersCache.length} utenti configurati - ${users.length} visualizzati`;
   if (usersTotalStat) usersTotalStat.textContent = String(adminUsersCache.length);
   if (usersAdminStat) usersAdminStat.textContent = String(adminCount);
   if (usersOperatorStat) usersOperatorStat.textContent = String(adminUsersCache.length - adminCount);
@@ -778,7 +780,7 @@ function renderUsers() {
     const lastAdmin = role === 'admin' && adminCount <= 1;
     const roleLocked = isSelf || lastAdmin;
     const deleteLocked = isSelf || lastAdmin;
-    const lockReason = isSelf ? 'Il tuo ruolo non può essere modificato qui' : 'Deve restare almeno un amministratore';
+    const lockReason = isSelf ? 'Il tuo ruolo non puo essere modificato qui' : 'Deve restare almeno un amministratore';
     const username = escapeHtml(user.username);
     const initial = escapeHtml(String(user.username || '?').charAt(0).toUpperCase());
     return `
@@ -802,6 +804,7 @@ function renderUsers() {
             ${['A', 'B', 'C', 'D', 'E'].map((item) => `<option value="${item}" ${team === item ? 'selected' : ''}>Team ${item}</option>`).join('')}
           </select>
         </td>
+        <td><input class="user-group-input" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}" type="text" value="${escapeHtml(String(user.group_name || 'ProdOps'))}" placeholder="Gruppo" style="width:90px" /></td>
         <td><input class="user-password-input" aria-label="Nuova password ${username}" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" autocomplete="new-password" /></td>
         <td><span class="user-table-note">${roleLocked ? escapeHtml(lockReason) : 'Modificabile'}</span></td>
         <td>
@@ -818,7 +821,7 @@ function renderUsers() {
     <div class="users-table-wrap">
       <table class="users-table">
         <thead>
-          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Nuova password</th><th>Protezioni</th><th>Azioni</th></tr>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Nuova password</th><th>Protezioni</th><th>Azioni</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -831,9 +834,10 @@ function renderUsers() {
       const row = btn.closest('.user-table-row');
       const roleSelect = row?.querySelector('.user-role-select');
       const teamSelect = row?.querySelector('.user-team-select');
+      const groupInput = row?.querySelector('.user-group-input');
       const passwordInput = row?.querySelector('.user-password-input');
       const current = adminUsersCache.find((user) => Number(user.id) === userId);
-      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A' };
+      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: (groupInput?.value || '').trim() || 'ProdOps' };
       const password = (passwordInput?.value || '').trim();
       if (password) payload.password = password;
       try {
@@ -893,7 +897,7 @@ async function loadPresetOptionRequests() {
         <div class="preset-request-main">
           <span class="preset-request-field">${escapeHtml(request.field_label || request.field_key)}</span>
           <strong>${escapeHtml(request.value)}</strong>
-          <span class="muted">Proposto da ${escapeHtml(request.requested_by_username || `utente #${request.requested_by_user_id}`)}${Number(request.incident_id) > 0 ? ` · Incident #${Number(request.incident_id)}` : ''}</span>
+          <span class="muted">Proposto da ${escapeHtml(request.requested_by_username || `utente #${request.requested_by_user_id}`)}${Number(request.incident_id) > 0 ? ` - Incident #${Number(request.incident_id)}` : ''}</span>
         </div>
         <div class="preset-request-actions">
           <button type="button" class="reject-preset-request-btn" data-request-id="${Number(request.id)}">Rifiuta</button>
@@ -930,7 +934,7 @@ function renderPresetOptionsManager() {
   if (!presetOptionsManager) return;
   const fields = Array.isArray(presetOptionsCache) ? presetOptionsCache : [];
   const totalOptions = fields.reduce((sum, field) => sum + (Array.isArray(field.options) ? field.options.length : 0), 0);
-  if (presetOptionsSummary) presetOptionsSummary.textContent = `${fields.length} menu · ${totalOptions} opzioni`;
+  if (presetOptionsSummary) presetOptionsSummary.textContent = `${fields.length} menu - ${totalOptions} opzioni`;
   if (!fields.length) {
     presetOptionsManager.innerHTML = '<div class="users-empty muted">Nessun menu approvato presente nel database.</div>';
     return;
@@ -1098,7 +1102,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
     const incidentCount = categories.reduce((total, category) => total + (Array.isArray(category.incidents) ? category.incidents.length : 0), 0);
     const hiddenCategoryCount = categories.filter((category) => category.hidden).length;
     const hiddenIncidentCount = categories.reduce((total, category) => total + (Array.isArray(category.incidents) ? category.incidents.filter((incident) => incident.hidden).length : 0), 0);
-    catalogSummary.textContent = `${categories.length} categorie · ${incidentCount} incident · ${hiddenCategoryCount + hiddenIncidentCount} nascosti`;
+    catalogSummary.textContent = `${categories.length} categorie - ${incidentCount} incident - ${hiddenCategoryCount + hiddenIncidentCount} nascosti`;
   }
   adminMenu.innerHTML = '';
 
@@ -1268,13 +1272,40 @@ function bindAdminActions() {
         const type = btn.dataset.type;
         const id = Number(btn.dataset.id);
         const name = btn.dataset.name || '';
-        const ok = type === 'category'
-          ? confirm(`Eliminare categoria "${name}" e tutti gli incident collegati?`)
-          : confirm(`Eliminare incident "${name}"?`);
-        if (!ok) return;
         if (type === 'category') {
-          await fetchJson(`/api/categories/${id}`, { method: 'DELETE' });
+          if (!confirm(`Eliminare categoria "${name}" e tutti gli incident collegati?`)) return;
+          const res = await fetch(appUrl(`/api/categories/${id}`), { method: 'DELETE' });
+          if (res.status === 409) {
+            let count = 0;
+            try {
+              const text = (await res.text()).replace(/^ï»¿+/, '');
+              const data = JSON.parse(text);
+              count = data.ticket_count || 0;
+            } catch (ex) {}
+            const wantHide = confirm(
+              `Ci sono ${count} ticket associati a questa categoria.\nSi consiglia di nascondere la categoria o eliminare tutti i ticket associati e poi cancellare la Categoria.\n\nVuoi nasconderla adesso?`
+            );
+            if (wantHide) {
+              await fetchJson(`/api/categories/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hidden: true, name })
+              });
+            }
+            await loadAdminMenu();
+            return;
+          }
+          if (!res.ok) {
+            let msg = 'Errore eliminazione';
+            try {
+              const text = (await res.text()).replace(/^ï»¿+/, '');
+              const data = JSON.parse(text);
+              msg = data.error || msg;
+            } catch (ex) {}
+            throw new Error(msg);
+          }
         } else {
+          if (!confirm(`Eliminare incident "${name}"?`)) return;
           await fetchJson(`/api/incidents/${id}`, { method: 'DELETE' });
         }
         await loadAdminMenu();
@@ -1414,6 +1445,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   const password = (newPasswordInput?.value || '').trim();
   const role = (newUserRoleSelect?.value || 'user').trim();
   const team = (newUserTeamSelect?.value || 'A').trim();
+  const group_name = (newUserGroupInput?.value || 'ProdOps').trim() || 'ProdOps';
   if (!username || !password) {
     alert('Inserisci username e password.');
     return;
@@ -1422,11 +1454,12 @@ userCreateForm?.addEventListener('submit', async (e) => {
     await fetchJson('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role, team })
+      body: JSON.stringify({ username, password, role, team, group_name })
     });
     userCreateForm.reset();
     if (newUserRoleSelect) newUserRoleSelect.value = 'user';
     if (newUserTeamSelect) newUserTeamSelect.value = 'A';
+    if (newUserGroupInput) newUserGroupInput.value = 'ProdOps';
     closeUserCreateModal();
     await loadUsers();
   } catch (error) {
@@ -1476,6 +1509,12 @@ addPresetSelectFieldBtn?.addEventListener('click', () => {
   const label = prompt('Nome menu tendina (es. Motivo):');
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[dbselect:${label.trim()}]]`);
+});
+
+addPresetTimestampBtn?.addEventListener('click', () => {
+  const label = prompt('Nome campo orario (es. Orario evento):');
+  if (!label || !label.trim()) return;
+  insertAtCursor(adminIncidentPresetInput, `[[timestamp:${label.trim()}]]`);
 });
 
 saveColorSettingsBtn?.addEventListener('click', async () => {

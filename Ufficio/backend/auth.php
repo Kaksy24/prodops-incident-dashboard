@@ -3,6 +3,19 @@
 define('AUTH_COOKIE', 'prodops_auth');
 define('AUTH_TTL_SECONDS', 8 * 60 * 60);
 
+function app_base_path()
+{
+    $scriptName = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\', '/', strval($_SERVER['SCRIPT_NAME'])) : '';
+    if ($scriptName === '' || strtolower(substr($scriptName, -4)) !== '.php') return '';
+    $basePath = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+    return ($basePath === '' || $basePath === '.') ? '' : $basePath;
+}
+
+function app_url($path)
+{
+    return app_base_path() . '/' . ltrim(strval($path), '/');
+}
+
 function base64url_encode($data)
 {
     return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
@@ -90,11 +103,11 @@ function require_page_auth($role)
 {
     $user = read_auth_user();
     if (!$user) {
-        header('Location: /login.html');
+        header('Location: ' . app_url('/login.html'));
         exit;
     }
     if ($role === 'admin' && $user['role'] !== 'admin') {
-        header('Location: /index.html');
+        header('Location: ' . app_url('/index.html'));
         exit;
     }
     return $user;

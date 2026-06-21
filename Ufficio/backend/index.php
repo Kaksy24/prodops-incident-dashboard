@@ -6,6 +6,7 @@ if (function_exists('mysqli_report')) {
 }
 
 define('DB_PATH', __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json');
+define('SYNC_TS_PATH', __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'sync_ts');
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth.php';
 
 $fabs = array('M5', 'L1', 'EWS', 'WSIC', 'NRK');
@@ -348,7 +349,8 @@ function supabase_bootstrap_if_needed($db)
                 'username' => $u['username'],
                 'password' => $u['password'],
                 'role' => $u['role'],
-                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A')
+                'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
+                'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps'
             );
         }
         sb_insert('app_users', $payload, false);
@@ -359,6 +361,8 @@ function json_response($data, $status)
 {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
     echo json_encode($data);
     exit;
 }
@@ -564,6 +568,7 @@ function mysql_ensure_schema($conn)
     $alterStatements = array(
         "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8",
         "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
+        "ALTER TABLE app_users ADD COLUMN group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps' AFTER team",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
         "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
         "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"
@@ -665,7 +670,7 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rt);
     }
 
-    $ru = @mysqli_query($conn, "SELECT id, username, password, role, team FROM app_users ORDER BY id ASC");
+    $ru = @mysqli_query($conn, "SELECT id, username, password, role, team, group_name FROM app_users ORDER BY id ASC");
     if ($ru) {
         while ($row = mysqli_fetch_assoc($ru)) {
             $db['users'][] = array(
@@ -673,22 +678,32 @@ function mysql_load_db($defaultUsers)
                 'username' => $row['username'],
                 'password' => $row['password'],
                 'role' => $row['role'],
-                'team' => normalize_team(isset($row['team']) ? $row['team'] : 'A')
+                'team' => normalize_team(isset($row['team']) ? $row['team'] : 'A'),
+                'group_name' => isset($row['group_name']) ? strval($row['group_name']) : 'ProdOps'
             );
         }
         mysqli_free_result($ru);
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_options','preset_option_requests')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
             if (!is_array($parsed)) continue;
             if ($row['setting_key'] === 'ui_colors') $db['ui_colors'] = normalize_ui_colors($parsed);
-            if ($row['setting_key'] === 'preset_options') $db['preset_options'] = $parsed;
             if ($row['setting_key'] === 'preset_option_requests') $db['preset_option_requests'] = $parsed;
         }
         mysqli_free_result($rs);
+    }
+
+    $rpo = @mysqli_query($conn, "SELECT field_key, value FROM preset_options ORDER BY field_key ASC, sort_order ASC, id ASC");
+    if ($rpo) {
+        while ($row = mysqli_fetch_assoc($rpo)) {
+            $fk = $row['field_key'];
+            if (!isset($db['preset_options'][$fk])) $db['preset_options'][$fk] = array();
+            $db['preset_options'][$fk][] = $row['value'];
+        }
+        mysqli_free_result($rpo);
     }
 
     if (!count($db['users'])) $db['users'] = $defaultUsers;
@@ -712,6 +727,7 @@ function mysql_save_db($db)
 
     $queries = array(
         "DELETE FROM app_settings",
+        "DELETE FROM preset_options",
         "DELETE FROM incident_presets",
         "DELETE FROM tickets",
         "DELETE FROM incidents",
@@ -729,10 +745,22 @@ function mysql_save_db($db)
         $uiColors = normalize_ui_colors(isset($db['ui_colors']) && is_array($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors());
         $uiJson = mysql_escape($conn, json_encode($uiColors));
         if (!mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('ui_colors', '$uiJson')")) { $ok = false; }
-        $presetOptionsJson = mysql_escape($conn, json_encode(isset($db['preset_options']) && is_array($db['preset_options']) ? $db['preset_options'] : array()));
-        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_options', '$presetOptionsJson')")) { $ok = false; }
         $presetRequestsJson = mysql_escape($conn, json_encode(isset($db['preset_option_requests']) && is_array($db['preset_option_requests']) ? $db['preset_option_requests'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_requests', '$presetRequestsJson')")) { $ok = false; }
+    }
+
+    if ($ok && isset($db['preset_options']) && is_array($db['preset_options'])) {
+        $poOrder = array();
+        foreach ($db['preset_options'] as $fk => $opts) {
+            if (!is_array($opts)) continue;
+            $fkEsc = mysql_escape($conn, $fk);
+            if (!isset($poOrder[$fk])) $poOrder[$fk] = 0;
+            foreach ($opts as $opt) {
+                $poOrder[$fk]++;
+                $optEsc = mysql_escape($conn, $opt);
+                if (!mysqli_query($conn, "INSERT IGNORE INTO preset_options (field_key, value, sort_order) VALUES ('$fkEsc', '$optEsc', {$poOrder[$fk]})")) { $ok = false; break 2; }
+            }
+        }
     }
 
     if ($ok) {
@@ -780,7 +808,8 @@ function mysql_save_db($db)
             $pw = mysql_escape($conn, $u['password']);
             $rl = mysql_escape($conn, $u['role']);
             $tm = mysql_escape($conn, isset($u['team']) ? normalize_team($u['team']) : 'A');
-            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team) VALUES ($id,'$un','$pw','$rl','$tm')")) { $ok = false; break; }
+            $gn = mysql_escape($conn, isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
+            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team,group_name) VALUES ($id,'$un','$pw','$rl','$tm','$gn')")) { $ok = false; break; }
         }
     }
 
@@ -811,6 +840,33 @@ function mysql_save_db($db)
     }
     mysqli_autocommit($conn, true);
     return $ok;
+}
+
+function mysql_insert_ticket_direct($incidentId, $desc, $fab, $createdAt, $severity, $ownerUserId, $ownerTeam)
+{
+    $conn = mysql_conn();
+    if (!$conn) return null;
+    $lr = @mysqli_query($conn, "SELECT GET_LOCK('prodops_ticket_insert', 10)");
+    if (!$lr) return null;
+    $lrow = mysqli_fetch_row($lr);
+    mysqli_free_result($lr);
+    if (!$lrow || !$lrow[0]) return null;
+    $r = @mysqli_query($conn, 'SELECT COALESCE(MAX(id),0)+1 AS next_id FROM tickets');
+    if (!$r) { @mysqli_query($conn, "SELECT RELEASE_LOCK('prodops_ticket_insert')"); return null; }
+    $row = mysqli_fetch_row($r);
+    $newId = intval($row[0]);
+    mysqli_free_result($r);
+    $de = mysql_escape($conn, $desc);
+    $fa = mysql_escape($conn, $fab);
+    $ca = mysql_escape($conn, $createdAt);
+    $ou = ($ownerUserId !== null && $ownerUserId > 0) ? intval($ownerUserId) : 'NULL';
+    $ot = mysql_escape($conn, $ownerTeam);
+    $q = "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($newId,$incidentId,'$de','$fa','$ca',$severity,$ou,'$ot')";
+    $ok = @mysqli_query($conn, $q);
+    @mysqli_query($conn, "SELECT RELEASE_LOCK('prodops_ticket_insert')");
+    if (!$ok) return null;
+    touch_sync_ts();
+    return $newId;
 }
 
 function load_db($defaultUsers)
@@ -891,6 +947,7 @@ function load_db($defaultUsers)
         }
         if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
         $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
+        if (!isset($db['users'][$ui]['group_name']) || $db['users'][$ui]['group_name'] === '') $db['users'][$ui]['group_name'] = 'ProdOps';
     }
     foreach ($db['tickets'] as $ti => $ticketRow) {
         if (!isset($db['tickets'][$ti]['owner_team'])) {
@@ -908,10 +965,15 @@ function load_db($defaultUsers)
     return $db;
 }
 
+function touch_sync_ts()
+{
+    @file_put_contents(SYNC_TS_PATH, sprintf('%.6f', microtime(true)));
+}
+
 function save_db($db)
 {
     if (mysql_enabled()) {
-        if (mysql_save_db($db)) return true;
+        if (mysql_save_db($db)) { touch_sync_ts(); return true; }
     }
 
     $fp = fopen(DB_PATH, 'c+');
@@ -928,6 +990,7 @@ function save_db($db)
     fflush($fp);
     flock($fp, LOCK_UN);
     fclose($fp);
+    touch_sync_ts();
     return true;
 }
 
@@ -1026,18 +1089,25 @@ function ticket_search_match($ticket, $query, $category_name = '')
     return false;
 }
 
-function ticket_with_permissions($ticket, $user)
+function ticket_with_permissions($ticket, $user, $users = null)
 {
     $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
     $ticket['owner_user_id'] = $ownerId > 0 ? $ownerId : null;
     $ticket['owner_team'] = normalize_team(isset($ticket['owner_team']) ? $ticket['owner_team'] : 'A');
-    $ticket['can_edit'] = ($ownerId > 0 && intval($user['id']) === $ownerId);
+    $isAdmin = isset($user['role']) && $user['role'] === 'admin';
+    $ticket['can_edit'] = $isAdmin || ($ownerId > 0 && intval($user['id']) === $ownerId);
     if (!isset($ticket['severity'])) $ticket['severity'] = 1;
+    $ticket['owner_username'] = '';
+    if ($ownerId > 0 && is_array($users)) {
+        $ownerUser = user_by_id($users, $ownerId);
+        if ($ownerUser) $ticket['owner_username'] = isset($ownerUser['username']) ? strval($ownerUser['username']) : '';
+    }
     return $ticket;
 }
 
 function require_ticket_owner($ticket, $user, $action)
 {
+    if (isset($user['role']) && $user['role'] === 'admin') return;
     $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
     if ($ownerId <= 0 || intval($user['id']) !== $ownerId) {
         json_response(array('error' => 'Puoi ' . $action . ' solo i ticket che hai inserito'), 403);
@@ -1135,6 +1205,11 @@ function year_range_from_mode($year, $mode)
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$basePath = app_base_path();
+if ($basePath !== '' && ($path === $basePath || strpos($path, $basePath . '/') === 0)) {
+    $path = substr($path, strlen($basePath));
+    if ($path === '') $path = '/';
+}
 
 if ($path === '/' || $path === '/index.html') {
     require_page_auth('user');
@@ -1154,7 +1229,7 @@ if ($path === '/search.html') {
 if ($path === '/login.html') {
     $u = read_auth_user();
     if ($u) {
-        header('Location: /index.html');
+        header('Location: ' . app_url('/index.html'));
         exit;
     }
     readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'login.html');
@@ -1205,7 +1280,7 @@ if ($path === '/api/login' && $method === 'POST') {
         $passwordMatches = ($storedPassword === $password) || ($storedPassword === '' && $password !== '' && $password === $username);
         if (strtolower($u['username']) === strtolower($username) && $passwordMatches) {
             set_auth_cookie($u);
-            $redirectTo = '/index.html';
+            $redirectTo = app_url('/index.html');
             if ($isJsonRequest) {
                 json_response(array(
                     'id' => intval($u['id']),
@@ -1223,7 +1298,7 @@ if ($path === '/api/login' && $method === 'POST') {
     foreach ($defaultUsers as $u) {
         if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
             set_auth_cookie($u);
-            $redirectTo = '/index.html';
+            $redirectTo = app_url('/index.html');
             if ($isJsonRequest) {
                 json_response(array(
                     'id' => intval($u['id']),
@@ -1240,7 +1315,7 @@ if ($path === '/api/login' && $method === 'POST') {
     if ($isJsonRequest) {
         json_response(array('error' => 'Credenziali non valide'), 401);
     }
-    header('Location: /login.html?error=1', true, 302);
+    header('Location: ' . app_url('/login.html?error=1'), true, 302);
     exit;
 }
 
@@ -1289,13 +1364,13 @@ if ($path === '/api/users' && $method === 'GET') {
     require_api_auth('admin');
     $out = array();
     if (supabase_enabled()) {
-        $resp = sb_select('app_users', 'id,username,role,team', array(), 'id.asc');
+        $resp = sb_select('app_users', 'id,username,role,team,group_name', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'));
+            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'));
+    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
     json_response($out, 200);
 }
 
@@ -1305,16 +1380,17 @@ if ($path === '/api/users' && $method === 'POST') {
     $password = isset($payload['password']) ? trim(strval($payload['password'])) : '';
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : 'user';
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
+    $group_name = isset($payload['group_name']) && strval($payload['group_name']) !== '' ? trim(strval($payload['group_name'])) : 'ProdOps';
     if ($username === '' || $password === '') json_response(array('error' => 'Username e password obbligatori'), 400);
     if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
     $db['counters']['user'] = intval($db['counters']['user']) + 1;
-    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team);
+    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team, 'group_name' => $group_name);
     $db['users'][] = $newUser;
     save_db($db);
-    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role, 'team' => $team), 200);
+    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role, 'team' => $team, 'group_name' => $group_name), 200);
 }
 
 if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
@@ -1323,6 +1399,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
     $password = array_key_exists('password', $payload) ? trim(strval($payload['password'])) : null;
+    $group_name = isset($payload['group_name']) && strval($payload['group_name']) !== '' ? trim(strval($payload['group_name'])) : null;
     $adminCount = 0;
     foreach ($db['users'] as $adminUser) {
         if (isset($adminUser['role']) && $adminUser['role'] === 'admin') $adminCount++;
@@ -1330,6 +1407,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     foreach ($db['users'] as &$u) {
         if (intval($u['id']) === $id) {
             $u['team'] = $team;
+            if ($group_name !== null) $u['group_name'] = $group_name;
             if ($role !== null && $role !== '') {
                 if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
                 if ($id === intval($user['id']) && $role !== $u['role']) json_response(array('error' => 'Non puoi modificare il ruolo del tuo utente'), 400);
@@ -1340,7 +1418,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
                 $u['password'] = $password;
             }
             save_db($db);
-            json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'])), 200);
+            json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'], 'group_name' => isset($u['group_name']) ? $u['group_name'] : 'ProdOps')), 200);
         }
     }
     json_response(array('error' => 'Utente non trovato'), 404);
@@ -1672,32 +1750,36 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
         json_response(array('error' => 'Categoria non trovata'), 404);
     }
     if ($method === 'DELETE') {
+        $removedNames = array();
+        $removedIncidentIds = array();
+        foreach ($db['incidents'] as $inc) {
+            if (intval($inc['category_id']) === $id) {
+                $removedNames[] = $inc['name'];
+                $removedIncidentIds[] = intval($inc['id']);
+            }
+        }
+        $ticketCount = 0;
+        foreach ($db['tickets'] as $t) {
+            $tid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+            if ($tid > 0) {
+                if (in_array($tid, $removedIncidentIds, true)) $ticketCount++;
+            } else if (in_array(isset($t['incident_name']) ? $t['incident_name'] : '', $removedNames, true)) {
+                $ticketCount++;
+            }
+        }
+        if ($ticketCount > 0) {
+            json_response(array('error' => 'Categoria con ticket collegati', 'ticket_count' => $ticketCount), 409);
+        }
         $newCategories = array();
         foreach ($db['categories'] as $cat) {
             if (intval($cat['id']) !== $id) $newCategories[] = $cat;
         }
         $keptIncidents = array();
-        $removedNames = array();
         foreach ($db['incidents'] as $inc) {
-            if (intval($inc['category_id']) === $id) $removedNames[] = $inc['name'];
-            else $keptIncidents[] = $inc;
-        }
-        $keptTickets = array();
-        $removedIncidentIds = array();
-        foreach ($db['incidents'] as $inc) {
-            if (intval($inc['category_id']) === $id) $removedIncidentIds[] = intval($inc['id']);
-        }
-        foreach ($db['tickets'] as $t) {
-            $tid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
-            if ($tid > 0) {
-                if (!in_array($tid, $removedIncidentIds, true)) $keptTickets[] = $t;
-            } else if (!in_array($t['incident_name'], $removedNames, true)) {
-                $keptTickets[] = $t;
-            }
+            if (intval($inc['category_id']) !== $id) $keptIncidents[] = $inc;
         }
         $db['categories'] = $newCategories;
         $db['incidents'] = $keptIncidents;
-        $db['tickets'] = $keptTickets;
         save_db($db);
         json_response(array('ok' => true), 200);
     }
@@ -1868,6 +1950,23 @@ if ($path === '/api/tickets' && $method === 'POST') {
     }
     if ($incidentHidden || $categoryHidden) json_response(array('error' => 'Incident nascosto e non selezionabile'), 409);
     $ownerTeam = normalize_team(isset($ownerRecord['team']) ? $ownerRecord['team'] : 'A');
+    $createdAt = gmdate('c', strtotime($ticketTime));
+    if (mysql_enabled()) {
+        $newId = mysql_insert_ticket_direct($incidentId, $desc, $fab, $createdAt, $severity, intval($user['id']), $ownerTeam);
+        if ($newId === null) json_response(array('error' => 'Errore inserimento ticket nel database'), 500);
+        $ticket = array(
+            'id' => $newId,
+            'incident_id' => $incidentId,
+            'incident_name' => $incidentName,
+            'description' => $desc,
+            'fab' => $fab,
+            'severity' => $severity,
+            'owner_user_id' => intval($user['id']),
+            'owner_team' => $ownerTeam,
+            'created_at' => $createdAt
+        );
+        json_response(ticket_with_permissions($ticket, $user), 200);
+    }
     $db['counters']['ticket'] = intval($db['counters']['ticket']) + 1;
     $ticket = array(
         'id' => $db['counters']['ticket'],
@@ -1878,7 +1977,7 @@ if ($path === '/api/tickets' && $method === 'POST') {
         'severity' => $severity,
         'owner_user_id' => intval($user['id']),
         'owner_team' => $ownerTeam,
-        'created_at' => gmdate('c', strtotime($ticketTime))
+        'created_at' => $createdAt
     );
     $db['tickets'][] = $ticket;
     save_db($db);
@@ -1958,7 +2057,7 @@ if ($path === '/api/tickets/current-shift' && $method === 'GET') {
     $start = $current['start']->format(DateTime::ATOM);
     $end = $current['end']->format(DateTime::ATOM);
     $tickets = array();
-    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = ticket_with_permissions($t, $user);
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = ticket_with_permissions($t, $user, $db['users']);
     usort($tickets, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
     json_response(array(
         'shift' => array('key' => $current['key'], 'label' => $current['label'], 'start' => $start, 'end' => $end),
@@ -2009,7 +2108,7 @@ if ($path === '/api/tickets/search' && $method === 'GET') {
             if (isset($incidentCategories[$incidentId])) $categoryName = $incidentCategories[$incidentId];
         }
         if (!ticket_search_match($t, $query, $categoryName)) continue;
-        $tickets[] = ticket_with_permissions($t, $user);
+        $tickets[] = ticket_with_permissions($t, $user, $db['users']);
     }
     usort($tickets, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
     json_response(array(
@@ -2053,6 +2152,13 @@ if ($path === '/api/stats/category/current-year' && $method === 'GET') {
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_category($tickets, $db['categories'], $db['incidents'])), 200);
 }
 
+if ($path === '/api/stats/team/current-day' && $method === 'GET') {
+    $bounds = current_day_bounds();
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = $t;
+    json_response(array('day' => $bounds, 'stats' => summarize_by_team($tickets)), 200);
+}
+
 if ($path === '/api/stats/team/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
@@ -2062,6 +2168,13 @@ if ($path === '/api/stats/team/current-year' && $method === 'GET') {
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_team($tickets)), 200);
 }
 
+if ($path === '/api/stats/severity/current-day' && $method === 'GET') {
+    $bounds = current_day_bounds();
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = $t;
+    json_response(array('day' => $bounds, 'stats' => summarize_by_severity($tickets)), 200);
+}
+
 if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
@@ -2069,6 +2182,45 @@ if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_severity($tickets)), 200);
+}
+
+if ($path === '/api/stats/personal/current-year' && $method === 'GET') {
+    $year = intval(gmdate('Y'));
+    $userId = intval($user['id']);
+    $userGroup = isset($user['group_name']) && strval($user['group_name']) !== '' ? strval($user['group_name']) : 'ProdOps';
+    $view = isset($_GET['view']) ? strval($_GET['view']) : 'mine';
+    $monthLabels = array('Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic');
+    $counts = array(0,0,0,0,0,0,0,0,0,0,0,0);
+    $userGroupMap = array();
+    foreach ($db['users'] as $u) {
+        $userGroupMap[intval($u['id'])] = isset($u['group_name']) && strval($u['group_name']) !== '' ? strval($u['group_name']) : 'ProdOps';
+    }
+    foreach ($db['tickets'] as $t) {
+        $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        if ($view === 'team') {
+            if ($ownerId <= 0) continue;
+            $ownerGroup = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
+            if ($ownerGroup !== $userGroup) continue;
+        } else {
+            if ($ownerId !== $userId) continue;
+        }
+        $ts = isset($t['created_at']) ? strtotime($t['created_at']) : false;
+        if ($ts === false) continue;
+        if (intval(gmdate('Y', $ts)) !== $year) continue;
+        $m = intval(gmdate('n', $ts)) - 1;
+        $counts[$m] += 1;
+    }
+    $stats = array();
+    for ($i = 0; $i < 12; $i++) {
+        $stats[] = array('label' => $monthLabels[$i], 'total' => $counts[$i]);
+    }
+    $label = $view === 'team' ? $userGroup : strval($user['username']);
+    json_response(array('year' => $year, 'view' => $view, 'username' => $label, 'stats' => $stats), 200);
+}
+
+if ($path === '/api/ping' && $method === 'GET') {
+    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
+    json_response(array('ts' => $ts));
 }
 
 json_response(array('error' => 'Endpoint non trovato'), 404);

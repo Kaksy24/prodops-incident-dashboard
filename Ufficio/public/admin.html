@@ -1,15 +1,15 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="stylesheet" href="/public/css/styles.css?v=1.3.4" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.4.12" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
-      <div class="sidebar-top"><img class="brand-logo" src="/public/assets/prodops-logo.svg?v=1.3.4" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">☀</span></span></button></div>
+      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.4.12" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -113,7 +113,7 @@
             <div>
               <span class="admin-eyebrow">Gestione menu</span>
               <h3>Opzioni approvate</h3>
-              <p>Modifica direttamente le liste a tendina già presenti nel database.</p>
+              <p>Modifica direttamente le liste a tendina gia presenti nel database.</p>
             </div>
             <div id="presetOptionsSummary" class="admin-summary-chip">Caricamento...</div>
           </div>
@@ -140,7 +140,7 @@
               <span id="adminColorEditorSwatch" class="color-editor-swatch" aria-hidden="true"></span>
               <input id="adminColorEditorInput" type="color" value="#0c5f8c" />
               <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
-                <span class="switch-track"><span class="switch-thumb">☀</span></span>
+                <span class="switch-track"><span class="switch-thumb">L</span></span>
               </button>
             </div>
           </div>
@@ -182,6 +182,10 @@
             <option value="E">E</option>
           </select>
         </div>
+        <div>
+          <label for="newUserGroup">Gruppo</label>
+          <input id="newUserGroup" name="newUserGroup" type="text" placeholder="es. ProdOps" value="ProdOps" />
+        </div>
         <div class="form-actions">
           <button type="button" class="secondary close-user-modal">Annulla</button>
           <button type="submit" class="primary">Crea utente</button>
@@ -205,6 +209,7 @@
         <div class="form-actions" style="justify-content:flex-start; margin-top:-4px; margin-bottom:10px;">
           <button type="button" id="addPresetTextFieldBtn" class="secondary">+ Box testo</button>
           <button type="button" id="addPresetSelectFieldBtn" class="secondary">+ Menu tendina</button>
+          <button type="button" id="addPresetTimestampBtn" class="secondary">+ Timestamp</button>
         </div>
         <p class="muted" style="margin-top:-4px;">Menu tendina usa opzioni approvate nel DB. Gli utenti possono proporre nuovi elementi, soggetti a revisione admin.</p>
 
@@ -246,11 +251,7 @@
     </div>
   </div>
 
-  <script src="/public/js/admin.js?v=1.3.4"></script>
-  <div class="app-version-badge">v1.3.4</div>
+  <script src="./public/js/admin.js?v=1.4.12"></script>
+  <div class="app-version-badge">v1.4.12</div>
 </body>
 </html>
-
-
-
-
