@@ -120,6 +120,78 @@ function normalize_preset_field_key($value)
     return trim($value, '_');
 }
 
+function normalize_personal_target($value)
+{
+    $target = intval($value);
+    if ($target < 1) $target = 20;
+    return $target;
+}
+
+function normalize_group_target($value)
+{
+    return normalize_personal_target($value);
+}
+
+function normalize_group_name($value)
+{
+    $name = trim(strval($value));
+    return $name !== '' ? $name : 'ProdOps';
+}
+
+function normalize_group_targets($groupTargets, $users)
+{
+    $normalized = array();
+    if (is_array($groupTargets)) {
+        foreach ($groupTargets as $groupName => $config) {
+            $name = normalize_group_name($groupName);
+            $row = is_array($config) ? $config : array();
+            $normalized[$name] = array(
+                'group_name' => $name,
+                'personal_target_monthly' => normalize_personal_target(isset($row['personal_target_monthly']) ? $row['personal_target_monthly'] : (isset($row['personal_target']) ? $row['personal_target'] : 20)),
+                'personal_target_annual' => normalize_personal_target(isset($row['personal_target_annual']) ? $row['personal_target_annual'] : (isset($row['personal_target']) ? ($row['personal_target'] * 12) : 240)),
+                'group_target_monthly' => normalize_group_target(isset($row['group_target_monthly']) ? $row['group_target_monthly'] : (isset($row['group_target']) ? $row['group_target'] : 20)),
+                'group_target_annual' => normalize_group_target(isset($row['group_target_annual']) ? $row['group_target_annual'] : (isset($row['group_target']) ? ($row['group_target'] * 12) : 240)),
+                'personal_target' => normalize_personal_target(isset($row['personal_target_monthly']) ? $row['personal_target_monthly'] : (isset($row['personal_target']) ? $row['personal_target'] : 20)),
+                'group_target' => normalize_group_target(isset($row['group_target_monthly']) ? $row['group_target_monthly'] : (isset($row['group_target']) ? $row['group_target'] : 20))
+            );
+        }
+    }
+    if (is_array($users)) {
+        foreach ($users as $user) {
+            $name = normalize_group_name(isset($user['group_name']) ? $user['group_name'] : 'ProdOps');
+            if (!isset($normalized[$name])) {
+                $normalized[$name] = array(
+                    'group_name' => $name,
+                    'personal_target_monthly' => normalize_personal_target(isset($user['personal_target']) ? $user['personal_target'] : 20),
+                    'personal_target_annual' => normalize_personal_target((isset($user['personal_target']) ? $user['personal_target'] : 20) * 12),
+                    'group_target_monthly' => normalize_group_target(isset($user['group_target']) ? $user['group_target'] : 20),
+                    'group_target_annual' => normalize_group_target((isset($user['group_target']) ? $user['group_target'] : 20) * 12),
+                    'personal_target' => normalize_personal_target(isset($user['personal_target']) ? $user['personal_target'] : 20),
+                    'group_target' => normalize_group_target(isset($user['group_target']) ? $user['group_target'] : 20)
+                );
+            }
+        }
+    }
+    ksort($normalized, SORT_NATURAL | SORT_FLAG_CASE);
+    return $normalized;
+}
+
+function resolve_ticket_incident_name($db, $incidentId, $customIncidentName)
+{
+    $baseIncidentName = '';
+    foreach ($db['incidents'] as $inc) {
+        if (intval($inc['id']) === intval($incidentId)) {
+            $baseIncidentName = isset($inc['name']) ? trim(strval($inc['name'])) : '';
+            break;
+        }
+    }
+    if ($baseIncidentName === '') return '';
+    if (strtolower($baseIncidentName) !== 'generic') return $baseIncidentName;
+    $custom = trim(strval($customIncidentName));
+    if ($custom === '') return '';
+    return $custom;
+}
+
 function default_ui_colors()
 {
     return array(
@@ -137,6 +209,17 @@ function default_ui_colors()
             'fabs' => array('light' => array(), 'dark' => array()),
             'teams' => array('light' => array(), 'dark' => array()),
             'severities' => array('light' => array(), 'dark' => array())
+        ),
+        'titles' => array(
+            'personalMineChart' => 'Ticket personali',
+            'personalGroupChart' => 'Ticket gruppo',
+            'fabYear' => 'Ticket per FAB',
+            'catYear' => 'Ticket per categoria',
+            'teamYear' => 'Ticket per Team',
+            'severityYear' => 'Severity Ticket'
+        ),
+        'settings' => array(
+            'personal_axis_max' => 0
         )
     );
 }
@@ -145,6 +228,13 @@ function sanitize_hex_color($value)
 {
     $value = trim(strval($value));
     return preg_match('/^#[0-9a-fA-F]{6}$/', $value) ? strtoupper($value) : '';
+}
+
+function normalize_axis_max_setting($value)
+{
+    $num = intval($value);
+    if ($num < 0) $num = 0;
+    return $num;
 }
 
 function normalize_ui_colors($colors)
@@ -192,6 +282,16 @@ function normalize_ui_colors($colors)
                 }
             }
         }
+    }
+    if (isset($colors['titles']) && is_array($colors['titles'])) {
+        foreach ($defaults['titles'] as $key => $defaultTitle) {
+            if (!isset($colors['titles'][$key])) continue;
+            $title = trim(strval($colors['titles'][$key]));
+            if ($title !== '') $out['titles'][$key] = $title;
+        }
+    }
+    if (isset($colors['settings']) && is_array($colors['settings'])) {
+        $out['settings']['personal_axis_max'] = normalize_axis_max_setting(isset($colors['settings']['personal_axis_max']) ? $colors['settings']['personal_axis_max'] : 0);
     }
     return $out;
 }
@@ -569,6 +669,9 @@ function mysql_ensure_schema($conn)
         "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8",
         "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
         "ALTER TABLE app_users ADD COLUMN group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps' AFTER team",
+        "ALTER TABLE app_users ADD COLUMN personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER group_name",
+        "ALTER TABLE app_users ADD COLUMN group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER personal_target",
+        "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
         "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
         "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"
@@ -599,7 +702,9 @@ function mysql_load_db($defaultUsers)
         'incidents' => array(),
         'tickets' => array(),
         'users' => array(),
+        'group_targets' => array(),
         'ui_colors' => default_ui_colors(),
+        'user_charts' => array(),
         'preset_options' => array(),
         'preset_option_requests' => array(),
         'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 0, 'preset_option_request' => 0)
@@ -651,14 +756,14 @@ function mysql_load_db($defaultUsers)
     $incidentNameById = array();
     foreach ($db['incidents'] as $incRow) $incidentNameById[intval($incRow['id'])] = $incRow['name'];
 
-    $rt = @mysqli_query($conn, "SELECT id, incident_id, description, fab, created_at, severity, owner_user_id, owner_team FROM tickets ORDER BY id ASC");
+    $rt = @mysqli_query($conn, "SELECT id, incident_id, incident_name, description, fab, created_at, severity, owner_user_id, owner_team FROM tickets ORDER BY id ASC");
     if ($rt) {
         while ($row = mysqli_fetch_assoc($rt)) {
             $iid = intval($row['incident_id']);
             $db['tickets'][] = array(
                 'id' => intval($row['id']),
                 'incident_id' => $iid,
-                'incident_name' => isset($incidentNameById[$iid]) ? $incidentNameById[$iid] : '',
+                'incident_name' => isset($row['incident_name']) && trim(strval($row['incident_name'])) !== '' ? $row['incident_name'] : (isset($incidentNameById[$iid]) ? $incidentNameById[$iid] : ''),
                 'description' => $row['description'],
                 'fab' => $row['fab'],
                 'created_at' => $row['created_at'],
@@ -670,7 +775,7 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rt);
     }
 
-    $ru = @mysqli_query($conn, "SELECT id, username, password, role, team, group_name FROM app_users ORDER BY id ASC");
+    $ru = @mysqli_query($conn, "SELECT id, username, password, role, team, group_name, personal_target, group_target FROM app_users ORDER BY id ASC");
     if ($ru) {
         while ($row = mysqli_fetch_assoc($ru)) {
             $db['users'][] = array(
@@ -679,19 +784,23 @@ function mysql_load_db($defaultUsers)
                 'password' => $row['password'],
                 'role' => $row['role'],
                 'team' => normalize_team(isset($row['team']) ? $row['team'] : 'A'),
-                'group_name' => isset($row['group_name']) ? strval($row['group_name']) : 'ProdOps'
+                'group_name' => isset($row['group_name']) ? strval($row['group_name']) : 'ProdOps',
+                'personal_target' => normalize_personal_target(isset($row['personal_target']) ? $row['personal_target'] : 20),
+                'group_target' => normalize_group_target(isset($row['group_target']) ? $row['group_target'] : 20)
             );
         }
         mysqli_free_result($ru);
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','group_targets','user_charts')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
             if (!is_array($parsed)) continue;
             if ($row['setting_key'] === 'ui_colors') $db['ui_colors'] = normalize_ui_colors($parsed);
             if ($row['setting_key'] === 'preset_option_requests') $db['preset_option_requests'] = $parsed;
+            if ($row['setting_key'] === 'group_targets') $db['group_targets'] = $parsed;
+            if ($row['setting_key'] === 'user_charts') $db['user_charts'] = $parsed;
         }
         mysqli_free_result($rs);
     }
@@ -707,6 +816,7 @@ function mysql_load_db($defaultUsers)
     }
 
     if (!count($db['users'])) $db['users'] = $defaultUsers;
+    $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
     $db['counters']['category'] = max_id($db['categories']);
     $db['counters']['incident'] = max_id($db['incidents']);
     $db['counters']['ticket'] = max_id($db['tickets']);
@@ -747,6 +857,10 @@ function mysql_save_db($db)
         if (!mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('ui_colors', '$uiJson')")) { $ok = false; }
         $presetRequestsJson = mysql_escape($conn, json_encode(isset($db['preset_option_requests']) && is_array($db['preset_option_requests']) ? $db['preset_option_requests'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_requests', '$presetRequestsJson')")) { $ok = false; }
+        $groupTargetsJson = mysql_escape($conn, json_encode(normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), isset($db['users']) ? $db['users'] : array())));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('group_targets', '$groupTargetsJson')")) { $ok = false; }
+        $userChartsJson = mysql_escape($conn, json_encode(isset($db['user_charts']) && is_array($db['user_charts']) ? $db['user_charts'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('user_charts', '$userChartsJson')")) { $ok = false; }
     }
 
     if ($ok && isset($db['preset_options']) && is_array($db['preset_options'])) {
@@ -809,7 +923,9 @@ function mysql_save_db($db)
             $rl = mysql_escape($conn, $u['role']);
             $tm = mysql_escape($conn, isset($u['team']) ? normalize_team($u['team']) : 'A');
             $gn = mysql_escape($conn, isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
-            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team,group_name) VALUES ($id,'$un','$pw','$rl','$tm','$gn')")) { $ok = false; break; }
+            $pt = normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20);
+            $gt = normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20);
+            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team,group_name,personal_target,group_target) VALUES ($id,'$un','$pw','$rl','$tm','$gn',$pt,$gt)")) { $ok = false; break; }
         }
     }
 
@@ -823,13 +939,14 @@ function mysql_save_db($db)
                 $incidentId = intval($incidentNameToId[$t['incident_name']]);
             }
             if ($incidentId <= 0) continue;
+            $in = mysql_escape($conn, isset($t['incident_name']) ? $t['incident_name'] : '');
             $de = mysql_escape($conn, isset($t['description']) ? $t['description'] : '');
             $fa = mysql_escape($conn, isset($t['fab']) ? $t['fab'] : '');
             $ca = mysql_escape($conn, isset($t['created_at']) ? $t['created_at'] : gmdate('c'));
             $se = isset($t['severity']) ? intval($t['severity']) : 1;
             $ou = (isset($t['owner_user_id']) && $t['owner_user_id'] !== null) ? intval($t['owner_user_id']) : 'NULL';
             $ot = mysql_escape($conn, isset($t['owner_team']) ? normalize_team($t['owner_team']) : 'A');
-            if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($id,$incidentId,'$de','$fa','$ca',$se,$ou,'$ot')")) { $ok = false; break; }
+            if (!mysqli_query($conn, "INSERT INTO tickets (id,incident_id,incident_name,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($id,$incidentId,'$in','$de','$fa','$ca',$se,$ou,'$ot')")) { $ok = false; break; }
         }
     }
 
@@ -842,7 +959,7 @@ function mysql_save_db($db)
     return $ok;
 }
 
-function mysql_insert_ticket_direct($incidentId, $desc, $fab, $createdAt, $severity, $ownerUserId, $ownerTeam)
+function mysql_insert_ticket_direct($incidentId, $incidentName, $desc, $fab, $createdAt, $severity, $ownerUserId, $ownerTeam)
 {
     $conn = mysql_conn();
     if (!$conn) return null;
@@ -856,12 +973,13 @@ function mysql_insert_ticket_direct($incidentId, $desc, $fab, $createdAt, $sever
     $row = mysqli_fetch_row($r);
     $newId = intval($row[0]);
     mysqli_free_result($r);
+    $in = mysql_escape($conn, $incidentName);
     $de = mysql_escape($conn, $desc);
     $fa = mysql_escape($conn, $fab);
     $ca = mysql_escape($conn, $createdAt);
     $ou = ($ownerUserId !== null && $ownerUserId > 0) ? intval($ownerUserId) : 'NULL';
     $ot = mysql_escape($conn, $ownerTeam);
-    $q = "INSERT INTO tickets (id,incident_id,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($newId,$incidentId,'$de','$fa','$ca',$severity,$ou,'$ot')";
+    $q = "INSERT INTO tickets (id,incident_id,incident_name,description,fab,created_at,severity,owner_user_id,owner_team) VALUES ($newId,$incidentId,'$in','$de','$fa','$ca',$severity,$ou,'$ot')";
     $ok = @mysqli_query($conn, $q);
     @mysqli_query($conn, "SELECT RELEASE_LOCK('prodops_ticket_insert')");
     if (!$ok) return null;
@@ -880,6 +998,7 @@ function load_db($defaultUsers)
             'incidents' => array(),
             'tickets' => array(),
             'users' => $defaultUsers,
+            'group_targets' => array(),
             'preset_options' => array(),
             'preset_option_requests' => array(),
             'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 2, 'preset_option_request' => 0)
@@ -898,6 +1017,8 @@ function load_db($defaultUsers)
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
     if (!isset($db['preset_options']) || !is_array($db['preset_options'])) $db['preset_options'] = array();
     if (!isset($db['preset_option_requests']) || !is_array($db['preset_option_requests'])) $db['preset_option_requests'] = array();
+    if (!isset($db['group_targets']) || !is_array($db['group_targets'])) $db['group_targets'] = array();
+    if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
     if (!count($db['incidents'])) {
@@ -948,7 +1069,12 @@ function load_db($defaultUsers)
         if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
         $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
         if (!isset($db['users'][$ui]['group_name']) || $db['users'][$ui]['group_name'] === '') $db['users'][$ui]['group_name'] = 'ProdOps';
+        if (!isset($db['users'][$ui]['personal_target'])) $db['users'][$ui]['personal_target'] = 20;
+        if (!isset($db['users'][$ui]['group_target'])) $db['users'][$ui]['group_target'] = 20;
+        $db['users'][$ui]['personal_target'] = normalize_personal_target($db['users'][$ui]['personal_target']);
+        $db['users'][$ui]['group_target'] = normalize_group_target($db['users'][$ui]['group_target']);
     }
+    $db['group_targets'] = normalize_group_targets($db['group_targets'], $db['users']);
     foreach ($db['tickets'] as $ti => $ticketRow) {
         if (!isset($db['tickets'][$ti]['owner_team'])) {
             $ownerUser = isset($ticketRow['owner_user_id']) ? user_by_id($db['users'], intval($ticketRow['owner_user_id'])) : null;
@@ -1188,6 +1314,87 @@ function summarize_by_severity($tickets)
     return $out;
 }
 
+function summarize_by_incident($tickets, $incidents)
+{
+    $nameById = array();
+    foreach ($incidents as $inc) $nameById[intval($inc['id'])] = strval($inc['name']);
+    $counts = array();
+    $order = array();
+    foreach ($tickets as $t) {
+        $incidentId = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+        $name = ($incidentId > 0 && isset($nameById[$incidentId]))
+            ? $nameById[$incidentId]
+            : (isset($t['incident_name']) ? strval($t['incident_name']) : '');
+        if ($name === '') $name = 'N/D';
+        if (!isset($counts[$name])) { $counts[$name] = 0; $order[] = $name; }
+        $counts[$name]++;
+    }
+    $out = array();
+    foreach ($order as $name) $out[] = array('label' => $name, 'total' => $counts[$name]);
+    usort($out, function ($a, $b) { return $b['total'] - $a['total']; });
+    return $out;
+}
+
+function custom_ticket_category_name($ticket, $categories, $incidents)
+{
+    $incidentToCatByName = array();
+    $incidentToCatById = array();
+    $categoryNameById = array();
+    foreach ($categories as $cat) $categoryNameById[intval($cat['id'])] = strval($cat['name']);
+    foreach ($incidents as $inc) {
+        $incidentToCatByName[strval($inc['name'])] = intval($inc['category_id']);
+        $incidentToCatById[intval($inc['id'])] = intval($inc['category_id']);
+    }
+    $incidentId = isset($ticket['incident_id']) ? intval($ticket['incident_id']) : 0;
+    if ($incidentId > 0 && isset($incidentToCatById[$incidentId])) {
+        $catId = $incidentToCatById[$incidentId];
+        return isset($categoryNameById[$catId]) ? $categoryNameById[$catId] : '';
+    }
+    $incidentName = isset($ticket['incident_name']) ? strval($ticket['incident_name']) : '';
+    if ($incidentName !== '' && isset($incidentToCatByName[$incidentName])) {
+        $catId = $incidentToCatByName[$incidentName];
+        return isset($categoryNameById[$catId]) ? $categoryNameById[$catId] : '';
+    }
+    return '';
+}
+
+function custom_ticket_severity_label($ticket)
+{
+    $severity = isset($ticket['severity']) ? intval($ticket['severity']) : 1;
+    if ($severity === 2) return '2 - Medium';
+    if ($severity === 3) return '3 - High';
+    if ($severity === 4) return '4 - Extreme';
+    return '1 - Low';
+}
+
+function filter_custom_tickets($tickets, $filterMap, $categories, $incidents)
+{
+    if (!is_array($filterMap) || !count($filterMap)) return $tickets;
+    return array_values(array_filter($tickets, function($ticket) use ($filterMap, $categories, $incidents) {
+        if (isset($filterMap['fab']) && count($filterMap['fab'])) {
+            $fab = isset($ticket['fab']) ? strval($ticket['fab']) : '';
+            if (!in_array($fab, $filterMap['fab'], true)) return false;
+        }
+        if (isset($filterMap['team']) && count($filterMap['team'])) {
+            $team = normalize_team(isset($ticket['owner_team']) ? $ticket['owner_team'] : 'A');
+            if (!in_array($team, $filterMap['team'], true)) return false;
+        }
+        if (isset($filterMap['severity']) && count($filterMap['severity'])) {
+            $severityLabel = custom_ticket_severity_label($ticket);
+            if (!in_array($severityLabel, $filterMap['severity'], true)) return false;
+        }
+        if (isset($filterMap['incident']) && count($filterMap['incident'])) {
+            $incidentName = isset($ticket['incident_name']) ? strval($ticket['incident_name']) : '';
+            if (!in_array($incidentName, $filterMap['incident'], true)) return false;
+        }
+        if (isset($filterMap['category']) && count($filterMap['category'])) {
+            $categoryName = custom_ticket_category_name($ticket, $categories, $incidents);
+            if (!in_array($categoryName, $filterMap['category'], true)) return false;
+        }
+        return true;
+    }));
+}
+
 function year_range_from_mode($year, $mode)
 {
     $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
@@ -1345,6 +1552,30 @@ if ($path === '/api/ui-colors' && $method === 'PUT') {
     json_response(array('ok' => true, 'ui_colors' => $db['ui_colors']), 200);
 }
 
+if ($path === '/api/group-targets' && $method === 'GET') {
+    require_api_auth('admin');
+    $groupTargets = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
+    json_response(array_values($groupTargets), 200);
+}
+
+if ($path === '/api/group-targets' && $method === 'PUT') {
+    require_api_auth('admin');
+    $groupName = normalize_group_name(isset($payload['group_name']) ? $payload['group_name'] : '');
+    $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
+    $db['group_targets'][$groupName] = array(
+        'group_name' => $groupName,
+        'personal_target_monthly' => normalize_personal_target(isset($payload['personal_target_monthly']) ? $payload['personal_target_monthly'] : (isset($payload['personal_target']) ? $payload['personal_target'] : 20)),
+        'personal_target_annual' => normalize_personal_target(isset($payload['personal_target_annual']) ? $payload['personal_target_annual'] : 240),
+        'group_target_monthly' => normalize_group_target(isset($payload['group_target_monthly']) ? $payload['group_target_monthly'] : (isset($payload['group_target']) ? $payload['group_target'] : 20)),
+        'group_target_annual' => normalize_group_target(isset($payload['group_target_annual']) ? $payload['group_target_annual'] : 240),
+        'personal_target' => normalize_personal_target(isset($payload['personal_target_monthly']) ? $payload['personal_target_monthly'] : (isset($payload['personal_target']) ? $payload['personal_target'] : 20)),
+        'group_target' => normalize_group_target(isset($payload['group_target_monthly']) ? $payload['group_target_monthly'] : (isset($payload['group_target']) ? $payload['group_target'] : 20))
+    );
+    $db['group_targets'] = normalize_group_targets($db['group_targets'], $db['users']);
+    save_db($db);
+    json_response(array('ok' => true, 'group_target' => $db['group_targets'][$groupName]), 200);
+}
+
 if ($path === '/api/admin/db-check' && $method === 'GET') {
     require_api_auth('admin');
     $conn = mysql_conn();
@@ -1364,13 +1595,13 @@ if ($path === '/api/users' && $method === 'GET') {
     require_api_auth('admin');
     $out = array();
     if (supabase_enabled()) {
-        $resp = sb_select('app_users', 'id,username,role,team,group_name', array(), 'id.asc');
+        $resp = sb_select('app_users', 'id,username,role,team,group_name,personal_target,group_target', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
+            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20));
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
+    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20));
     json_response($out, 200);
 }
 
@@ -1380,17 +1611,20 @@ if ($path === '/api/users' && $method === 'POST') {
     $password = isset($payload['password']) ? trim(strval($payload['password'])) : '';
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : 'user';
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
-    $group_name = isset($payload['group_name']) && strval($payload['group_name']) !== '' ? trim(strval($payload['group_name'])) : 'ProdOps';
+    $group_name = normalize_group_name(isset($payload['group_name']) ? $payload['group_name'] : 'ProdOps');
+    $personal_target = normalize_personal_target(isset($payload['personal_target']) ? $payload['personal_target'] : 20);
+    $group_target = normalize_group_target(isset($payload['group_target']) ? $payload['group_target'] : 20);
     if ($username === '' || $password === '') json_response(array('error' => 'Username e password obbligatori'), 400);
     if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
     $db['counters']['user'] = intval($db['counters']['user']) + 1;
-    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team, 'group_name' => $group_name);
+    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team, 'group_name' => $group_name, 'personal_target' => $personal_target, 'group_target' => $group_target);
     $db['users'][] = $newUser;
+    $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
     save_db($db);
-    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role, 'team' => $team, 'group_name' => $group_name), 200);
+    json_response(array('id' => $newUser['id'], 'username' => $username, 'role' => $role, 'team' => $team, 'group_name' => $group_name, 'personal_target' => $personal_target, 'group_target' => $group_target), 200);
 }
 
 if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
@@ -1399,7 +1633,9 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
     $password = array_key_exists('password', $payload) ? trim(strval($payload['password'])) : null;
-    $group_name = isset($payload['group_name']) && strval($payload['group_name']) !== '' ? trim(strval($payload['group_name'])) : null;
+    $group_name = array_key_exists('group_name', $payload) ? normalize_group_name(isset($payload['group_name']) ? $payload['group_name'] : 'ProdOps') : null;
+    $personal_target = isset($payload['personal_target']) ? normalize_personal_target($payload['personal_target']) : null;
+    $group_target = isset($payload['group_target']) ? normalize_group_target($payload['group_target']) : null;
     $adminCount = 0;
     foreach ($db['users'] as $adminUser) {
         if (isset($adminUser['role']) && $adminUser['role'] === 'admin') $adminCount++;
@@ -1408,6 +1644,8 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
         if (intval($u['id']) === $id) {
             $u['team'] = $team;
             if ($group_name !== null) $u['group_name'] = $group_name;
+            if ($personal_target !== null) $u['personal_target'] = $personal_target;
+            if ($group_target !== null) $u['group_target'] = $group_target;
             if ($role !== null && $role !== '') {
                 if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
                 if ($id === intval($user['id']) && $role !== $u['role']) json_response(array('error' => 'Non puoi modificare il ruolo del tuo utente'), 400);
@@ -1417,8 +1655,9 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
             if ($password !== null && $password !== '') {
                 $u['password'] = $password;
             }
+            $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
             save_db($db);
-            json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'], 'group_name' => isset($u['group_name']) ? $u['group_name'] : 'ProdOps')), 200);
+            json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'], 'group_name' => isset($u['group_name']) ? $u['group_name'] : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20))), 200);
         }
     }
     json_response(array('error' => 'Utente non trovato'), 404);
@@ -1921,6 +2160,7 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
 
 if ($path === '/api/tickets' && $method === 'POST') {
     $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
+    $customIncidentName = isset($payload['incident_name']) ? trim(strval($payload['incident_name'])) : '';
     $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
     $fab = isset($payload['fab']) ? strtoupper(trim(strval($payload['fab']))) : '';
     $ticketTime = isset($payload['ticket_time']) ? strval($payload['ticket_time']) : '';
@@ -1942,6 +2182,8 @@ if ($path === '/api/tickets' && $method === 'POST') {
         }
     }
     if ($incidentName === '') json_response(array('error' => 'Incident non valido'), 400);
+    $incidentName = resolve_ticket_incident_name($db, $incidentId, $customIncidentName);
+    if ($incidentName === '') json_response(array('error' => 'Per gli incident Generic il nome personalizzato e obbligatorio'), 400);
     foreach ($db['categories'] as $cat) {
         if (intval($cat['id']) === $categoryIdByIncident) {
             $categoryHidden = !empty($cat['hidden']);
@@ -1952,7 +2194,7 @@ if ($path === '/api/tickets' && $method === 'POST') {
     $ownerTeam = normalize_team(isset($ownerRecord['team']) ? $ownerRecord['team'] : 'A');
     $createdAt = gmdate('c', strtotime($ticketTime));
     if (mysql_enabled()) {
-        $newId = mysql_insert_ticket_direct($incidentId, $desc, $fab, $createdAt, $severity, intval($user['id']), $ownerTeam);
+        $newId = mysql_insert_ticket_direct($incidentId, $incidentName, $desc, $fab, $createdAt, $severity, intval($user['id']), $ownerTeam);
         if ($newId === null) json_response(array('error' => 'Errore inserimento ticket nel database'), 500);
         $ticket = array(
             'id' => $newId,
@@ -2006,17 +2248,15 @@ if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
     require_ticket_owner($db['tickets'][$idx], $user, $method === 'DELETE' ? 'eliminare' : 'modificare');
     if ($method === 'PUT') {
         $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
+        $customIncidentName = isset($payload['incident_name']) ? trim(strval($payload['incident_name'])) : '';
         $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
         $fab = isset($payload['fab']) ? strtoupper(trim(strval($payload['fab']))) : '';
         $ticketTime = isset($payload['ticket_time']) ? strval($payload['ticket_time']) : '';
         $severity = isset($payload['severity']) ? intval($payload['severity']) : 1;
         if ($incidentId <= 0 || $desc === '' || $fab === '' || $ticketTime === '') json_response(array('error' => 'Dati ticket incompleti'), 400);
         if (strtotime($ticketTime) === false) json_response(array('error' => 'Data/ora ticket non valida'), 400);
-        $incidentName = '';
-        foreach ($db['incidents'] as $inc) {
-            if (intval($inc['id']) === $incidentId) { $incidentName = $inc['name']; break; }
-        }
-        if ($incidentName === '') json_response(array('error' => 'Incident non valido'), 400);
+        $incidentName = resolve_ticket_incident_name($db, $incidentId, $customIncidentName);
+        if ($incidentName === '') json_response(array('error' => 'Per gli incident Generic il nome personalizzato e obbligatorio'), 400);
         $db['tickets'][$idx]['incident_id'] = $incidentId;
         $db['tickets'][$idx]['incident_name'] = $incidentName;
         $db['tickets'][$idx]['description'] = $desc;
@@ -2184,6 +2424,39 @@ if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_severity($tickets)), 200);
 }
 
+function summarize_by_user($tickets, $users)
+{
+    $nameById = array();
+    foreach ($users as $u) $nameById[intval($u['id'])] = trim(strval(isset($u['display_name']) && strval($u['display_name']) !== '' ? $u['display_name'] : $u['username']));
+    $counts = array();
+    foreach ($tickets as $t) {
+        $uid = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        $name = isset($nameById[$uid]) ? $nameById[$uid] : ('Utente ' . $uid);
+        if (!isset($counts[$name])) $counts[$name] = 0;
+        $counts[$name]++;
+    }
+    arsort($counts);
+    $out = array();
+    foreach ($counts as $name => $total) $out[] = array('label' => $name, 'total' => $total);
+    return $out;
+}
+
+if ($path === '/api/stats/user/current-day' && $method === 'GET') {
+    $bounds = current_day_bounds();
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = $t;
+    json_response(array('day' => $bounds, 'stats' => summarize_by_user($tickets, $db['users'])), 200);
+}
+
+if ($path === '/api/stats/user/current-year' && $method === 'GET') {
+    $year = intval(gmdate('Y'));
+    $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
+    list($start, $end) = year_range_from_mode($year, $mode);
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
+    json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_user($tickets, $db['users'])), 200);
+}
+
 if ($path === '/api/stats/personal/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $userId = intval($user['id']);
@@ -2215,7 +2488,265 @@ if ($path === '/api/stats/personal/current-year' && $method === 'GET') {
         $stats[] = array('label' => $monthLabels[$i], 'total' => $counts[$i]);
     }
     $label = $view === 'team' ? $userGroup : strval($user['username']);
-    json_response(array('year' => $year, 'view' => $view, 'username' => $label, 'stats' => $stats), 200);
+    $personalTarget = 20;
+    $groupTarget = 20;
+    $groupTargets = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
+    if (isset($groupTargets[$userGroup])) {
+        $personalTarget = normalize_personal_target(isset($groupTargets[$userGroup]['personal_target_monthly']) ? $groupTargets[$userGroup]['personal_target_monthly'] : 20);
+        $groupTarget = normalize_group_target(isset($groupTargets[$userGroup]['group_target_monthly']) ? $groupTargets[$userGroup]['group_target_monthly'] : 20);
+        $personalTargetAnnual = normalize_personal_target(isset($groupTargets[$userGroup]['personal_target_annual']) ? $groupTargets[$userGroup]['personal_target_annual'] : ($personalTarget * 12));
+        $groupTargetAnnual = normalize_group_target(isset($groupTargets[$userGroup]['group_target_annual']) ? $groupTargets[$userGroup]['group_target_annual'] : ($groupTarget * 12));
+    } else {
+        $personalTargetAnnual = $personalTarget * 12;
+        $groupTargetAnnual = $groupTarget * 12;
+        foreach ($db['users'] as $u) {
+            if (intval($u['id']) === $userId) {
+                $personalTarget = normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20);
+                $groupTarget = normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20);
+                $personalTargetAnnual = $personalTarget * 12;
+                $groupTargetAnnual = $groupTarget * 12;
+                break;
+            }
+        }
+    }
+    json_response(array(
+        'year' => $year,
+        'view' => $view,
+        'username' => $label,
+        'target' => $view === 'team' ? $groupTarget : $personalTarget,
+        'personal_target' => $personalTarget,
+        'group_target' => $groupTarget,
+        'personal_target_monthly' => $personalTarget,
+        'personal_target_annual' => $personalTargetAnnual,
+        'group_target_monthly' => $groupTarget,
+        'group_target_annual' => $groupTargetAnnual,
+        'stats' => $stats
+    ), 200);
+}
+
+if ($path === '/api/stats/meta' && $method === 'GET') {
+    $cats = array();
+    foreach ($db['categories'] as $c) {
+        if (!empty($c['hidden'])) continue;
+        $cats[] = array('id' => intval($c['id']), 'name' => strval($c['name']));
+    }
+    $catNameById = array();
+    foreach ($db['categories'] as $c) $catNameById[intval($c['id'])] = strval($c['name']);
+    $incs = array();
+    foreach ($db['incidents'] as $i) {
+        if (!empty($i['hidden'])) continue;
+        if (strtolower(trim(strval($i['name']))) === 'generic') continue;
+        $cid = intval($i['category_id']);
+        $incs[] = array('id' => intval($i['id']), 'name' => strval($i['name']), 'category_id' => $cid, 'category_name' => isset($catNameById[$cid]) ? $catNameById[$cid] : '', 'fab_default' => strtoupper(strval(isset($i['fab_default']) ? $i['fab_default'] : '')));
+    }
+    $severities = array(
+        array('value' => '1', 'label' => '1 - Low'),
+        array('value' => '2', 'label' => '2 - Medium'),
+        array('value' => '3', 'label' => '3 - High'),
+        array('value' => '4', 'label' => '4 - Extreme')
+    );
+    $teams = array('A', 'B', 'C', 'D', 'E');
+    json_response(array(
+        'categories' => $cats,
+        'incidents'  => $incs,
+        'fabs'       => $fabs,
+        'teams'      => $teams,
+        'severities' => $severities
+    ), 200);
+}
+
+if ($path === '/api/stats/custom' && $method === 'GET') {
+    // Supporta sia ?dimension=X (legacy) sia ?dimensions[]=X&dimensions[]=Y
+    $allowedDimensions = array('fab', 'category', 'incident', 'team', 'severity');
+    if (isset($_GET['dimensions']) && is_array($_GET['dimensions'])) {
+        $dimensions = array_values(array_filter(array_map('strval', $_GET['dimensions']), function($d) use ($allowedDimensions) { return in_array($d, $allowedDimensions, true); }));
+    } else {
+        $dim = isset($_GET['dimension']) ? strval($_GET['dimension']) : '';
+        $dimensions = in_array($dim, $allowedDimensions, true) ? array($dim) : array();
+    }
+    if (!count($dimensions)) json_response(array('error' => 'Dimensione non valida'), 400);
+
+    $window = isset($_GET['window']) ? strval($_GET['window']) : 'months';
+    $scope  = isset($_GET['scope'])  ? strval($_GET['scope'])  : 'all';
+
+    // Filtri per-dimensione (opzionali): ?filter_category[]=Hardware&filter_severity[]=1
+    $filterMap = array();
+    foreach (array('category','incident','fab','team','severity') as $dim) {
+        $key = 'filter_' . $dim;
+        if (isset($_GET[$key]) && is_array($_GET[$key])) {
+            $filterMap[$dim] = array_map('strval', $_GET[$key]);
+        }
+    }
+
+    // Finestra temporale
+    if ($window === 'custom') {
+        $rawStart = isset($_GET['start']) ? strval($_GET['start']) : '';
+        $rawEnd   = isset($_GET['end'])   ? strval($_GET['end'])   : '';
+        $tsStart = strtotime($rawStart);
+        $tsEnd   = strtotime($rawEnd);
+        if ($tsStart === false || $tsEnd === false || $tsStart >= $tsEnd) {
+            json_response(array('error' => 'Range date non valido'), 400);
+        }
+        $start = gmdate('c', $tsStart);
+        $end   = gmdate('c', $tsEnd + 86400);
+    } elseif ($window === 'day') {
+        $bounds = current_day_bounds();
+        $start = $bounds['start'];
+        $end   = $bounds['end'];
+    } elseif ($window === 'month') {
+        $year  = intval(gmdate('Y'));
+        $month = intval(gmdate('n'));
+        $start = gmdate('c', gmmktime(0, 0, 0, $month, 1, $year));
+        $end   = gmdate('c', gmmktime(23, 59, 59, $month, (int)gmdate('t'), $year));
+    } else {
+        $year = intval(gmdate('Y'));
+        list($start, $end) = year_range_from_mode($year, $window);
+    }
+
+    // Ambito
+    $userId   = intval($user['id']);
+    $userGroup = isset($user['group_name']) && strval($user['group_name']) !== '' ? strval($user['group_name']) : 'ProdOps';
+    $userGroupMap = array();
+    foreach ($db['users'] as $u) {
+        $userGroupMap[intval($u['id'])] = isset($u['group_name']) && strval($u['group_name']) !== '' ? strval($u['group_name']) : 'ProdOps';
+    }
+    $tickets = array();
+    foreach ($db['tickets'] as $t) {
+        if (!in_range(isset($t['created_at']) ? $t['created_at'] : '', $start, $end)) continue;
+        $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        if ($scope === 'mine') {
+            if ($ownerId !== $userId) continue;
+        } elseif ($scope === 'group') {
+            if ($ownerId <= 0) continue;
+            $ownerGroup = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
+            if ($ownerGroup !== $userGroup) continue;
+        }
+        $tickets[] = $t;
+    }
+    $tickets = filter_custom_tickets($tickets, $filterMap, $db['categories'], $db['incidents']);
+
+    // Calcola stats per ogni dimensione e filtra gli item se richiesto
+    $stats = array();
+    foreach ($dimensions as $dim) {
+        switch ($dim) {
+            case 'fab':      $dimStats = summarize_by_fab($tickets, $fabs); break;
+            case 'category': $dimStats = summarize_by_category($tickets, $db['categories'], $db['incidents']); break;
+            case 'incident': $dimStats = summarize_by_incident($tickets, $db['incidents']); break;
+            case 'team':     $dimStats = summarize_by_team($tickets); break;
+            case 'severity': $dimStats = summarize_by_severity($tickets); break;
+            default:         $dimStats = array(); break;
+        }
+        // Applica filtro item se presente
+        if (isset($filterMap[$dim]) && count($filterMap[$dim])) {
+            $allowed = $filterMap[$dim];
+            $dimStats = array_values(array_filter($dimStats, function($s) use ($allowed) {
+                return in_array($s['label'], $allowed, true);
+            }));
+        }
+        // Aggiunge annotazione dim_type solo se multi-dimensione
+        if (count($dimensions) > 1) {
+            foreach ($dimStats as &$s) { $s['dim_type'] = $dim; }
+            unset($s);
+        }
+        $stats = array_merge($stats, $dimStats);
+    }
+
+    json_response(array(
+        'dimensions' => $dimensions,
+        'window'     => $window,
+        'scope'      => $scope,
+        'stats'      => $stats
+    ), 200);
+}
+
+if ($path === '/api/user-charts' && $method === 'GET') {
+    if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
+    $key = strval(intval($user['id']));
+    $userData = isset($db['user_charts'][$key]) && is_array($db['user_charts'][$key]) ? $db['user_charts'][$key] : array();
+    $charts = isset($userData['charts']) && is_array($userData['charts']) ? array_values($userData['charts']) : (is_array($userData) && isset($userData[0]) ? array_values($userData) : array());
+    $hiddenPanels = isset($userData['hidden_panels']) && is_array($userData['hidden_panels']) ? array_values($userData['hidden_panels']) : array();
+    $panelOrder = isset($userData['panel_order']) && is_array($userData['panel_order']) ? array_values($userData['panel_order']) : array();
+    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder), 200);
+}
+
+if ($path === '/api/user-charts' && $method === 'PUT') {
+    if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
+    $incoming = isset($payload['charts']) && is_array($payload['charts']) ? $payload['charts'] : array();
+    $incomingHidden = isset($payload['hidden_panels']) && is_array($payload['hidden_panels']) ? $payload['hidden_panels'] : array();
+    $allowedDimensions = array('fab', 'category', 'incident', 'team', 'severity');
+    $allowedWindows = array('day', 'month', 'months', 'q1', 'q2', 'q3', 'q4');
+    $allowedScopes = array('all', 'mine', 'group');
+    $allowedTypes = array('column', 'bar', 'pie', 'donut', 'line');
+    $allowedFilterModes = array('fab', 'team');
+    $allowedDefaultPanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelSeverity','chartPanelUser');
+    $clean = array();
+    foreach ($incoming as $c) {
+        if (!is_array($c)) continue;
+        $scope = isset($c['scope']) ? strval($c['scope']) : 'all';
+        $type  = isset($c['type'])  ? strval($c['type'])  : 'column';
+        if (!in_array($scope, $allowedScopes, true)) $scope = 'all';
+        if (!in_array($type,  $allowedTypes,  true)) $type  = 'column';
+        $id = isset($c['id']) && strval($c['id']) !== '' ? preg_replace('/[^A-Za-z0-9_-]/', '', strval($c['id'])) : ('c' . substr(md5(uniqid('', true)), 0, 10));
+        $title = isset($c['title']) ? trim(strval($c['title'])) : '';
+        if ($title === '') $title = 'Grafico personalizzato';
+        if (strlen($title) > 80) $title = substr($title, 0, 80);
+        // Normalizza windows
+        $rawWindows = isset($c['windows']) && is_array($c['windows']) ? $c['windows'] : (isset($c['window']) ? array(strval($c['window'])) : array('months'));
+        $cleanWindows = array();
+        foreach ($rawWindows as $w) {
+            if (is_array($w)) {
+                $wLabel = isset($w['label']) ? substr(trim(strval($w['label'])), 0, 60) : 'Personalizzato';
+                $wStart = isset($w['start']) ? strval($w['start']) : '';
+                $wEnd   = isset($w['end'])   ? strval($w['end'])   : '';
+                if (strtotime($wStart) && strtotime($wEnd) && strtotime($wStart) < strtotime($wEnd))
+                    $cleanWindows[] = array('label' => $wLabel, 'start' => $wStart, 'end' => $wEnd);
+            } elseif (in_array(strval($w), $allowedWindows, true)) {
+                $cleanWindows[] = strval($w);
+            }
+        }
+        if (!count($cleanWindows)) continue;
+        // Normalizza dimensions (nuovo) o dimension (legacy)
+        $rawDims = isset($c['dimensions']) && is_array($c['dimensions']) ? $c['dimensions']
+                 : (isset($c['dimension']) && in_array(strval($c['dimension']), $allowedDimensions, true)
+                    ? array(array('type' => strval($c['dimension']), 'items' => null))
+                    : array());
+        $cleanDims = array();
+        foreach ($rawDims as $d) {
+            $dimType = is_array($d) ? (isset($d['type']) ? strval($d['type']) : '') : strval($d);
+            if (!in_array($dimType, $allowedDimensions, true)) continue;
+            $rawItems = is_array($d) && isset($d['items']) && is_array($d['items']) ? $d['items'] : null;
+            $cleanItems = null;
+            if ($rawItems !== null) {
+                $cleanItems = array_values(array_unique(array_filter(array_map(function($i) { return substr(trim(strval($i)), 0, 80); }, $rawItems), 'strlen')));
+                if (!count($cleanItems)) $cleanItems = null;
+            }
+            $cleanDims[] = array('type' => $dimType, 'items' => $cleanItems);
+        }
+        if (!count($cleanDims)) continue;
+        $cleanFilters = array();
+        if (isset($c['filters']) && is_array($c['filters'])) {
+            foreach ($allowedFilterModes as $filterKey) {
+                if (isset($c['filters'][$filterKey]) && $c['filters'][$filterKey]) $cleanFilters[$filterKey] = true;
+            }
+        }
+        $clean[] = array('id' => $id, 'title' => $title, 'dimensions' => $cleanDims, 'windows' => $cleanWindows, 'scope' => $scope, 'type' => $type, 'filters' => $cleanFilters);
+        if (count($clean) >= 24) break;
+    }
+    $cleanHidden = array();
+    foreach ($incomingHidden as $pid) {
+        $pid = strval($pid);
+        if (in_array($pid, $allowedDefaultPanels, true)) $cleanHidden[] = $pid;
+    }
+    $incomingOrder = isset($payload['panel_order']) && is_array($payload['panel_order']) ? $payload['panel_order'] : array();
+    $cleanOrder = array();
+    foreach ($incomingOrder as $pid) {
+        $pid = preg_replace('/[^A-Za-z0-9_-]/', '', strval($pid));
+        if ($pid !== '') $cleanOrder[] = $pid;
+    }
+    $cleanOrder = array_slice(array_unique($cleanOrder), 0, 48);
+    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder);
+    save_db($db);
+    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder), 200);
 }
 
 if ($path === '/api/ping' && $method === 'GET') {

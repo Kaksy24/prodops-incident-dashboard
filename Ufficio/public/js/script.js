@@ -1,4 +1,4 @@
-﻿const menu = document.getElementById('menu');
+const menu = document.getElementById('menu');
 const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
 
 function appUrl(path) {
@@ -10,6 +10,8 @@ function appUrl(path) {
 const modal = document.getElementById('ticketModal');
 const mainTicketPanel = document.querySelector('#ticketModal > .modal-panel');
 const incidentTypeInput = document.getElementById('incidentType');
+const customIncidentNameGroup = document.getElementById('customIncidentNameGroup');
+const customIncidentNameInput = document.getElementById('customIncidentName');
 const ticketForm = document.getElementById('ticketForm');
 const ticketSubmitBtn = document.getElementById('ticketSubmitBtn');
 const addSameIncidentBtn = document.getElementById('addSameIncidentBtn');
@@ -46,11 +48,22 @@ const fabYearChart = document.getElementById('fabYearChart');
 const catYearChart = document.getElementById('catYearChart');
 const teamYearChart = document.getElementById('teamYearChart');
 const severityYearChart = document.getElementById('severityYearChart');
-const personalChart = document.getElementById('personalChart');
-const personalChartUsername = document.getElementById('personalChartUsername');
-const personalTargetInput = document.getElementById('personalTargetInput');
-const personalTargetStorageKey = 'prodops_personal_target';
-let personalChartView = 'mine';
+const userYearChart = document.getElementById('userYearChart');
+const personalMineChart = document.getElementById('personalMineChart');
+const personalMineChartTitleText = document.getElementById('personalMineChartTitleText');
+const personalMineChartUsername = document.getElementById('personalMineChartUsername');
+const personalMineTargetMonthlyLabel = document.getElementById('personalMineTargetMonthlyLabel');
+const personalMineTargetMonthlyInput = document.getElementById('personalMineTargetMonthlyInput');
+const personalMineTargetAnnualLabel = document.getElementById('personalMineTargetAnnualLabel');
+const personalMineTargetAnnualInput = document.getElementById('personalMineTargetAnnualInput');
+const personalGroupChart = document.getElementById('personalGroupChart');
+const personalGroupChartTitleText = document.getElementById('personalGroupChartTitleText');
+const personalGroupChartUsername = document.getElementById('personalGroupChartUsername');
+const personalGroupTargetMonthlyLabel = document.getElementById('personalGroupTargetMonthlyLabel');
+const personalGroupTargetMonthlyInput = document.getElementById('personalGroupTargetMonthlyInput');
+const personalGroupTargetAnnualLabel = document.getElementById('personalGroupTargetAnnualLabel');
+const personalGroupTargetAnnualInput = document.getElementById('personalGroupTargetAnnualInput');
+const generatePptReportBtn = document.getElementById('generatePptReportBtn');
 const ticketTimestampInput = document.getElementById('ticketTimestamp');
 const ticketModalTitle = document.getElementById('ticketModalTitle');
 const ticketSeveritySelect = document.getElementById('ticketSeverity');
@@ -64,6 +77,7 @@ let fabYearMode = 'day';
 let catYearMode = 'day';
 let teamYearMode = 'day';
 let severityYearMode = 'day';
+let userYearMode = 'day';
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
@@ -164,8 +178,19 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function presetValueSearchUrl(value) {
+  return appUrl('/search.html?query=' + encodeURIComponent(String(value || '').trim()));
+}
+
+function renderPresetValueLink(value) {
+  const label = String(value || '').trim();
+  const safeLabel = escapeHtml(label);
+  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" title="Cerca ticket con ' + safeLabel + '">' +
+    '<mark class="preset-value">' + safeLabel + '</mark></a>';
+}
+
 function highlightPresetValues(text) {
-  return escapeHtml(text).replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '<mark class="preset-value">$1</mark>');
+  return escapeHtml(text).replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); });
 }
 
 function delay(ms) {
@@ -187,6 +212,8 @@ function defaultChartTypes() {
     catDay: 'column',
     fabYear: 'bar',
     catYear: 'bar',
+    personalMineChart: 'column',
+    personalGroupChart: 'column',
     teamYear: 'donut',
     severityYear: 'line'
   };
@@ -286,12 +313,67 @@ function setTicketModalReadMode(isReadMode) {
   if (editFromReadBtn) editFromReadBtn.style.display = 'none';
 }
 
+function isGenericIncidentName(name) {
+  return String(name || '').trim().toLowerCase() === 'generic';
+}
+
+function getIncidentBaseName(incidentId) {
+  return String(incidentIdToNameMap[String(Number(incidentId || 0))] || '').trim();
+}
+
+function isGenericIncidentId(incidentId) {
+  return isGenericIncidentName(getIncidentBaseName(incidentId));
+}
+
+function updateTicketModalHeading(incidentId, customName) {
+  const baseName = getIncidentBaseName(incidentId);
+  if (!ticketModalTitle) return;
+  if (isGenericIncidentId(incidentId)) {
+    ticketModalTitle.textContent = String(customName || '').trim() || baseName || 'Nuovo Ticket';
+    return;
+  }
+  ticketModalTitle.textContent = baseName || String(customName || '').trim() || 'Nuovo Ticket';
+}
+
+function syncCustomIncidentNameField(incidentId, currentName, readOnly) {
+  const baseName = getIncidentBaseName(incidentId);
+  const isGeneric = isGenericIncidentId(incidentId);
+  if (!customIncidentNameGroup || !customIncidentNameInput) {
+    updateTicketModalHeading(incidentId, currentName);
+    return;
+  }
+  if (!isGeneric) {
+    customIncidentNameGroup.style.display = 'none';
+    customIncidentNameInput.required = false;
+    customIncidentNameInput.readOnly = false;
+    customIncidentNameInput.value = '';
+    updateTicketModalHeading(incidentId, currentName);
+    return;
+  }
+  customIncidentNameGroup.style.display = '';
+  customIncidentNameInput.required = true;
+  customIncidentNameInput.readOnly = Boolean(readOnly);
+  customIncidentNameInput.value = isGenericIncidentName(currentName) ? '' : String(currentName || '').trim();
+  updateTicketModalHeading(incidentId, customIncidentNameInput.value || baseName);
+}
+
+function getCustomIncidentNameForSubmit() {
+  if (!customIncidentNameInput || !isGenericIncidentId(incidentTypeInput.value)) return '';
+  return String(customIncidentNameInput.value || '').trim();
+}
+
+if (customIncidentNameInput) {
+  customIncidentNameInput.addEventListener('input', function () {
+    updateTicketModalHeading(incidentTypeInput.value, customIncidentNameInput.value);
+  });
+}
+
 function openTicketReadModal(ticket) {
   const item = ticket || {};
   editingTicketId = null;
   clearExtraTicketCards();
   incidentTypeInput.value = String(item.incidentId || '');
-  if (ticketModalTitle) ticketModalTitle.textContent = item.incidentName || 'Dettaglio Ticket';
+  syncCustomIncidentNameField(item.incidentId, item.incidentName || '', true);
   document.getElementById('description').value = String(item.description || '').replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1');
   document.getElementById('description').readOnly = true;
   document.getElementById('description').style.display = '';
@@ -345,6 +427,17 @@ function defaultUiColors() {
       fabs: { light: {}, dark: {} },
       teams: { light: {}, dark: {} },
       severities: { light: {}, dark: {} }
+    },
+    titles: {
+      personalMineChart: 'Ticket personali',
+      personalGroupChart: 'Ticket gruppo',
+      fabYear: 'Ticket per FAB',
+      catYear: 'Ticket per categoria',
+      teamYear: 'Ticket per Team',
+      severityYear: 'Severity Ticket'
+    },
+    settings: {
+      personal_axis_max: 0
     }
   };
 }
@@ -359,7 +452,9 @@ function normalizeUiColors(input) {
   const out = {
     charts: {},
     bars: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } }
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } },
+    titles: { ...defaults.titles },
+    settings: { ...defaults.settings }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = {
@@ -397,7 +492,40 @@ function normalizeUiColors(input) {
       });
     });
   }
+  if (input?.titles && typeof input.titles === 'object') {
+    Object.keys(out.titles || {}).forEach((key) => {
+      const title = String(input.titles[key] || '').trim();
+      if (title) out.titles[key] = title;
+    });
+  }
+  const personalAxisMax = Number(input?.settings?.personal_axis_max || 0);
+  out.settings.personal_axis_max = Number.isFinite(personalAxisMax) && personalAxisMax > 0 ? Math.round(personalAxisMax) : 0;
   return out;
+}
+
+function getPersonalChartAxisMaxSetting() {
+  const axisMax = Number(uiColors?.settings?.personal_axis_max || 0);
+  return Number.isFinite(axisMax) && axisMax > 0 ? Math.round(axisMax) : 0;
+}
+
+function getDashboardChartTitle(chartKey) {
+  const defaults = defaultUiColors().titles;
+  return String(uiColors?.titles?.[chartKey] || defaults[chartKey] || chartKey);
+}
+
+function applyDashboardChartTitles() {
+  const titleMap = {
+    personalMineChart: personalMineChartTitleText,
+    personalGroupChart: personalGroupChartTitleText,
+    fabYear: document.getElementById('fabYearChartTitle'),
+    catYear: document.getElementById('catYearChartTitle'),
+    teamYear: document.getElementById('teamYearChartTitle'),
+    severityYear: document.getElementById('severityYearChartTitle'),
+    userYear: document.getElementById('userYearChartTitle')
+  };
+  Object.keys(titleMap).forEach((key) => {
+    if (titleMap[key]) titleMap[key].textContent = getDashboardChartTitle(key);
+  });
 }
 
 function themeKey() {
@@ -422,6 +550,8 @@ function getChartColor(chartId) {
   return normalizeHexColor(custom) || fallback?.[theme] || fallback?.[fallbackTheme] || '#0c5f8c';
 }
 
+const customChartGroupMap = {};
+
 function chartGroupForId(chartId) {
   switch (normalizeChartKey(chartId)) {
     case 'fabDay':
@@ -435,7 +565,7 @@ function chartGroupForId(chartId) {
     case 'severityYear':
       return 'severities';
     default:
-      return '';
+      return customChartGroupMap[normalizeChartKey(chartId)] || '';
   }
 }
 
@@ -463,6 +593,7 @@ function getBarColor(chartId, label) {
 async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
+  applyDashboardChartTitles();
   return uiColors;
 }
 
@@ -497,6 +628,7 @@ function unlockModalScroll() {
 async function refreshColorSensitiveViews() {
   await loadDayTickets();
   await loadCharts();
+  refreshCustomCharts();
   if (previousShiftsContent && !previousShiftsContent.hidden) {
     previousShiftsLoaded = false;
     await loadPreviousShifts();
@@ -511,6 +643,12 @@ function sanitizeFileNamePart(value) {
     .replace(/\s+/g, '_')
     .replace(/-+/g, '-')
     .replace(/^[-_.]+|[-_.]+$/g, '');
+}
+
+function formatLocalDateStamp(dateLike) {
+  const date = dateLike instanceof Date ? dateLike : new Date(dateLike);
+  const pad = (value) => String(value).padStart(2, '0');
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
 }
 
 function closeChartExportMenus(exceptMenu = null) {
@@ -533,6 +671,19 @@ function triggerDownload(filename, content, mimeType) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    if (!blob) {
+      reject(new Error('Blob non disponibile'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function() { resolve(String(reader.result || '')); };
+    reader.onerror = function() { reject(new Error('Impossibile leggere il file generato')); };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function getChartExportPayload(targetId) {
@@ -634,6 +785,416 @@ async function buildChartPngBlob(title, stats) {
   });
 }
 
+async function buildPersonalChartPngBlob(title, stats, meta) {
+  const width = 1280;
+  const height = 720;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const isDark = document.body.classList.contains('theme-dark');
+  const bg = isDark ? '#101a2a' : '#ffffff';
+  const panel = isDark ? '#16253a' : '#f7fbff';
+  const textColor = isDark ? '#e6eef9' : '#17202f';
+  const muted = isDark ? '#9db1c9' : '#5c6b7d';
+  const grid = isDark ? 'rgba(157,177,201,.18)' : 'rgba(55,80,111,.14)';
+  const lineColor = isDark ? '#2ec4d6' : '#0c5f8c';
+  const pointColor = isDark ? '#7dd3fc' : '#16a0b6';
+  const targetColor = isDark ? '#f59e0b' : '#d97706';
+  const monthlyTarget = Number(meta && meta.targetMonthly ? meta.targetMonthly : 0);
+  const annualTarget = Number(meta && meta.targetAnnual ? meta.targetAnnual : 0);
+  const values = Array.isArray(stats) ? stats.map((item) => Number(item.total || 0)) : [];
+  const maxVal = Math.max.apply(Math, values.concat([monthlyTarget || 0, annualTarget || 0, 1]));
+  const padL = 110;
+  const padR = 70;
+  const padT = 120;
+  const padB = 110;
+  const usableW = width - padL - padR;
+  const usableH = height - padT - padB;
+  const count = Math.max((stats || []).length, 2);
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = panel;
+  ctx.fillRect(24, 24, width - 48, height - 48);
+
+  ctx.fillStyle = textColor;
+  ctx.font = '700 30px Segoe UI, sans-serif';
+  ctx.fillText(title || 'Ticket personali', 56, 70);
+  ctx.fillStyle = muted;
+  ctx.font = '600 18px Segoe UI, sans-serif';
+  ctx.fillText((meta && meta.username ? meta.username + ' - ' : '') + 'Andamento mensile e target', 56, 98);
+
+  ctx.strokeStyle = grid;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i += 1) {
+    const y = padT + ((usableH / 5) * i);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(width - padR, y);
+    ctx.stroke();
+    const tick = Math.round(maxVal - ((maxVal / 5) * i));
+    ctx.fillStyle = muted;
+    ctx.font = '600 18px Segoe UI, sans-serif';
+    ctx.fillText(String(tick), 56, y + 6);
+  }
+
+  const points = (stats || []).map((item, index) => {
+    const x = padL + ((usableW * index) / (count - 1));
+    const y = padT + usableH - ((Number(item.total || 0) / maxVal) * usableH);
+    return { x, y, item };
+  });
+
+  if (monthlyTarget > 0) {
+    const targetY = padT + usableH - ((monthlyTarget / maxVal) * usableH);
+    ctx.strokeStyle = targetColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.moveTo(padL, targetY);
+    ctx.lineTo(width - padR, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = targetColor;
+    ctx.font = '700 18px Segoe UI, sans-serif';
+    ctx.fillText('Target mensile ' + monthlyTarget, width - padR - 180, targetY - 10);
+  }
+
+  if (points.length) {
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.stroke();
+  }
+
+  points.forEach((point) => {
+    ctx.fillStyle = pointColor;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = textColor;
+    ctx.font = '700 18px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(point.item.total || 0), point.x, point.y - 16);
+    ctx.fillStyle = muted;
+    ctx.font = '600 18px Segoe UI, sans-serif';
+    ctx.fillText(String(point.item.label || ''), point.x, height - 58);
+  });
+  ctx.textAlign = 'start';
+
+  ctx.fillStyle = muted;
+  ctx.font = '600 18px Segoe UI, sans-serif';
+  ctx.fillText('Target annuale: ' + annualTarget, 56, height - 42);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+  });
+}
+
+function chartModeLabel(mode) {
+  if (mode === 'day') return 'Ultime 24 ore';
+  if (mode === 'months') return 'Anno completo';
+  return String(mode || '').toUpperCase();
+}
+
+function getDashboardReportModeLabel(chartId) {
+  if (chartId === 'fabYearChart') return chartModeLabel(fabYearMode);
+  if (chartId === 'catYearChart') return chartModeLabel(catYearMode);
+  if (chartId === 'teamYearChart') return chartModeLabel(teamYearMode);
+  if (chartId === 'severityYearChart') return chartModeLabel(severityYearMode);
+  if (chartId === 'userYearChart') return chartModeLabel(userYearMode);
+  return 'Andamento mensile ' + currentYear;
+}
+
+function sumChartStats(stats) {
+  return (Array.isArray(stats) ? stats : []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+}
+
+function percentOf(total, all) {
+  if (!all) return 0;
+  return Math.round((Number(total || 0) / Number(all || 1)) * 100);
+}
+
+function buildGenericChartNarrative(chart) {
+  const stats = Array.isArray(chart.stats) ? chart.stats : [];
+  const total = sumChartStats(stats);
+  if (!stats.length || total <= 0) {
+    return [
+      'Nessun ticket registrato nel periodo selezionato.',
+      'Il grafico non mostra concentrazioni utili da commentare.'
+    ];
+  }
+  const top = stats[0];
+  const second = stats.length > 1 ? stats[1] : null;
+  const tailCount = stats.filter((item) => Number(item.total || 0) === 0).length;
+  const lines = [
+    'Periodo analizzato: ' + chart.modeLabel + '. Totale ticket letti: ' + total + '.',
+    top.label + ' e la voce dominante con ' + top.total + ' ticket (' + percentOf(top.total, total) + '% del totale).'
+  ];
+  if (second) {
+    lines.push('Segue ' + second.label + ' con ' + second.total + ' ticket (' + percentOf(second.total, total) + '%).');
+  }
+  if (tailCount > 0) {
+    lines.push(tailCount + ' voci risultano a zero nel periodo selezionato.');
+  }
+  return lines;
+}
+
+function buildPersonalChartNarrative(chart) {
+  const stats = Array.isArray(chart.stats) ? chart.stats : [];
+  const total = sumChartStats(stats);
+  const latest = stats.length ? stats[stats.length - 1] : null;
+  const previous = stats.length > 1 ? stats[stats.length - 2] : null;
+  const best = stats.reduce((winner, item) => {
+    if (!winner || Number(item.total || 0) > Number(winner.total || 0)) return item;
+    return winner;
+  }, null);
+  const targetMonthly = Number(chart.targetMonthly || 0);
+  const targetAnnual = Number(chart.targetAnnual || 0);
+  const lines = [
+    'Progressivo anno corrente: ' + total + ' ticket. Target annuale impostato: ' + targetAnnual + '.',
+    best ? 'Picco registrato in ' + best.label + ' con ' + best.total + ' ticket.' : 'Nessun picco disponibile da commentare.'
+  ];
+  if (latest) {
+    const delta = previous ? (Number(latest.total || 0) - Number(previous.total || 0)) : Number(latest.total || 0);
+    const trendText = delta > 0 ? 'in crescita di ' + delta : (delta < 0 ? 'in calo di ' + Math.abs(delta) : 'stabile');
+    lines.push('Ultimo mese visibile: ' + latest.label + ' con ' + latest.total + ' ticket, ' + trendText + ' rispetto al mese precedente.');
+  }
+  if (targetMonthly > 0 && latest) {
+    lines.push('Target mensile: ' + targetMonthly + '. Copertura mese corrente: ' + percentOf(latest.total, targetMonthly) + '%.');
+  }
+  return lines;
+}
+
+function buildChartDetailLines(stats, limit) {
+  const rows = (Array.isArray(stats) ? stats : []).slice(0, limit || 6);
+  const total = sumChartStats(rows);
+  if (!rows.length) return ['Nessun dato disponibile.'];
+  return rows.map((item) => item.label + ': ' + item.total + ' ticket' + (total > 0 ? ' (' + percentOf(item.total, total) + '%)' : ''));
+}
+
+function getChartReportMeta(chartId) {
+  if (chartId === 'personalMineChart') {
+    return {
+      username: personalMineChartUsername ? String(personalMineChartUsername.textContent || '').replace(/^[-\s]+/, '') : '',
+      targetMonthly: Number(personalMineTargetMonthlyInput && personalMineTargetMonthlyInput.value ? personalMineTargetMonthlyInput.value : 0),
+      targetAnnual: Number(personalMineTargetAnnualInput && personalMineTargetAnnualInput.value ? personalMineTargetAnnualInput.value : 0)
+    };
+  }
+  if (chartId === 'personalGroupChart') {
+    return {
+      username: personalGroupChartUsername ? String(personalGroupChartUsername.textContent || '').replace(/^[-\s]+/, '') : '',
+      targetMonthly: Number(personalGroupTargetMonthlyInput && personalGroupTargetMonthlyInput.value ? personalGroupTargetMonthlyInput.value : 0),
+      targetAnnual: Number(personalGroupTargetAnnualInput && personalGroupTargetAnnualInput.value ? personalGroupTargetAnnualInput.value : 0)
+    };
+  }
+  return { username: '', targetMonthly: 0, targetAnnual: 0 };
+}
+
+const REPORT_CHART_OPTIONS = [
+  { id: 'personalMineChart',  label: 'Ticket personali' },
+  { id: 'personalGroupChart', label: 'Ticket gruppo' },
+  { id: 'fabYearChart',       label: 'Ticket per FAB' },
+  { id: 'catYearChart',       label: 'Ticket per categoria' },
+  { id: 'teamYearChart',      label: 'Ticket per Team' },
+  { id: 'severityYearChart',  label: 'Severity Ticket' },
+];
+
+const REPORT_PPT_BTN_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report PowerPoint';
+
+function openReportModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'report-modal-overlay';
+
+  const panel = document.createElement('div');
+  panel.className = 'report-modal-panel';
+
+  const header = document.createElement('div');
+  header.className = 'report-modal-header';
+  const title = document.createElement('h3');
+  title.textContent = 'Genera Report PowerPoint';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'report-modal-close';
+  closeBtn.setAttribute('aria-label', 'Chiudi');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', closeOverlay);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const desc = document.createElement('p');
+  desc.className = 'report-modal-desc';
+  desc.textContent = 'Seleziona i grafici da includere nel report.';
+
+  const optionsList = document.createElement('div');
+  optionsList.className = 'report-chart-options';
+  REPORT_CHART_OPTIONS.forEach(function(opt) {
+    const lbl = document.createElement('label');
+    lbl.className = 'report-chart-option';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = opt.id;
+    cb.checked = true;
+    const span = document.createElement('span');
+    span.textContent = opt.label;
+    lbl.appendChild(cb);
+    lbl.appendChild(span);
+    optionsList.appendChild(lbl);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'report-modal-actions';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'secondary';
+  cancelBtn.textContent = 'Annulla';
+  cancelBtn.addEventListener('click', closeOverlay);
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'primary';
+  confirmBtn.textContent = 'Genera →';
+  confirmBtn.addEventListener('click', function() {
+    const selected = Array.from(optionsList.querySelectorAll('input[type=checkbox]:checked')).map(function(c) { return c.value; });
+    if (!selected.length) { alert('Seleziona almeno un grafico.'); return; }
+    closeOverlay();
+    generatePowerPointReport(selected).catch(console.error);
+  });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(confirmBtn);
+
+  panel.appendChild(header);
+  panel.appendChild(desc);
+  panel.appendChild(optionsList);
+  panel.appendChild(actions);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeOverlay(); });
+
+  function closeOverlay() { overlay.remove(); }
+}
+
+function collectDashboardReportCharts(selectedIds) {
+  const chartIds = selectedIds && selectedIds.length ? selectedIds : ['personalMineChart', 'personalGroupChart', 'fabYearChart', 'catYearChart', 'teamYearChart', 'severityYearChart'];
+  return chartIds.map((chartId) => {
+    const payload = getChartExportPayload(chartId) || { title: chartId, stats: [] };
+    const meta = getChartReportMeta(chartId);
+    const chart = {
+      id: chartId,
+      title: payload.title || chartId,
+      stats: Array.isArray(payload.stats) ? payload.stats : [],
+      modeLabel: getDashboardReportModeLabel(chartId),
+      username: meta.username,
+      targetMonthly: meta.targetMonthly,
+      targetAnnual: meta.targetAnnual
+    };
+    chart.narrative = chartId === 'personalMineChart' || chartId === 'personalGroupChart'
+      ? buildPersonalChartNarrative(chart)
+      : buildGenericChartNarrative(chart);
+    chart.detailLines = buildChartDetailLines(chart.stats, chartId.indexOf('personal') === 0 ? 8 : 6);
+    return chart;
+  });
+}
+
+async function buildReportChartImageData(chart) {
+  if (!chart) return '';
+  const blob = (chart.id === 'personalMineChart' || chart.id === 'personalGroupChart')
+    ? await buildPersonalChartPngBlob(chart.title, chart.stats, chart)
+    : await buildChartPngBlob(chart.title, chart.stats);
+  return blobToDataUrl(blob);
+}
+
+async function generatePowerPointReport(selectedIds) {
+  if (typeof window.PptxGenJS !== 'function') {
+    alert('Modulo PowerPoint non disponibile.');
+    return;
+  }
+  if (generatePptReportBtn) {
+    generatePptReportBtn.disabled = true;
+    generatePptReportBtn.textContent = 'Generazione...';
+  }
+  try {
+    const charts = collectDashboardReportCharts(selectedIds);
+    const deck = new window.PptxGenJS();
+    const isDark = document.body.classList.contains('theme-dark');
+    const bgColor = isDark ? '101A2A' : 'F4F8FC';
+    const titleColor = isDark ? 'E6EEF9' : '17202F';
+    const textColor = isDark ? 'D4E2F0' : '344256';
+    const accentColor = isDark ? '2EC4D6' : '0C5F8C';
+    const mutedColor = isDark ? '9DB1C9' : '5C6B7D';
+    const createdAt = new Date();
+    const fileDate = formatLocalDateStamp(createdAt);
+    const generatedLabel = createdAt.toLocaleString('it-IT');
+    const personalMine   = charts.find(function(c) { return c.id === 'personalMineChart'; })  || charts[0];
+    const personalGroup  = charts.find(function(c) { return c.id === 'personalGroupChart'; }) || charts[0];
+    const categoryChart  = charts.find(function(c) { return c.id === 'catYearChart'; });
+    const teamChart      = charts.find(function(c) { return c.id === 'teamYearChart'; });
+    const severityChart  = charts.find(function(c) { return c.id === 'severityYearChart'; });
+
+    deck.layout = 'LAYOUT_WIDE';
+    deck.author = 'ProdOps Dashboard';
+    deck.company = 'ProdOps';
+    deck.subject = 'Report dashboard automatico';
+    deck.title = 'Report Dashboard ProdOps ' + fileDate;
+
+    const cover = deck.addSlide();
+    cover.background = { color: bgColor };
+    cover.addText('Report Dashboard ProdOps', { x: 0.6, y: 0.5, w: 6.8, h: 0.5, bold: true, fontSize: 24, color: titleColor });
+    cover.addText('Riepilogo completo dei grafici con commento automatico dell\'andamento.', { x: 0.6, y: 1.05, w: 9.4, h: 0.4, fontSize: 11, color: mutedColor });
+    cover.addText('Generato il ' + generatedLabel + (currentUser && currentUser.username ? ' da ' + currentUser.username : ''), { x: 0.6, y: 1.45, w: 5.8, h: 0.3, fontSize: 10, color: textColor });
+    cover.addText([
+      { text: 'Ticket personali YTD: ' + (personalMine ? sumChartStats(personalMine.stats) + ' su target annuo ' + Number(personalMine.targetAnnual || 0) : 'n.d.') },
+      { text: 'Ticket gruppo YTD: ' + (personalGroup ? sumChartStats(personalGroup.stats) + ' su target annuo ' + Number(personalGroup.targetAnnual || 0) : 'n.d.') },
+      { text: 'Categoria dominante: ' + (categoryChart && categoryChart.stats[0] ? categoryChart.stats[0].label + ' (' + categoryChart.stats[0].total + ')' : 'n.d.') },
+      { text: 'Team piu carico: ' + (teamChart && teamChart.stats[0] ? teamChart.stats[0].label + ' (' + teamChart.stats[0].total + ')' : 'n.d.') },
+      { text: 'Severity prevalente: ' + (severityChart && severityChart.stats[0] ? severityChart.stats[0].label + ' (' + severityChart.stats[0].total + ')' : 'n.d.') }
+    ], {
+      x: 0.6, y: 2.1, w: 5.8, h: 3.3, fontSize: 15, color: titleColor, breakLine: true, bullet: { indent: 18 }
+    });
+    cover.addText('Il report riflette esattamente i filtri e gli intervalli attivi nella dashboard al momento della generazione.', {
+      x: 0.6, y: 6.6, w: 9.6, h: 0.4, fontSize: 9, italic: true, color: mutedColor
+    });
+
+    for (let i = 0; i < charts.length; i += 1) {
+      const chart = charts[i];
+      const slide = deck.addSlide();
+      slide.background = { color: bgColor };
+      slide.addText(chart.title, { x: 0.55, y: 0.4, w: 7.2, h: 0.45, bold: true, fontSize: 21, color: titleColor });
+      slide.addText(chart.modeLabel + (chart.username ? ' - ' + chart.username : ''), { x: 0.55, y: 0.88, w: 6.4, h: 0.25, fontSize: 10, color: mutedColor });
+      const imageData = await buildReportChartImageData(chart);
+      if (imageData) {
+        slide.addImage({ data: imageData, x: 0.45, y: 1.25, w: 7.0, h: 4.35 });
+      }
+      slide.addText(chart.narrative.map((line) => ({ text: line })), {
+        x: 7.75, y: 1.25, w: 5.0, h: 2.45, fontSize: 12, color: titleColor, breakLine: true, bullet: { indent: 16 }, margin: 0.08
+      });
+      slide.addText('Dettaglio principali voci', {
+        x: 7.75, y: 3.95, w: 3.4, h: 0.3, bold: true, fontSize: 12, color: accentColor
+      });
+      slide.addText(chart.detailLines.map((line) => ({ text: line })), {
+        x: 7.75, y: 4.25, w: 5.0, h: 2.0, fontSize: 10, color: textColor, breakLine: true, bullet: { indent: 14 }, margin: 0.05
+      });
+      slide.addText('Report generato automaticamente dalla dashboard ProdOps.', {
+        x: 7.75, y: 6.55, w: 4.8, h: 0.25, fontSize: 8, italic: true, color: mutedColor
+      });
+    }
+
+    await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
+  } catch (error) {
+    console.error(error);
+    alert('Impossibile generare il report PowerPoint.');
+  } finally {
+    if (generatePptReportBtn) {
+      generatePptReportBtn.disabled = false;
+      generatePptReportBtn.innerHTML = REPORT_PPT_BTN_HTML;
+    }
+  }
+}
+
 async function exportChart(targetId, format) {
   const payload = getChartExportPayload(targetId);
   if (!payload || !payload.stats.length) {
@@ -641,7 +1202,7 @@ async function exportChart(targetId, format) {
     return;
   }
   const fileRoot = sanitizeFileNamePart(payload.title || targetId) || targetId;
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = formatLocalDateStamp(new Date());
   if (format === 'csv') {
     triggerDownload(fileRoot + '_' + stamp + '.csv', buildChartCsv(payload.stats), 'text/csv;charset=utf-8');
     return;
@@ -752,7 +1313,6 @@ function revealModal() {
     modal.classList.add('active');
   });
 }
-let overlayPressStarted = false;
 
 function positionAddSameIncidentBtn() {
   if (!modal || !addSameIncidentBtn || !mainTicketPanel) return;
@@ -1091,6 +1651,7 @@ function createExtraTicketCard(incidentId) {
 
 function collectExtraTicketPayloads(incidentId, defaultSeverity) {
   const payloads = [];
+  const customIncidentName = getCustomIncidentNameForSubmit();
   const panels = [...document.querySelectorAll('.extra-ticket-modal')];
   for (let index = 0; index < panels.length; index += 1) {
     const panel = panels[index];
@@ -1113,6 +1674,7 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     }
     payloads.push({
       incident_id: incidentId,
+      incident_name: customIncidentName,
       description: extraDesc,
       fab: extraFab,
       ticket_time: new Date(extraDt).toISOString(),
@@ -1126,7 +1688,7 @@ function openModal(incidentId) {
   const incidentIdNum = Number(incidentId || 0);
   const incidentName = incidentIdToNameMap[String(incidentIdNum)] || '';
   incidentTypeInput.value = String(incidentIdNum || '');
-  if (ticketModalTitle) ticketModalTitle.textContent = incidentName || 'Nuovo Ticket';
+  syncCustomIncidentNameField(incidentIdNum, incidentName, false);
   const defaultFab = incidentIdToFabDefaultMap[String(incidentIdNum)] || '';
   fabValue.value = defaultFab;
   const presets = incidentIdToPresetMap[String(incidentIdNum)] || [];
@@ -1424,16 +1986,21 @@ function renderLineChart(target, stats) {
   target.appendChild(svg);
 }
 
-function renderPersonalLineChart(target, stats, targetValue) {
+function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   target.innerHTML = '';
-  const months = stats;
-  const maxVal = Math.max(Math.max.apply(null, months.map(function(x) { return x.total; })), targetValue || 1, 1);
+  // dati mensili grezzi (non cumulativi)
+  const months = stats.map(function(m) { var d = m.total || 0; return { label: m.label, total: d, monthly: d }; });
+  setChartExportState(target, stats);
+  const targetAnnualMonthly = targetAnnual > 0 ? (targetAnnual / 12) : 0;
+  const peakValue = Math.max(Math.max.apply(null, months.map(function(m) { return m.total; })), targetMonthly || 0, targetAnnualMonthly || 0, 1);
+  const configuredAxisMax = getPersonalChartAxisMaxSetting();
+  const maxVal = Math.max(1, configuredAxisMax || 0, Math.ceil(peakValue * 1.15));
   const width = 900;
-  const height = 220;
-  const padL = 36;
-  const padR = 16;
-  const padT = 28;
-  const padB = 32;
+  const height = 320;
+  const padL = 52;
+  const padR = 20;
+  const padT = 32;
+  const padB = 38;
   const usableW = width - padL - padR;
   const usableH = height - padT - padB;
   const n = months.length;
@@ -1441,10 +2008,32 @@ function renderPersonalLineChart(target, stats, targetValue) {
   const yOf = function(v) { return padT + usableH - (v / maxVal) * usableH; };
   const points = months.map(function(m, i) { return { x: xOf(i), y: yOf(m.total), m: m }; });
   const linePath = points.map(function(p, i) { return (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ');
-  const targetY = yOf(targetValue || 0).toFixed(1);
+  var targetMonthlyY = targetMonthly > 0 ? yOf(targetMonthly) : null;
+  var targetAnnualY = targetAnnualMonthly > 0 ? yOf(targetAnnualMonthly) : null;
+  if (targetMonthlyY !== null && targetAnnualY !== null && Math.abs(targetMonthlyY - targetAnnualY) < 14) {
+    var overlapGap = 12;
+    var topLimit = padT + 2;
+    var bottomLimit = height - padB - 2;
+    var baseTargetY = Math.min(targetMonthlyY, targetAnnualY);
+    if (baseTargetY <= padT + overlapGap) {
+      targetAnnualY = topLimit;
+      targetMonthlyY = Math.min(bottomLimit, topLimit + overlapGap);
+    } else if (baseTargetY >= bottomLimit - overlapGap) {
+      targetMonthlyY = bottomLimit;
+      targetAnnualY = Math.max(topLimit, bottomLimit - overlapGap);
+    } else {
+      targetMonthlyY = Math.min(bottomLimit, baseTargetY + (overlapGap / 2));
+      targetAnnualY = Math.max(topLimit, baseTargetY - (overlapGap / 2));
+    }
+  }
+  const bottomY = (height - padB).toFixed(1);
+  const firstX = points[0].x.toFixed(1);
+  const lastX = points[points.length - 1].x.toFixed(1);
+  const areaPath = linePath + ' L ' + lastX + ' ' + bottomY + ' L ' + firstX + ' ' + bottomY + ' Z';
+  const gradId = 'pcfill_' + (target.id || Math.random().toString(36).slice(2));
 
   var yTicks = '';
-  var tickCount = 5;
+  var tickCount = 6;
   for (var ti = 0; ti <= tickCount; ti++) {
     var tv = Math.round((maxVal * ti) / tickCount);
     var ty = yOf(tv).toFixed(1);
@@ -1453,27 +2042,39 @@ function renderPersonalLineChart(target, stats, targetValue) {
   }
 
   var circles = points.map(function(p) {
-    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="4" class="personal-chart-point"/>' +
-      (p.m.total > 0 ? '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 9).toFixed(1) + '" text-anchor="middle" class="personal-chart-value">' + p.m.total + '</text>' : '');
+    var cls = p.m.monthly > 0 ? 'personal-chart-value' : 'personal-chart-zero';
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="5.5" class="personal-chart-point"/>' +
+      '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 9).toFixed(1) + '" text-anchor="middle" class="' + cls + '">' + p.m.monthly + '</text>';
   }).join('');
 
   var labels = points.map(function(p) {
-    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 14) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 16) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
   }).join('');
 
-  var targetLine = (targetValue > 0)
-    ? '<line x1="' + padL + '" y1="' + targetY + '" x2="' + (width - padR) + '" y2="' + targetY + '" class="personal-chart-target"/>' +
-      '<text x="' + (width - padR) + '" y="' + (parseFloat(targetY) - 5) + '" text-anchor="end" class="personal-chart-target-label">Target ' + targetValue + '</text>'
-    : '';
+  var targetLines = '';
+  if (targetMonthlyY !== null) {
+    targetLines += '<line x1="' + padL + '" y1="' + targetMonthlyY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetMonthlyY.toFixed(1) + '" class="personal-chart-target personal-chart-target-monthly"/>' +
+      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 6).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">' + targetMonthly + '</text>';
+  }
+  if (targetAnnualY !== null) {
+    targetLines += '<line x1="' + padL + '" y1="' + targetAnnualY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetAnnualY.toFixed(1) + '" class="personal-chart-target personal-chart-target-annual"/>' +
+      '<text x="' + (width - padR - 4) + '" y="' + (targetAnnualY - 6).toFixed(1) + '" text-anchor="end" class="personal-chart-target-label personal-chart-target-label-annual">' + targetAnnual + '</text>';
+  }
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'personal-chart-svg');
   svg.innerHTML =
+    '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="var(--brand)" stop-opacity="0.28"/>' +
+      '<stop offset="100%" stop-color="var(--brand)" stop-opacity="0.02"/>' +
+    '</linearGradient></defs>' +
     yTicks +
     '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
     '<line x1="' + padL + '" y1="' + (height - padB) + '" x2="' + (width - padR) + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
-    targetLine +
+    targetLines +
+    '<path d="' + areaPath + '" fill="url(#' + gradId + ')" stroke="none"/>' +
     '<path d="' + linePath + '" class="personal-chart-path"/>' +
     circles +
     labels;
@@ -1493,8 +2094,30 @@ function renderVerticalChart(target, stats) {
   renderChart(target, stats);
 }
 
+function syncPersonalTargetUi(personal, monthlyInput, annualInput, monthlyLabel, annualLabel, isTeamView)
+{
+  const targetMonthly = Number(personal && (isTeamView ? personal.group_target_monthly : personal.personal_target_monthly) ? (isTeamView ? personal.group_target_monthly : personal.personal_target_monthly) : (personal && personal.target ? personal.target : (monthlyInput ? monthlyInput.value : 0))) || 0;
+  const targetAnnual = Number(personal && (isTeamView ? personal.group_target_annual : personal.personal_target_annual) ? (isTeamView ? personal.group_target_annual : personal.personal_target_annual) : (annualInput ? annualInput.value : 0)) || (targetMonthly * 12);
+  if (monthlyInput) {
+    monthlyInput.value = String(targetMonthly || 20);
+    monthlyInput.title = isTeamView
+      ? 'Il target gruppo viene impostato dall\'admin panel.'
+      : 'Il target personale viene impostato dall\'admin panel.';
+  }
+  if (annualInput) {
+    annualInput.value = String(targetAnnual || 240);
+    annualInput.title = isTeamView
+      ? 'Il target annuale gruppo viene impostato dall\'admin panel.'
+      : 'Il target annuale personale viene impostato dall\'admin panel.';
+  }
+  if (monthlyLabel) monthlyLabel.textContent = 'Target mensile:';
+  if (annualLabel) annualLabel.textContent = 'Target annuale:';
+  return { monthly: targetMonthly, annual: targetAnnual };
+}
+
 function setupChartTypeControls() {
   document.querySelectorAll('.charts-grid .chart[id]').forEach((chart) => {
+    if (chart.classList.contains('custom-chart')) return;
     const targetId = chart.id || '';
     const panelHeader = chart.closest('.panel') ? chart.closest('.panel').querySelector('.panel-heading-row') : null;
     if (!panelHeader || panelHeader.querySelector(`.chart-type-select[data-chart-target="${targetId}"]`)) return;
@@ -1585,6 +2208,50 @@ async function loadCategories() {
   });
 }
 
+function createTicketRowElement(t, isAnimated) {
+  const pad = (v) => String(v).padStart(2, '0');
+  const incidentId = Number(t.incident_id || 0);
+  const incidentName = String(incidentIdToNameMap[String(incidentId)] || t.incident_name || '');
+  const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
+  const categoryColor = getLabelColor('categories', category);
+  const fabColor = getLabelColor('fabs', t.fab);
+  const description = String(t.description || '');
+  const d = new Date(t.created_at);
+  const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
+  const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const ownerUsername = String(t.owner_username || t.ownerUsername || '');
+  const li = document.createElement('li');
+  li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
+  li.dataset.ticketId = String(t.id);
+  li.dataset.incidentId = String(t.incident_id || '');
+  li.dataset.incident = incidentName;
+  li.dataset.description = description;
+  li.dataset.fab = String(t.fab || '');
+  li.dataset.createdAt = String(t.created_at || '');
+  li.dataset.severity = String(t.severity || '');
+  li.dataset.category = category;
+  li.dataset.canEdit = t.can_edit ? '1' : '0';
+  li.dataset.ownerUserId = String(t.owner_user_id || '');
+  li.dataset.ownerTeam = String(t.owner_team || '').toUpperCase();
+  li.dataset.ownerUsername = ownerUsername;
+  li.style.setProperty('--ticket-accent', categoryColor);
+  li.innerHTML =
+    '<div class="ticket-row-top">' +
+      '<span class="ticket-row-cat" style="color:' + categoryColor + '">' + escapeHtml(category) + '</span>' +
+      '<span class="ticket-row-sep" aria-hidden="true">|</span>' +
+      '<span class="ticket-row-fab" style="color:' + fabColor + '">' + escapeHtml(String(t.fab || '')) + '</span>' +
+    '</div>' +
+    '<div class="ticket-row-body">' +
+      '<div class="ticket-row-title">' + escapeHtml(incidentName) + '</div>' +
+      '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
+    '</div>' +
+    '<div class="ticket-row-footer">' +
+      (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
+      '<span class="ticket-row-datetime">' + dayMonth + ' ' + hhmm + '</span>' +
+    '</div>';
+  return li;
+}
+
 async function loadDayTickets(animatedTicketIds = []) {
   try {
     const data = await fetchJson('/api/tickets/current-shift');
@@ -1597,49 +2264,8 @@ async function loadDayTickets(animatedTicketIds = []) {
       return;
     }
 
-    const pad = (v) => String(v).padStart(2, '0');
     data.tickets.forEach((t) => {
-      const incidentId = Number(t.incident_id || 0);
-      const incidentName = String(incidentIdToNameMap[String(incidentId)] || t.incident_name || '');
-      const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
-      const categoryColor = getLabelColor('categories', category);
-      const fabColor = getLabelColor('fabs', t.fab);
-      const isAnimated = animatedIds.has(Number(t.id));
-      const description = String(t.description || '');
-      const d = new Date(t.created_at);
-      const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
-      const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
-      const ownerUsername = String(t.owner_username || '');
-      const li = document.createElement('li');
-      li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
-      li.dataset.ticketId = String(t.id);
-      li.dataset.incidentId = String(t.incident_id || '');
-      li.dataset.incident = incidentName;
-      li.dataset.description = description;
-      li.dataset.fab = String(t.fab || '');
-      li.dataset.createdAt = String(t.created_at || '');
-      li.dataset.severity = String(t.severity || '');
-      li.dataset.category = category;
-      li.dataset.canEdit = t.can_edit ? '1' : '0';
-      li.dataset.ownerUserId = String(t.owner_user_id || '');
-      li.dataset.ownerTeam = String(t.owner_team || '').toUpperCase();
-      li.dataset.ownerUsername = ownerUsername;
-      li.style.setProperty('--ticket-accent', categoryColor);
-      li.innerHTML =
-        '<div class="ticket-row-top">' +
-          '<span class="ticket-row-cat" style="color:' + categoryColor + '">' + escapeHtml(category) + '</span>' +
-          '<span class="ticket-row-sep" aria-hidden="true">|</span>' +
-          '<span class="ticket-row-fab" style="color:' + fabColor + '">' + escapeHtml(String(t.fab || '')) + '</span>' +
-        '</div>' +
-        '<div class="ticket-row-body">' +
-          '<div class="ticket-row-title">' + escapeHtml(incidentName) + '</div>' +
-          '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
-        '</div>' +
-        '<div class="ticket-row-footer">' +
-          (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
-          '<span class="ticket-row-datetime">' + dayMonth + ' ' + hhmm + '</span>' +
-        '</div>';
-      ticketList.appendChild(li);
+      ticketList.appendChild(createTicketRowElement(t, animatedIds.has(Number(t.id))));
     });
 
     ticketList.classList.toggle('ticket-list-scrollable', (data.tickets || []).length > 10);
@@ -1792,31 +2418,6 @@ function scheduleSyncPoll() {
   }, 2000);
 }
 
-function renderGroupedTickets(tickets) {
-  if (!tickets.length) return '<p class="muted">Nessun ticket registrato.</p>';
-
-  const grouped = new Map();
-  tickets.forEach((ticket) => {
-    const incidentId = Number(ticket.incident_id || 0);
-    const incidentName = String(incidentIdToNameMap[String(incidentId)] || ticket.incident_name || '');
-    const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
-    const key = `${category}|||${ticket.fab}`;
-    if (!grouped.has(key)) grouped.set(key, { category, fab: ticket.fab, incidents: [] });
-    grouped.get(key).incidents.push(ticket);
-  });
-
-  const groups = [...grouped.values()].map((group) => {
-    const categoryColor = getLabelColor('categories', group.category);
-    const fabColor = getLabelColor('fabs', group.fab);
-    const rows = group.incidents
-      .map((item) => `<li><span class="incident-entry-text"><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${highlightPresetValues(item.description)}</span></li>`)
-      .join('');
-    return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
-  }).join('');
-
-  return `<ul class="ticket-list previous-ticket-list">${groups}</ul>`;
-}
-
 function renderSearchTickets(tickets) {
   if (!tickets.length) return '<p class="muted">Nessun ticket trovato con questi filtri.</p>';
 
@@ -1873,7 +2474,7 @@ function handleEditTicketButton(btn) {
   const incidentId = Number(btn.dataset.incidentId || 0);
   const incidentName = incidentIdToNameMap[String(incidentId)] || btn.dataset.incident || '';
   incidentTypeInput.value = String(incidentId || '');
-  if (ticketModalTitle) ticketModalTitle.textContent = incidentName || 'Nuovo Ticket';
+  syncCustomIncidentNameField(incidentId, btn.dataset.incident || incidentName, false);
   const severityCfg = incidentIdToSeverityMap[String(incidentId)] || { severity_default: 1, severity_mode: 'default' };
   const fallbackSeverity = Number(btn.dataset.severity || severityCfg.severity_default || 1);
   ticketSeveritySelect.value = String(fallbackSeverity);
@@ -1924,9 +2525,27 @@ async function loadPreviousShifts() {
       return;
     }
 
-    previousShiftsContent.innerHTML = data.shifts.map((shift) => {
-      return `<section class="previous-shift-block"><h4>${shift.label}</h4>${renderGroupedTickets(shift.tickets)}</section>`;
-    }).join('');
+    previousShiftsContent.innerHTML = '';
+    data.shifts.forEach((shift) => {
+      const block = document.createElement('section');
+      block.className = 'previous-shift-block';
+      const heading = document.createElement('h4');
+      heading.textContent = shift.label;
+      block.appendChild(heading);
+      const list = document.createElement('ul');
+      list.className = 'ticket-list';
+      const tickets = Array.isArray(shift.tickets) ? shift.tickets : [];
+      if (!tickets.length) {
+        const empty = document.createElement('li');
+        empty.className = 'muted';
+        empty.textContent = 'Nessun ticket registrato.';
+        list.appendChild(empty);
+      } else {
+        tickets.forEach((t) => list.appendChild(createTicketRowElement(t, false)));
+      }
+      block.appendChild(list);
+      previousShiftsContent.appendChild(block);
+    });
     previousShiftsLoaded = true;
   } finally {
     previousShiftsLoading = false;
@@ -1934,43 +2553,993 @@ async function loadPreviousShifts() {
 }
 
 setupChartExportControls();
+if (generatePptReportBtn) {
+  generatePptReportBtn.addEventListener('click', openReportModal);
+}
 
 async function loadCharts() {
   try {
-    const [fabYear, catYear, teamYear, severityYear, personal] = await Promise.all([
+    const [fabYear, catYear, teamYear, severityYear, userYear, personalMine, personalGroup] = await Promise.all([
       fetchJson(fabYearMode === 'day' ? '/api/stats/fab/current-day' : `/api/stats/fab/current-year?mode=${fabYearMode}`),
       fetchJson(catYearMode === 'day' ? '/api/stats/category/current-day' : `/api/stats/category/current-year?mode=${catYearMode}`),
       fetchJson(teamYearMode === 'day' ? '/api/stats/team/current-day' : `/api/stats/team/current-year?mode=${teamYearMode}`),
       fetchJson(severityYearMode === 'day' ? '/api/stats/severity/current-day' : `/api/stats/severity/current-year?mode=${severityYearMode}`),
-      fetchJson('/api/stats/personal/current-year?view=' + personalChartView)
+      fetchJson(userYearMode === 'day' ? '/api/stats/user/current-day' : `/api/stats/user/current-year?mode=${userYearMode}`),
+      fetchJson('/api/stats/personal/current-year?view=mine'),
+      fetchJson('/api/stats/personal/current-year?view=team')
     ]);
     renderChart(fabYearChart, fabYear.stats);
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
     renderChart(severityYearChart, severityYear.stats);
-    if (personalChart && personal.stats) {
-      const target = Number(personalTargetInput ? personalTargetInput.value : 0) || 0;
-      renderPersonalLineChart(personalChart, personal.stats, target);
+    if (userYearChart) renderChart(userYearChart, userYear.stats);
+    if (personalMineChart && personalMine.stats) {
+      const tMine = syncPersonalTargetUi(personalMine, personalMineTargetMonthlyInput, personalMineTargetAnnualInput, personalMineTargetMonthlyLabel, personalMineTargetAnnualLabel, false);
+      renderPersonalLineChart(personalMineChart, personalMine.stats, tMine.annual, tMine.monthly);
     }
-    if (personalChartUsername && personal.username) {
-      personalChartUsername.textContent = '— ' + personal.username;
+    if (personalMineChartUsername && personalMine.username) {
+      personalMineChartUsername.textContent = '— ' + personalMine.username;
+    }
+    if (personalGroupChart && personalGroup.stats) {
+      const tGroup = syncPersonalTargetUi(personalGroup, personalGroupTargetMonthlyInput, personalGroupTargetAnnualInput, personalGroupTargetMonthlyLabel, personalGroupTargetAnnualLabel, true);
+      renderPersonalLineChart(personalGroupChart, personalGroup.stats, tGroup.annual, tGroup.monthly);
+    }
+    if (personalGroupChartUsername && personalGroup.username) {
+      personalGroupChartUsername.textContent = '— ' + personalGroup.username;
     }
   } catch (error) {
     console.error(error);
-    [fabYearChart, catYearChart, teamYearChart, severityYearChart].forEach((target) => {
+    [fabYearChart, catYearChart, teamYearChart, severityYearChart, userYearChart, personalMineChart, personalGroupChart].forEach((target) => {
       if (target) target.innerHTML = '<p class="muted">Impossibile caricare il grafico.</p>';
     });
   }
 }
 
+// ===== Grafici personalizzati (custom charts) =====
+let customCharts = [];
+let hiddenDefaultPanels = [];
+let panelOrder = [];
+
+const DEFAULT_CHART_PANELS = [
+  { id: 'chartPanelPersonalMine',  label: 'Ticket personali' },
+  { id: 'chartPanelPersonalGroup', label: 'Ticket gruppo' },
+  { id: 'chartPanelFab',           label: 'Ticket per FAB' },
+  { id: 'chartPanelCat',           label: 'Ticket per categoria' },
+  { id: 'chartPanelTeam',          label: 'Ticket per Team' },
+  { id: 'chartPanelSeverity',      label: 'Severity Ticket' },
+  { id: 'chartPanelUser',          label: 'Ticket per utente' }
+];
+
+const CUSTOM_DIMENSIONS = [
+  { value: 'category', label: 'Per categoria', group: 'categories' },
+  { value: 'incident', label: 'Per incident', group: '' },
+  { value: 'fab', label: 'Per FAB', group: 'fabs' },
+  { value: 'team', label: 'Per team', group: 'teams' },
+  { value: 'severity', label: 'Per severity', group: 'severities' }
+];
+const CUSTOM_WINDOWS = [
+  { value: 'day',    label: '24h' },
+  { value: 'month',  label: 'Mese corrente' },
+  { value: 'months', label: 'Anno' },
+  { value: 'q1',     label: 'Q1' },
+  { value: 'q2',     label: 'Q2' },
+  { value: 'q3',     label: 'Q3' },
+  { value: 'q4',     label: 'Q4' }
+];
+const CUSTOM_WINDOW_CUSTOM_VALUE = '__custom__'; // sentinel per il chip "Personalizzato"
+const CUSTOM_SCOPES = [
+  { value: 'all', label: 'Tutti i ticket' },
+  { value: 'mine', label: 'Solo i miei ticket' },
+  { value: 'group', label: 'Il mio gruppo' }
+];
+const CUSTOM_TYPES = [
+  { value: 'column', label: 'Colonne' },
+  { value: 'bar', label: 'Barre orizzontali' },
+  { value: 'pie', label: 'Torta' },
+  { value: 'donut', label: 'Ciambella' },
+  { value: 'line', label: 'Linea' }
+];
+
+function customLabel(list, value) { const d = list.find((x) => x.value === value); return d ? d.label : value; }
+function customDimensionGroup(value) { const d = CUSTOM_DIMENSIONS.find((x) => x.value === value); return d ? d.group : ''; }
+function customChartElementId(def) { return 'custom_' + def.id + 'Chart'; }
+function customChartKey(def) { return 'custom_' + def.id; }
+function filterableCustomDimension(value) { return value === 'fab' || value === 'team'; }
+
+// Normalizza windows (backward compat: def.window → [def.window])
+function defWindows(def) {
+  if (Array.isArray(def.windows) && def.windows.length) return def.windows;
+  if (def.window) return [def.window];
+  return ['months'];
+}
+
+// Normalizza dimensions (backward compat: def.dimension (string) → [{type, items:null}])
+function defDimensions(def) {
+  if (Array.isArray(def.dimensions) && def.dimensions.length) return def.dimensions;
+  if (def.dimension) return [{ type: def.dimension, items: null }];
+  return [{ type: 'category', items: null }];
+}
+
+function defFilterModes(def) {
+  const dims = defDimensions(def);
+  const dimMap = {};
+  const raw = def && def.filters && typeof def.filters === 'object' ? def.filters : {};
+  const out = {};
+  dims.forEach((d) => { dimMap[d.type] = true; });
+  Object.keys(raw).forEach((key) => {
+    if (filterableCustomDimension(key) && dimMap[key]) out[key] = !!raw[key];
+  });
+  if (out.fab === undefined && dimMap.fab && dims.length > 1) out.fab = true;
+  return out;
+}
+
+function effectiveCustomFilterModes(dims, filterModes) {
+  const out = {};
+  let plotCount = 0;
+  dims.forEach((d) => {
+    const filtered = !!(filterModes && filterModes[d.type] && filterableCustomDimension(d.type));
+    if (!filtered) plotCount += 1;
+  });
+  dims.forEach((d) => {
+    out[d.type] = !!(filterModes && filterModes[d.type] && filterableCustomDimension(d.type) && plotCount > 0);
+  });
+  return out;
+}
+
+// Meta cache per categorie/incident/fabs/teams/severities
+let _metaCache = null;
+async function fetchMeta() {
+  if (_metaCache) return _metaCache;
+  try { _metaCache = await fetchJson('/api/stats/meta'); } catch (e) { _metaCache = { categories: [], incidents: [], fabs: [], teams: [], severities: [] }; }
+  return _metaCache;
+}
+
+// Etichetta sintetica delle dimensioni di un chart def
+function defDimensionsSummary(def) {
+  return defDimensions(def).map((d) => {
+    const lbl = customLabel(CUSTOM_DIMENSIONS, d.type);
+    if (!d.items || !d.items.length) return lbl;
+    return lbl + ' (' + d.items.slice(0, 3).join(', ') + (d.items.length > 3 ? ', …' : '') + ')';
+  }).join(' + ');
+}
+
+// Etichetta leggibile di un singolo window (stringa o oggetto range custom)
+function windowLabel(w) {
+  if (typeof w === 'string') return customLabel(CUSTOM_WINDOWS, w) || w;
+  if (w && typeof w === 'object') return w.label || 'Personalizzato';
+  return '?';
+}
+
+// Costruisce la querystring per /api/stats/custom dato un window (stringa o oggetto range)
+function windowQueryParam(w) {
+  if (typeof w === 'string') return 'window=' + encodeURIComponent(w);
+  if (w && typeof w === 'object') return 'window=custom&start=' + encodeURIComponent(w.start) + '&end=' + encodeURIComponent(w.end);
+  return 'window=months';
+}
+
+async function loadUserCharts() {
+  try {
+    const data = await fetchJson('/api/user-charts');
+    customCharts = Array.isArray(data.charts) ? data.charts : [];
+    hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
+    panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
+  } catch (e) {
+    console.error(e);
+    customCharts = [];
+    hiddenDefaultPanels = [];
+    panelOrder = [];
+  }
+  applyDefaultPanelVisibility();
+  setupDefaultPanelHideButtons();
+  renderAllCustomCharts(); // ricostruisce i custom panel, poi applyPanelOrder li riordina tutti
+  if (panelOrder.length) applyPanelOrder();
+}
+
+async function saveUserCharts() {
+  try {
+    const data = await fetchJson('/api/user-charts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder })
+    });
+    if (Array.isArray(data.charts)) customCharts = data.charts;
+    if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
+    if (Array.isArray(data.panel_order)) panelOrder = data.panel_order;
+  } catch (e) {
+    console.error(e);
+    alert('Impossibile salvare la dashboard personalizzata.');
+  }
+}
+
+function applyPanelOrder() {
+  const grid = document.getElementById('chartsGrid');
+  const addCard = document.getElementById('addChartCard');
+  if (!grid || !panelOrder.length) return;
+  const orderedIds = {};
+  panelOrder.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.parentElement === grid) {
+      orderedIds[id] = true;
+      if (addCard) grid.insertBefore(el, addCard); else grid.appendChild(el);
+    }
+  });
+  grid.querySelectorAll(':scope > .panel[id]').forEach((el) => {
+    if (el === addCard) return;
+    if (!orderedIds[el.id]) {
+      if (addCard) grid.insertBefore(el, addCard); else grid.appendChild(el);
+    }
+  });
+  if (addCard) grid.appendChild(addCard);
+}
+
+function applyDefaultPanelVisibility() {
+  DEFAULT_CHART_PANELS.forEach((def) => {
+    const panel = document.getElementById(def.id);
+    if (!panel) return;
+    const hidden = hiddenDefaultPanels.includes(def.id);
+    panel.style.display = hidden ? 'none' : '';
+  });
+}
+
+function setupDefaultPanelHideButtons() {
+  DEFAULT_CHART_PANELS.forEach((def) => {
+    const panel = document.getElementById(def.id);
+    if (!panel) return;
+    const head = panel.querySelector('.panel-heading-row');
+    if (!head || head.querySelector('.default-chart-hide-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'custom-chart-delete default-chart-hide-btn';
+    btn.title = 'Rimuovi dalla dashboard';
+    btn.setAttribute('aria-label', 'Rimuovi dalla dashboard');
+    btn.textContent = '×';
+    btn.addEventListener('click', async () => {
+      if (!hiddenDefaultPanels.includes(def.id)) hiddenDefaultPanels.push(def.id);
+      panelOrder = panelOrder.filter((id) => id !== def.id);
+      panel.style.display = 'none';
+      await saveUserCharts();
+    });
+    head.appendChild(btn);
+  });
+}
+
+function renderAllCustomCharts() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.querySelectorAll(':scope > .custom-chart-panel').forEach((p) => p.remove());
+  customCharts.forEach((def) => {
+    const panel = renderCustomChartCard(def);
+    keepAddChartCardLast(grid, panel);
+  });
+  keepAddChartCardLast(grid);
+  applyAllChartSpans();
+  setupChartResizeControls();
+}
+
+function syncPanelOrderFromGrid() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  const order = [];
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
+    if (panel.id === 'addChartCard') return;
+    order.push(panel.id);
+  });
+  panelOrder = order;
+}
+
+function keepAddChartCardLast(grid, panelToInsert) {
+  const root = grid || document.getElementById('chartsGrid');
+  if (!root) return;
+  const addCard = document.getElementById('addChartCard');
+  if (panelToInsert && panelToInsert !== addCard) {
+    if (addCard && addCard.parentElement === root) root.insertBefore(panelToInsert, addCard);
+    else root.appendChild(panelToInsert);
+  }
+  if (addCard && addCard.parentElement === root) root.appendChild(addCard);
+}
+
+function renderCustomChartCard(def) {
+  const windows = defWindows(def);
+  let activeWindow = windows[0];
+
+  const panel = document.createElement('section');
+  panel.className = 'panel custom-chart-panel';
+  panel.id = 'chartPanelCustom_' + def.id;
+
+  // --- heading ---
+  const head = document.createElement('div');
+  head.className = 'panel-heading-row';
+
+  const h3 = document.createElement('h3');
+  h3.textContent = def.title || 'Grafico personalizzato';
+  head.appendChild(h3);
+
+  const meta = document.createElement('span');
+  meta.className = 'custom-chart-meta';
+  meta.textContent = defDimensionsSummary(def) + ' · ' + customLabel(CUSTOM_SCOPES, def.scope);
+  head.appendChild(meta);
+
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'chart-type-select';
+  typeSelect.setAttribute('aria-label', 'Tipo grafico');
+  CUSTOM_TYPES.forEach((c) => {
+    const o = document.createElement('option');
+    o.value = c.value;
+    o.textContent = c.label;
+    typeSelect.appendChild(o);
+  });
+  typeSelect.value = def.type || 'column';
+  typeSelect.addEventListener('change', async () => {
+    def.type = normalizeChartType(typeSelect.value);
+    chartTypes[customChartKey(def)] = def.type;
+    const target = document.getElementById(customChartElementId(def));
+    if (target) await loadCustomChartData(def, target, activeWindow);
+    await saveUserCharts();
+  });
+  head.appendChild(typeSelect);
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'custom-chart-delete';
+  del.title = 'Elimina grafico';
+  del.setAttribute('aria-label', 'Elimina grafico');
+  del.textContent = '×';
+  del.addEventListener('click', async () => {
+    if (!confirm('Eliminare questo grafico dalla dashboard?')) return;
+    customCharts = customCharts.filter((c) => c.id !== def.id);
+    panelOrder = panelOrder.filter((id) => id !== panel.id);
+    panel.remove();
+    await saveUserCharts();
+  });
+  head.appendChild(del);
+
+  panel.appendChild(head);
+
+  // --- toggle row (solo se più di una finestra) ---
+  if (windows.length > 1) {
+    const toggleRow = document.createElement('div');
+    toggleRow.className = 'toggle-row';
+    const chartDiv = () => document.getElementById(customChartElementId(def));
+    windows.forEach((w, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'range-btn' + (i === 0 ? ' active' : '');
+      btn.type = 'button';
+      btn.textContent = windowLabel(w);
+      btn.addEventListener('click', () => {
+        if (activeWindow === w) return;
+        activeWindow = w;
+        toggleRow.querySelectorAll('.range-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const t = chartDiv();
+        if (t) loadCustomChartData(def, t, activeWindow);
+      });
+      toggleRow.appendChild(btn);
+    });
+    panel.appendChild(toggleRow);
+  }
+
+  // --- area grafico ---
+  const chartDiv = document.createElement('div');
+  chartDiv.id = customChartElementId(def);
+  chartDiv.className = 'chart vertical-chart custom-chart';
+  panel.appendChild(chartDiv);
+
+  customChartGroupMap[customChartKey(def)] = customDimensionGroup(defDimensions(def)[0].type);
+  chartTypes[customChartKey(def)] = def.type || 'column';
+
+  attachChartDragHandle(panel);
+  loadCustomChartData(def, chartDiv, activeWindow);
+  return panel;
+}
+
+async function loadCustomChartData(def, target, activeWindow) {
+  const w = activeWindow !== undefined ? activeWindow : defWindows(def)[0];
+  target.innerHTML = '<p class="muted">Caricamento…</p>';
+  try {
+    const dims = defDimensions(def);
+    const filterModes = effectiveCustomFilterModes(dims, defFilterModes(def));
+    const plotDims = dims.filter((d) => !filterModes[d.type]);
+    const params = new URLSearchParams();
+    plotDims.forEach((d) => params.append('dimensions[]', d.type));
+    dims.forEach((d) => {
+      if (d.items && d.items.length) {
+        d.items.forEach((item) => params.append('filter_' + d.type + '[]', item));
+      }
+    });
+    params.set('scope', def.scope || 'all');
+    // window param
+    if (typeof w === 'string') {
+      params.set('window', w);
+    } else if (w && typeof w === 'object') {
+      params.set('window', 'custom');
+      params.set('start', w.start);
+      params.set('end', w.end);
+    }
+    const data = await fetchJson('/api/stats/custom?' + params.toString());
+    const stats = Array.isArray(data.stats) ? data.stats : [];
+    chartTypes[customChartKey(def)] = def.type || 'column';
+    if (!stats.length || stats.every((s) => !Number(s.total))) {
+      target.innerHTML = '<p class="muted">Nessun dato per il periodo selezionato.</p>';
+      return;
+    }
+    renderChart(target, stats);
+  } catch (e) {
+    console.error(e);
+    target.innerHTML = '<p class="muted">Impossibile caricare il grafico.</p>';
+  }
+}
+
+function refreshCustomCharts() {
+  customCharts.forEach((def) => {
+    const target = document.getElementById(customChartElementId(def));
+    if (target) {
+      // Trova la finestra attiva corrente dal pulsante attivo nel toggle row
+      const panel = target.closest('.custom-chart-panel');
+      const activeBtn = panel ? panel.querySelector('.toggle-row .range-btn.active') : null;
+      loadCustomChartData(def, target, activeBtn ? defWindows(def).find((w) => windowLabel(w) === activeBtn.textContent) : undefined);
+    }
+  });
+}
+
+function buildCustomSelect(options, value) {
+  const select = document.createElement('select');
+  select.className = 'add-chart-select';
+  options.forEach((opt) => {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    select.appendChild(o);
+  });
+  if (value) select.value = value;
+  return select;
+}
+
+function openAddChartModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'report-modal-overlay';
+  function closeOverlay() { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  function onKey(e) { if (e.key === 'Escape') closeOverlay(); }
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeOverlay(); });
+
+  const panel = document.createElement('div');
+  panel.className = 'report-modal-panel add-chart-modal-panel';
+
+  const header = document.createElement('div');
+  header.className = 'report-modal-header';
+  const title = document.createElement('h3');
+  title.textContent = 'Aggiungi grafico';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'report-modal-close';
+  closeBtn.setAttribute('aria-label', 'Chiudi');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', closeOverlay);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const desc = document.createElement('p');
+  desc.className = 'report-modal-desc';
+  desc.textContent = 'Quali informazioni vorresti visualizzare?';
+
+  // --- Dropdown grafici default ---
+  const defSection = document.createElement('div');
+  defSection.className = 'add-chart-section';
+
+  const defTitle = document.createElement('div');
+  defTitle.className = 'add-chart-section-title';
+  defTitle.textContent = 'Grafici default';
+  defSection.appendChild(defTitle);
+
+  const defWrap = document.createElement('div');
+  defWrap.className = 'add-chart-default-dropdown-wrap';
+
+  const defSelect = document.createElement('select');
+  defSelect.className = 'add-chart-select';
+  const defPlaceholder = document.createElement('option');
+  defPlaceholder.value = '';
+  defPlaceholder.textContent = '— Seleziona un grafico default —';
+  defSelect.appendChild(defPlaceholder);
+
+  DEFAULT_CHART_PANELS.forEach((def) => {
+    const opt = document.createElement('option');
+    opt.value = def.id;
+    const alreadyVisible = !hiddenDefaultPanels.includes(def.id);
+    opt.textContent = def.label + (alreadyVisible ? ' (già in dashboard)' : '');
+    opt.disabled = alreadyVisible;
+    defSelect.appendChild(opt);
+  });
+
+  const defAddBtn = document.createElement('button');
+  defAddBtn.type = 'button';
+  defAddBtn.className = 'primary';
+  defAddBtn.textContent = 'Ripristina';
+  defAddBtn.addEventListener('click', async () => {
+    const panelId = defSelect.value;
+    if (!panelId) { alert('Seleziona un grafico dalla lista.'); return; }
+    hiddenDefaultPanels = hiddenDefaultPanels.filter((id) => id !== panelId);
+    const panel = document.getElementById(panelId);
+    if (panel) panel.style.display = '';
+    closeOverlay();
+    await saveUserCharts();
+  });
+
+  defWrap.appendChild(defSelect);
+  defWrap.appendChild(defAddBtn);
+  defSection.appendChild(defWrap);
+
+  // --- Divisore ---
+  const divider = document.createElement('div');
+  divider.className = 'add-chart-divider';
+  const dividerLabel = document.createElement('span');
+  dividerLabel.className = 'add-chart-divider-label';
+  dividerLabel.textContent = 'Oppure crea un grafico personalizzato';
+  divider.appendChild(dividerLabel);
+
+  // 1) Finestre temporali (chip multi-select + range personalizzato)
+  const winField = document.createElement('div');
+  winField.className = 'add-chart-field';
+  const winLabel = document.createElement('label');
+  winLabel.className = 'add-chart-label';
+  winLabel.textContent = 'Finestre temporali (selezionabili nel grafico)';
+  const winChips = document.createElement('div');
+  winChips.className = 'add-chart-chips';
+
+  // Chip per le finestre predefinite
+  const selectedWindowValues = new Set(['months']); // string per predefinite
+  const customRanges = []; // oggetti {label, start, end}
+
+  CUSTOM_WINDOWS.forEach((w) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'add-chart-chip';
+    chip.textContent = w.label;
+    chip.dataset.value = w.value;
+    if (selectedWindowValues.has(w.value)) chip.classList.add('active');
+    chip.addEventListener('click', () => {
+      if (selectedWindowValues.has(w.value)) { selectedWindowValues.delete(w.value); chip.classList.remove('active'); }
+      else { selectedWindowValues.add(w.value); chip.classList.add('active'); }
+    });
+    winChips.appendChild(chip);
+  });
+
+  // Chip "Personalizzato"
+  const customChip = document.createElement('button');
+  customChip.type = 'button';
+  customChip.className = 'add-chart-chip add-chart-chip-custom';
+  customChip.textContent = '+ Range personalizzato';
+  winChips.appendChild(customChip);
+
+  winField.appendChild(winLabel);
+  winField.appendChild(winChips);
+
+  // Pannello date picker (nascosto di default)
+  const customRangePanel = document.createElement('div');
+  customRangePanel.className = 'add-chart-custom-range';
+  customRangePanel.hidden = true;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const firstOfYear = new Date().getFullYear() + '-01-01';
+
+  const startWrap = document.createElement('div');
+  startWrap.className = 'add-chart-range-row';
+  const startLabel = document.createElement('label');
+  startLabel.className = 'add-chart-range-label';
+  startLabel.textContent = 'Da:';
+  const startInput = document.createElement('input');
+  startInput.type = 'date';
+  startInput.className = 'add-chart-input add-chart-date-input';
+  startInput.value = firstOfYear;
+  startInput.max = today;
+  startWrap.appendChild(startLabel);
+  startWrap.appendChild(startInput);
+
+  const endWrap = document.createElement('div');
+  endWrap.className = 'add-chart-range-row';
+  const endLabel = document.createElement('label');
+  endLabel.className = 'add-chart-range-label';
+  endLabel.textContent = 'A:';
+  const endInput = document.createElement('input');
+  endInput.type = 'date';
+  endInput.className = 'add-chart-input add-chart-date-input';
+  endInput.value = today;
+  endInput.max = today;
+  endWrap.appendChild(endLabel);
+  endWrap.appendChild(endInput);
+
+  const rangeTagList = document.createElement('div');
+  rangeTagList.className = 'add-chart-range-tags';
+
+  const addRangeBtn = document.createElement('button');
+  addRangeBtn.type = 'button';
+  addRangeBtn.className = 'secondary';
+  addRangeBtn.textContent = 'Aggiungi questo range';
+
+  function renderRangeTags() {
+    rangeTagList.innerHTML = '';
+    customRanges.forEach((r, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'add-chart-range-tag';
+      tag.textContent = r.label;
+      const rem = document.createElement('button');
+      rem.type = 'button';
+      rem.textContent = '×';
+      rem.className = 'add-chart-range-tag-remove';
+      rem.addEventListener('click', () => { customRanges.splice(i, 1); renderRangeTags(); });
+      tag.appendChild(rem);
+      rangeTagList.appendChild(tag);
+    });
+  }
+
+  addRangeBtn.addEventListener('click', () => {
+    const s = startInput.value;
+    const e = endInput.value;
+    if (!s || !e || s >= e) { alert('Seleziona un intervallo valido (da < a).'); return; }
+    const label = s.slice(0, 7).replace('-', '/') + ' → ' + e.slice(0, 7).replace('-', '/');
+    customRanges.push({ label, start: s, end: e });
+    renderRangeTags();
+  });
+
+  customRangePanel.appendChild(startWrap);
+  customRangePanel.appendChild(endWrap);
+  customRangePanel.appendChild(addRangeBtn);
+  customRangePanel.appendChild(rangeTagList);
+
+  customChip.addEventListener('click', () => {
+    customRangePanel.hidden = !customRangePanel.hidden;
+    customChip.classList.toggle('active', !customRangePanel.hidden);
+  });
+
+  winField.appendChild(customRangePanel);
+
+  // 2) Dati — multi-dimensione con item picker (caricato async da /api/stats/meta)
+  const dataField = document.createElement('div');
+  dataField.className = 'add-chart-field';
+  const dataFieldLabel = document.createElement('label');
+  dataFieldLabel.className = 'add-chart-label';
+  dataFieldLabel.textContent = 'Dati da visualizzare';
+  dataField.appendChild(dataFieldLabel);
+
+  const dimSections = document.createElement('div');
+  dimSections.className = 'add-chart-dim-sections';
+  dataField.appendChild(dimSections);
+
+  // Stato selezionato: Map<dimType, Set<string>|null>  (null = tutte)
+  // null = non incluso in questo grafico, Set vuoto = tutti, Set pieno = selezionati
+  const selectedDims = new Map(); // dimType → null | Set<string>
+  const selectedDimFilters = { fab: false, team: false };
+
+  // Helper per costruire un accordion-section per una dimensione
+  function buildDimSection(dimDef, items) {
+    const sec = document.createElement('div');
+    sec.className = 'add-chart-dim-sec';
+    sec.dataset.dim = dimDef.value;
+
+    // Header: toggle enable + nome
+    const secHead = document.createElement('div');
+    secHead.className = 'add-chart-dim-head';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.id = 'dimChk_' + dimDef.value;
+    chk.className = 'add-chart-dim-checkbox';
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = chk.id;
+    lbl.className = 'add-chart-dim-name';
+    lbl.textContent = dimDef.label;
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'add-chart-dim-badge';
+    countBadge.textContent = 'tutti';
+
+    secHead.appendChild(chk);
+    secHead.appendChild(lbl);
+    secHead.appendChild(countBadge);
+
+    let filterToggleBtn = null;
+    function updateFilterToggleBtn() {
+      if (!filterToggleBtn) return;
+      const enabled = chk.checked;
+      const active = !!selectedDimFilters[dimDef.value];
+      filterToggleBtn.disabled = !enabled;
+      filterToggleBtn.classList.toggle('active', enabled && active);
+      filterToggleBtn.textContent = enabled && active ? 'Filtro ON' : 'Filtro OFF';
+      filterToggleBtn.title = enabled ? 'Attiva o disattiva l\'uso come filtro' : 'Abilita prima la dimensione';
+    }
+
+    if (filterableCustomDimension(dimDef.value)) {
+      filterToggleBtn = document.createElement('button');
+      filterToggleBtn.type = 'button';
+      filterToggleBtn.className = 'add-chart-filter-toggle';
+      filterToggleBtn.addEventListener('click', () => {
+        if (!chk.checked) return;
+        selectedDimFilters[dimDef.value] = !selectedDimFilters[dimDef.value];
+        updateFilterToggleBtn();
+      });
+      secHead.appendChild(filterToggleBtn);
+      updateFilterToggleBtn();
+    }
+
+    const secBody = document.createElement('div');
+    secBody.className = 'add-chart-dim-body';
+    secBody.hidden = true;
+
+    if (items && items.length) {
+      const selectBar = document.createElement('div');
+      selectBar.className = 'add-chart-dim-selectbar';
+      const selAll = document.createElement('button');
+      selAll.type = 'button'; selAll.className = 'add-chart-dim-sellink'; selAll.textContent = 'Tutti';
+      const selNone = document.createElement('button');
+      selNone.type = 'button'; selNone.className = 'add-chart-dim-sellink'; selNone.textContent = 'Nessuno';
+      selectBar.appendChild(selAll); selectBar.appendChild(document.createTextNode(' · ')); selectBar.appendChild(selNone);
+      secBody.appendChild(selectBar);
+
+      const itemGrid = document.createElement('div');
+      itemGrid.className = 'add-chart-dim-item-grid';
+
+      const itemChips = [];
+      items.forEach((item) => {
+        const ic = document.createElement('button');
+        ic.type = 'button';
+        ic.className = 'add-chart-chip add-chart-dim-item active';
+        ic.textContent = typeof item === 'object' ? (item.display || item.label) : item;
+        ic.dataset.val  = typeof item === 'object' ? (item.val   || item.label) : item;
+        ic.addEventListener('click', () => {
+          ic.classList.toggle('active');
+          updateDimBadge();
+        });
+        itemChips.push(ic);
+        itemGrid.appendChild(ic);
+      });
+
+      selAll.addEventListener('click', () => { itemChips.forEach((c) => c.classList.add('active')); updateDimBadge(); });
+      selNone.addEventListener('click', () => { itemChips.forEach((c) => c.classList.remove('active')); updateDimBadge(); });
+
+      secBody.appendChild(itemGrid);
+
+      function updateDimBadge() {
+        const active = itemChips.filter((c) => c.classList.contains('active'));
+        if (active.length === 0 || active.length === itemChips.length) {
+          countBadge.textContent = 'tutti';
+          selectedDims.set(dimDef.value, new Set()); // empty set = tutti
+        } else {
+          countBadge.textContent = active.length + ' selezionati';
+          selectedDims.set(dimDef.value, new Set(active.map((c) => c.dataset.val)));
+        }
+      }
+    }
+
+    chk.addEventListener('change', () => {
+      if (chk.checked) {
+        selectedDims.set(dimDef.value, new Set()); // tutti di default
+        secBody.hidden = false;
+      } else {
+        selectedDims.delete(dimDef.value);
+        if (filterableCustomDimension(dimDef.value)) selectedDimFilters[dimDef.value] = false;
+        secBody.hidden = true;
+      }
+      sec.classList.toggle('enabled', chk.checked);
+      updateFilterToggleBtn();
+    });
+
+    sec.appendChild(secHead);
+    sec.appendChild(secBody);
+    dimSections.appendChild(sec);
+  }
+
+  // Carica meta e popola le sezioni
+  (async () => {
+    dimSections.innerHTML = '<p class="muted" style="font-size:.82rem;padding:6px 0">Caricamento opzioni…</p>';
+    const meta = await fetchMeta();
+    dimSections.innerHTML = '';
+
+    // Rileva incident con nome duplicato e aggiunge "(Categoria)" per disambiguare
+    const incNameCount = {};
+    meta.incidents.forEach((i) => { incNameCount[i.name] = (incNameCount[i.name] || 0) + 1; });
+    const incItems = meta.incidents.map((i) => {
+      if (incNameCount[i.name] > 1) {
+        const catName = i.category_name || '';
+        return { display: i.name + (catName ? ' (' + catName + ')' : ''), val: i.name };
+      }
+      return i.name;
+    });
+
+    const dimItemsMap = {
+      category: meta.categories.map((c) => c.name),
+      incident: incItems,
+      fab:      meta.fabs,
+      team:     meta.teams,
+      severity: meta.severities.map((s) => s.label)
+    };
+
+    CUSTOM_DIMENSIONS.forEach((dimDef) => {
+      buildDimSection(dimDef, dimItemsMap[dimDef.value] || []);
+    });
+
+    // Mappa incident_name → Set<fab_default> e category_name → Set<fab>
+    const incFabLookup = {};
+    const catFabsLookup = {};
+    meta.incidents.forEach((i) => {
+      const fab = (i.fab_default || '').toUpperCase();
+      if (!incFabLookup[i.name]) incFabLookup[i.name] = new Set();
+      if (fab) incFabLookup[i.name].add(fab);
+      const cat = i.category_name || '';
+      if (cat) {
+        if (!catFabsLookup[cat]) catFabsLookup[cat] = new Set();
+        if (fab) catFabsLookup[cat].add(fab);
+      }
+    });
+
+    const fabSecEl = dimSections.querySelector('[data-dim="fab"]');
+    const catSecEl = dimSections.querySelector('[data-dim="category"]');
+    const incSecEl = dimSections.querySelector('[data-dim="incident"]');
+
+    // Badge che appare nell'header FAB per segnalare la modalità filtro
+    const fabFilterBadge = document.createElement('span');
+    fabFilterBadge.className = 'add-chart-fab-filter-badge';
+    fabFilterBadge.textContent = 'filtro';
+    fabFilterBadge.style.display = 'none';
+    fabSecEl?.querySelector('.add-chart-dim-head')?.appendChild(fabFilterBadge);
+
+    function applyFabFilter() {
+      const fabChk = fabSecEl?.querySelector('.add-chart-dim-checkbox');
+      const otherEnabled = !!dimSections.querySelector('[data-dim]:not([data-dim="fab"]) .add-chart-dim-checkbox:checked');
+      const fabEnabled = fabChk?.checked;
+      const fabFiltering = fabEnabled && otherEnabled && !!selectedDimFilters.fab;
+      fabFilterBadge.style.display = fabFiltering ? '' : 'none';
+
+      if (!fabFiltering) {
+        catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
+        incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
+        return;
+      }
+      const activeFabChips = Array.from(fabSecEl.querySelectorAll('.add-chart-dim-item.active'));
+      const allFabChips = fabSecEl.querySelectorAll('.add-chart-dim-item');
+      if (!activeFabChips.length || activeFabChips.length === allFabChips.length) {
+        catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
+        incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
+        return;
+      }
+      const activeFabs = new Set(activeFabChips.map((c) => c.dataset.val));
+      incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => {
+        const fabs = incFabLookup[c.dataset.val] || new Set();
+        c.style.display = (!fabs.size || Array.from(fabs).some((f) => activeFabs.has(f))) ? '' : 'none';
+      });
+      catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => {
+        const fabs = catFabsLookup[c.dataset.val] || new Set();
+        c.style.display = (!fabs.size || Array.from(fabs).some((f) => activeFabs.has(f))) ? '' : 'none';
+      });
+    }
+
+    // Reagisce a click sui chip FAB (dopo il toggle active della chip stessa)
+    if (fabSecEl) {
+      fabSecEl.addEventListener('click', (e) => {
+        if (e.target.classList.contains('add-chart-dim-item') || e.target.classList.contains('add-chart-dim-sellink') || e.target.classList.contains('add-chart-filter-toggle')) {
+          setTimeout(applyFabFilter, 0);
+        }
+      });
+      fabSecEl.querySelector('.add-chart-dim-checkbox')?.addEventListener('change', applyFabFilter);
+    }
+    // Reagisce all'abilitazione/disabilitazione di qualsiasi altra sezione
+    dimSections.addEventListener('change', (e) => {
+      if (e.target !== fabSecEl?.querySelector('.add-chart-dim-checkbox') &&
+          e.target.classList.contains('add-chart-dim-checkbox')) {
+        applyFabFilter();
+      }
+    });
+
+    // Pre-seleziona "categoria" come default
+    const firstChk = dimSections.querySelector('#dimChk_category');
+    if (firstChk) { firstChk.checked = true; firstChk.dispatchEvent(new Event('change')); }
+  })();
+
+  // 3) Ambito
+  const scopeField = document.createElement('div');
+  scopeField.className = 'add-chart-field';
+  const scopeLabel = document.createElement('label');
+  scopeLabel.className = 'add-chart-label';
+  scopeLabel.textContent = 'Ambito';
+  const scopeSelect = buildCustomSelect(CUSTOM_SCOPES, 'all');
+  scopeField.appendChild(scopeLabel);
+  scopeField.appendChild(scopeSelect);
+
+  // 4) Tipo di grafico
+  const typeField = document.createElement('div');
+  typeField.className = 'add-chart-field';
+  const typeLabel = document.createElement('label');
+  typeLabel.className = 'add-chart-label';
+  typeLabel.textContent = 'Tipo di grafico';
+  const typeSelect = buildCustomSelect(CUSTOM_TYPES, 'column');
+  typeField.appendChild(typeLabel);
+  typeField.appendChild(typeSelect);
+
+  // Titolo opzionale
+  const titleField = document.createElement('div');
+  titleField.className = 'add-chart-field';
+  const titleLabel = document.createElement('label');
+  titleLabel.className = 'add-chart-label';
+  titleLabel.textContent = 'Titolo (opzionale)';
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'add-chart-input';
+  titleInput.maxLength = 80;
+  titleInput.placeholder = 'Es. Categorie Q1';
+  titleField.appendChild(titleLabel);
+  titleField.appendChild(titleInput);
+
+  const actions = document.createElement('div');
+  actions.className = 'report-modal-actions';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'secondary';
+  cancelBtn.textContent = 'Annulla';
+  cancelBtn.addEventListener('click', closeOverlay);
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'primary';
+  confirmBtn.textContent = 'Crea grafico →';
+  confirmBtn.addEventListener('click', async () => {
+    const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
+    if (!windowsList.length) { alert('Seleziona almeno una finestra temporale.'); return; }
+    if (!selectedDims.size) { alert('Seleziona almeno un tipo di dati da visualizzare.'); return; }
+
+    // Costruisce l'array dimensions
+    const dimensionsArr = [];
+    selectedDims.forEach((itemSet, dimType) => {
+      const items = itemSet && itemSet.size > 0 ? Array.from(itemSet) : null;
+      dimensionsArr.push({ type: dimType, items });
+    });
+
+    const scope = scopeSelect.value;
+    const type = typeSelect.value;
+    const baseTitle = titleInput.value.trim();
+    confirmBtn.disabled = true;
+
+    const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const filterModes = effectiveCustomFilterModes(dimensionsArr, selectedDimFilters);
+    const titleDims = dimensionsArr.filter((d) => !filterModes[d.type]);
+    const filterSuffixes = [];
+    dimensionsArr.forEach((d) => {
+      if (!filterModes[d.type] || !d.items || !d.items.length) return;
+      filterSuffixes.push('[' + customLabel(CUSTOM_DIMENSIONS, d.type).replace(/^Per /i, '').toUpperCase() + ': ' + d.items.join(', ') + ']');
+    });
+    const autoTitle = titleDims.map((d) => customLabel(CUSTOM_DIMENSIONS, d.type)).join(' + ') +
+      (filterSuffixes.length ? ' ' + filterSuffixes.join(' ') : '') +
+      (windowsList.length === 1 ? ' (' + windowLabel(windowsList[0]) + ')' : '');
+    const titleText = baseTitle || autoTitle;
+
+    customCharts.push({ id, title: titleText, dimensions: dimensionsArr, windows: windowsList, scope, type, filters: filterModes });
+    closeOverlay();
+    renderAllCustomCharts();
+    syncPanelOrderFromGrid();
+    await saveUserCharts();
+  });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(confirmBtn);
+
+  const modalBody = document.createElement('div');
+  modalBody.className = 'add-chart-modal-body';
+  modalBody.appendChild(desc);
+  modalBody.appendChild(defSection);
+  modalBody.appendChild(divider);
+  modalBody.appendChild(winField);
+  modalBody.appendChild(dataField);
+  modalBody.appendChild(scopeField);
+  modalBody.appendChild(typeField);
+  modalBody.appendChild(titleField);
+
+  panel.appendChild(header);
+  panel.appendChild(modalBody);
+  panel.appendChild(actions);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+}
+
+document.getElementById('addChartCard')?.addEventListener('click', openAddChartModal);
+
 document.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeModal));
-modal.addEventListener('mousedown', (e) => {
-  overlayPressStarted = e.target === modal;
-});
-modal.addEventListener('mouseup', (e) => {
-  if (e.target === modal && overlayPressStarted) closeModal();
-  overlayPressStarted = false;
-});
+// La modale del ticket si chiude solo con la X / Annulla, non cliccando fuori.
 openAdminBtn.addEventListener('click', () => { window.location.href = appUrl('/admin.html'); });
 logoutBtn?.addEventListener('click', async () => {
   await fetch(appUrl('/api/logout'), { method: 'POST' });
@@ -2004,6 +3573,7 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
     if (target === 'catYear') catYearMode = mode;
     if (target === 'teamYear') teamYearMode = mode;
     if (target === 'severityYear') severityYearMode = mode;
+    if (target === 'userYear') userYearMode = mode;
     await loadCharts();
   });
 });
@@ -2019,9 +3589,15 @@ ticketForm.addEventListener('submit', async (e) => {
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
   const ticket_time_local = ticketTimestampInput.value;
+  const customIncidentName = getCustomIncidentNameForSubmit();
   if (!incident_id || !description || !fab || !ticket_time_local) {
     setTicketSubmitState(false);
     return alert('Compila incident, descrizione, data/ora e FAB');
+  }
+  if (isGenericIncidentId(incident_id) && !customIncidentName) {
+    setTicketSubmitState(false);
+    if (customIncidentNameInput) customIncidentNameInput.focus();
+    return alert('Per i ticket Generic il nome incident e obbligatorio.');
   }
   const ticket_time = new Date(ticket_time_local).toISOString();
   let createdTicketIds = [];
@@ -2030,10 +3606,10 @@ ticketForm.addEventListener('submit', async (e) => {
       await fetchJson(`/api/tickets/${editingTicketId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ incident_id, description, fab, ticket_time, severity })
+        body: JSON.stringify({ incident_id, incident_name: customIncidentName, description, fab, ticket_time, severity })
       });
     } else {
-      const payloads = [{ incident_id, description, fab, ticket_time, severity }];
+      const payloads = [{ incident_id, incident_name: customIncidentName, description, fab, ticket_time, severity }];
       const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
       payloads.push.apply(payloads, collectExtraTicketPayloads(incident_id, severityCfg.severity_default));
 
@@ -2091,7 +3667,9 @@ let chartSpans = {};
 let dragSrcPanel = null;
 
 function defaultChartSpan(panelId) {
-  return panelId === 'chartPanelPersonal' ? 12 : 3;
+  if (panelId === 'chartPanelPersonal') return 12;
+  if (panelId === 'chartPanelPersonalMine' || panelId === 'chartPanelPersonalGroup') return 6;
+  return 3;
 }
 
 function loadChartSpans() {
@@ -2127,9 +3705,11 @@ function loadChartOrder() {
     const grid = document.getElementById('chartsGrid');
     if (!grid) return;
     order.forEach(function (panelId) {
+      if (panelId === 'addChartCard') return;
       const panel = document.getElementById(panelId);
-      if (panel && panel.parentElement === grid) grid.appendChild(panel);
+      if (panel && panel.parentElement === grid) keepAddChartCardLast(grid, panel);
     });
+    keepAddChartCardLast(grid);
   } catch (e) {}
 }
 
@@ -2137,8 +3717,13 @@ function saveChartOrder() {
   const grid = document.getElementById('chartsGrid');
   if (!grid) return;
   const order = [];
-  grid.querySelectorAll(':scope > .panel[id]').forEach(function (p) { order.push(p.id); });
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function (p) {
+    if (p.id === 'addChartCard') return;
+    order.push(p.id);
+  });
+  panelOrder = order;
   try { localStorage.setItem(chartOrderStorageKey, JSON.stringify(order)); } catch (e) {}
+  saveUserCharts().catch(console.error);
 }
 
 function setupChartResizeControls() {
@@ -2171,34 +3756,40 @@ function setupChartResizeControls() {
   });
 }
 
+function attachChartDragHandle(panel) {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid || !panel) return;
+  const header = panel.querySelector('.panel-heading-row');
+  if (!header || header.querySelector('.chart-drag-handle')) return;
+  const handle = document.createElement('span');
+  handle.className = 'chart-drag-handle';
+  handle.setAttribute('draggable', 'true');
+  handle.setAttribute('title', 'Trascina per spostare');
+  handle.textContent = '⠇';
+  header.prepend(handle);
+
+  handle.addEventListener('dragstart', function (e) {
+    dragSrcPanel = panel;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', panel.id);
+    try { e.dataTransfer.setDragImage(panel, 20, 20); } catch (err) {}
+    setTimeout(function () { panel.classList.add('chart-dragging'); }, 0);
+  });
+
+  handle.addEventListener('dragend', function () {
+    if (dragSrcPanel) dragSrcPanel.classList.remove('chart-dragging');
+    grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
+    dragSrcPanel = null;
+  });
+}
+
 function setupChartDragDrop() {
   const grid = document.getElementById('chartsGrid');
   if (!grid || grid.dataset.dragSetup === '1') return;
   grid.dataset.dragSetup = '1';
 
   grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
-    const header = panel.querySelector('.panel-heading-row');
-    if (!header || header.querySelector('.chart-drag-handle')) return;
-    const handle = document.createElement('span');
-    handle.className = 'chart-drag-handle';
-    handle.setAttribute('draggable', 'true');
-    handle.setAttribute('title', 'Trascina per spostare');
-    handle.textContent = '⠇';
-    header.prepend(handle);
-
-    handle.addEventListener('dragstart', function (e) {
-      dragSrcPanel = panel;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', panel.id);
-      try { e.dataTransfer.setDragImage(panel, 20, 20); } catch (err) {}
-      setTimeout(function () { panel.classList.add('chart-dragging'); }, 0);
-    });
-
-    handle.addEventListener('dragend', function () {
-      if (dragSrcPanel) dragSrcPanel.classList.remove('chart-dragging');
-      grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
-      dragSrcPanel = null;
-    });
+    attachChartDragHandle(panel);
   });
 
   grid.addEventListener('dragover', function (e) {
@@ -2221,12 +3812,29 @@ function setupChartDragDrop() {
     e.preventDefault();
     const overPanel = e.target.closest ? e.target.closest('.panel') : null;
     grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
-    if (!dragSrcPanel || !overPanel || dragSrcPanel === overPanel || overPanel.parentElement !== grid) return;
+    if (!dragSrcPanel) return;
+    if (dragSrcPanel === overPanel) { dragSrcPanel.classList.remove('chart-dragging'); dragSrcPanel = null; return; }
+    if (!overPanel || overPanel.parentElement !== grid) {
+      // Drop su spazio vuoto del grid: trova il primo panel visivamente dopo il punto di drop
+      const others = Array.from(grid.querySelectorAll(':scope > .panel')).filter(function (p) { return p !== dragSrcPanel && p.id !== 'addChartCard'; });
+      var insertBefore = null;
+      for (var i = 0; i < others.length; i++) {
+        var r = others[i].getBoundingClientRect();
+        if (r.top > e.clientY || (r.bottom > e.clientY && r.left > e.clientX)) { insertBefore = others[i]; break; }
+      }
+      if (insertBefore) { grid.insertBefore(dragSrcPanel, insertBefore); } else { keepAddChartCardLast(grid, dragSrcPanel); }
+      keepAddChartCardLast(grid);
+      dragSrcPanel.classList.remove('chart-dragging');
+      dragSrcPanel = null;
+      saveChartOrder();
+      return;
+    }
     const allPanels = [];
     grid.querySelectorAll(':scope > .panel').forEach(function (p) { allPanels.push(p); });
     const srcIdx = allPanels.indexOf(dragSrcPanel);
     const dstIdx = allPanels.indexOf(overPanel);
     if (srcIdx < dstIdx) { overPanel.after(dragSrcPanel); } else { overPanel.before(dragSrcPanel); }
+    keepAddChartCardLast(grid);
     dragSrcPanel.classList.remove('chart-dragging');
     dragSrcPanel = null;
     saveChartOrder();
@@ -2239,21 +3847,11 @@ function setupChartDragDrop() {
   loadChartSpans();
   loadChartOrder();
   applyAllChartSpans();
-  if (personalTargetInput) {
-    const savedTarget = localStorage.getItem(personalTargetStorageKey);
-    if (savedTarget !== null) personalTargetInput.value = savedTarget;
-    personalTargetInput.addEventListener('change', () => {
-      localStorage.setItem(personalTargetStorageKey, personalTargetInput.value);
-      loadCharts().catch(() => {});
-    });
-  }
-  document.querySelectorAll('.personal-view-toggle [data-personal-view]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      personalChartView = btn.dataset.personalView || 'mine';
-      document.querySelectorAll('.personal-view-toggle [data-personal-view]').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      loadCharts().catch(() => {});
-    });
+  [personalMineTargetMonthlyInput, personalMineTargetAnnualInput, personalGroupTargetMonthlyInput, personalGroupTargetAnnualInput].forEach((input) => {
+    if (!input) return;
+    input.value = input.value || '20';
+    input.disabled = true;
+    input.readOnly = true;
   });
   try { await loadCurrentUser(); } catch (error) { console.error(error); }
   try { await loadCategories(); } catch (error) { console.error(error); }
@@ -2271,6 +3869,7 @@ function setupChartDragDrop() {
         await loadPreviousShifts();
       }
       await loadCharts();
+      await loadUserCharts();
     } catch (error) {
       console.error(error);
     }
@@ -2289,6 +3888,7 @@ window.addEventListener('storage', (event) => {
     loadChartTypes();
     setupChartTypeControls();
     loadCharts().catch(() => {});
+    refreshCustomCharts();
   }
 });
 
@@ -2298,6 +3898,7 @@ document.addEventListener('visibilitychange', () => {
     loadChartTypes();
     setupChartTypeControls();
     loadCharts().catch(() => {});
+    refreshCustomCharts();
   }
 });
 
@@ -2305,6 +3906,7 @@ document.addEventListener('visibilitychange', () => {
 
 
 ticketList.addEventListener('click', async (e) => {
+  if (e.target.closest('.preset-value-link')) return;
   const btn = e.target.closest('.edit-ticket-btn');
   if (btn) {
     handleEditTicketButton(btn);
@@ -2326,9 +3928,32 @@ ticketList.addEventListener('click', async (e) => {
 });
 
 ticketSearchResults?.addEventListener('click', async (e) => {
+  if (e.target.closest('.preset-value-link')) return;
   const btn = e.target.closest('.edit-ticket-btn');
   if (!btn) return;
   handleEditTicketButton(btn);
+});
+
+previousShiftsContent?.addEventListener('click', async (e) => {
+  if (e.target.closest('.preset-value-link')) return;
+  const btn = e.target.closest('.edit-ticket-btn');
+  if (btn) {
+    handleEditTicketButton(btn);
+    return;
+  }
+  const card = e.target.closest('.ticket-row');
+  if (!card) return;
+  openTicketReadModal({
+    ticketId: card.dataset.ticketId,
+    incidentId: card.dataset.incidentId,
+    incidentName: card.dataset.incident,
+    description: card.dataset.description,
+    fab: card.dataset.fab,
+    createdAt: card.dataset.createdAt,
+    severity: card.dataset.severity,
+    category: card.dataset.category,
+    canEdit: card.dataset.canEdit === '1'
+  });
 });
 
 if (deleteTicketBtn) {

@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS app_users (
   role VARCHAR(20) NOT NULL DEFAULT 'user',
   team VARCHAR(1) NOT NULL DEFAULT 'A',
   group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps',
+  personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20,
+  group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20,
   PRIMARY KEY (id),
   UNIQUE KEY uq_app_users_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS preset_options (
 CREATE TABLE IF NOT EXISTS tickets (
   id INT UNSIGNED NOT NULL,
   incident_id INT UNSIGNED NOT NULL,
+  incident_name VARCHAR(180) NOT NULL DEFAULT '',
   description TEXT NOT NULL,
   fab VARCHAR(12) NOT NULL,
   created_at VARCHAR(40) NOT NULL,

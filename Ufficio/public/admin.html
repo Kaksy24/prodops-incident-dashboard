@@ -1,15 +1,16 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.4.12" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.5.0" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
-      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.4.12" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-inner">
+      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.5.0" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -26,6 +27,7 @@
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
       <div class="sidebar-footer">Powered by Antonio Di Bella 2026</div>
+      </div>
     </aside>
 
     <main class="content">
@@ -67,6 +69,17 @@
           <article class="admin-stat-card"><span>Team attivi</span><strong id="usersTeamStat">0</strong></article>
         </div>
         <section class="panel user-management-panel">
+          <div class="panel panel-subsection">
+            <div class="admin-panel-heading admin-subpanel-heading">
+              <div>
+                <span class="admin-eyebrow">Target gruppi</span>
+                <h3>Obiettivi per gruppo</h3>
+                <p>Imposta un target unico per i membri del gruppo e uno per il totale del gruppo.</p>
+              </div>
+              <div id="groupTargetsSummary" class="admin-summary-chip">Caricamento...</div>
+            </div>
+            <div id="groupTargetsList" class="users-list" aria-live="polite"></div>
+          </div>
           <div class="users-toolbar">
             <label class="users-search-field">
               <span>Cerca utente</span>
@@ -126,22 +139,63 @@
           <div>
             <span class="admin-eyebrow">Visualizzazione</span>
             <h3>Grafici e colori</h3>
-            <p>Allinea colori, temi e anteprime della dashboard.</p>
+            <p>Gestisci titoli, ordine visivo e palette dei grafici della dashboard.</p>
           </div>
-          <button type="button" id="saveColorSettingsBtn" class="primary">Salva colori</button>
+          <button type="button" id="saveColorSettingsBtn" class="primary">Salva impostazioni grafici</button>
         </div>
-        <section class="panel">
-          <div class="color-editor-card">
+        <section class="panel admin-appearance-panel">
+          <div class="admin-appearance-layout">
+            <section class="admin-appearance-card">
+              <div class="admin-appearance-card-head">
+                <div>
+                  <span class="admin-eyebrow">Titoli</span>
+                  <h4>Titoli dashboard</h4>
+                  <p class="muted">Personalizza i nomi mostrati sopra ogni grafico.</p>
+                </div>
+              </div>
+              <div id="adminChartTitlesEditor" class="admin-chart-titles-editor"></div>
+              <div class="admin-axis-settings-card">
+                <div class="admin-appearance-card-head">
+                  <div>
+                    <span class="admin-eyebrow">Scala grafici personali</span>
+                    <h4>Asse Y ticket personali</h4>
+                    <p class="muted">Imposta il massimo dell'asse verticale. Metti 0 per lasciare il calcolo automatico.</p>
+                  </div>
+                </div>
+                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxInput">
+                  <span>Massimo ticket asse ordinate</span>
+                  <input id="adminPersonalAxisMaxInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
+                </label>
+              </div>
+            </section>
+
+            <section class="admin-appearance-card">
+              <div class="admin-appearance-card-head">
+                <div>
+                  <span class="admin-eyebrow">Colori</span>
+                  <h4>Editor colori</h4>
+                  <p class="muted">Scegli il tema e modifica direttamente i colori di categorie, team e severity.</p>
+                </div>
+              </div>
+              <div class="color-editor-card admin-theme-card">
+                <div>
+                  <strong>Tema colori attivo</strong>
+                  <p class="muted">Passa da Light a Dark per modificare la palette giusta.</p>
+                </div>
+                <div class="color-editor-controls">
+                  <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
+                    <span class="switch-track"><span class="switch-thumb">L</span></span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="admin-appearance-preview-head">
             <div>
-              <strong id="adminColorEditorTitle">Nessuna barra selezionata</strong>
-              <p id="adminColorEditorMeta" class="muted">Clicca una colonna sotto per iniziare a modificarla.</p>
-            </div>
-            <div class="color-editor-controls">
-              <span id="adminColorEditorSwatch" class="color-editor-swatch" aria-hidden="true"></span>
-              <input id="adminColorEditorInput" type="color" value="#0c5f8c" />
-              <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
-                <span class="switch-track"><span class="switch-thumb">L</span></span>
-              </button>
+              <span class="admin-eyebrow">Palette</span>
+              <h4>Categorie, team e severity</h4>
+              <p class="muted">Ogni riga mostra il colore attuale e il selettore diretto per modificarlo.</p>
             </div>
           </div>
           <div id="adminChartsPreview" class="charts-grid admin-charts-grid"></div>
@@ -251,7 +305,7 @@
     </div>
   </div>
 
-  <script src="./public/js/admin.js?v=1.4.12"></script>
-  <div class="app-version-badge">v1.4.12</div>
+  <script src="./public/js/admin.js?v=1.5.0"></script>
+  <div class="app-version-badge">v1.5.0</div>
 </body>
 </html>

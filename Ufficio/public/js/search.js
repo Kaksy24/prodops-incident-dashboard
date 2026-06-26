@@ -50,8 +50,21 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function presetValueSearchUrl(value) {
+  return appUrl('/search.html?query=' + encodeURIComponent(String(value || '').trim()));
+}
+
+function renderPresetValueLink(value) {
+  const label = String(value || '').trim();
+  const safeLabel = escapeHtml(label);
+  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" title="Cerca ticket con ' + safeLabel + '">' +
+    '<mark class="preset-value">' + safeLabel + '</mark></a>';
+}
+
 function highlightPresetValues(text) {
-  return escapeHtml(text).replace(/《([^》]*)》/g, '<mark class="preset-value">$1</mark>');
+  return escapeHtml(text)
+    .replace(/《([^》]*)》/g, function(_, value) { return renderPresetValueLink(value); })
+    .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); });
 }
 
 function defaultUiColors() {
@@ -362,6 +375,7 @@ function applyTicketSearchListeners() {
   });
 
   ticketSearchResults?.addEventListener('click', (e) => {
+    if (e.target.closest('.preset-value-link')) return;
     const card = e.target.closest('.ticket-row');
     if (!card) return;
     openSearchModal({
@@ -409,4 +423,9 @@ function applyTicketSearchListeners() {
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
   await loadCategories();
   applyTicketSearchListeners();
+  const initialQuery = new URLSearchParams(window.location.search).get('query');
+  if (initialQuery && ticketSearchQueryInput) {
+    ticketSearchQueryInput.value = initialQuery;
+    await runTicketSearch();
+  }
 })();

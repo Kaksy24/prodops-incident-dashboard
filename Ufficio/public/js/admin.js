@@ -1,4 +1,4 @@
-﻿const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
 const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
 
 function appUrl(path) {
@@ -25,6 +25,8 @@ const addPresetTimestampBtn = document.getElementById('addPresetTimestampBtn');
 const userCreateForm = document.getElementById('userCreateForm');
 const usersList = document.getElementById('usersList');
 const usersSummary = document.getElementById('usersSummary');
+const groupTargetsList = document.getElementById('groupTargetsList');
+const groupTargetsSummary = document.getElementById('groupTargetsSummary');
 const newUsernameInput = document.getElementById('newUsername');
 const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
@@ -35,8 +37,10 @@ const adminColorEditorMeta = document.getElementById('adminColorEditorMeta');
 const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch');
 const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
+const adminChartTitlesEditor = document.getElementById('adminChartTitlesEditor');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
+const adminPersonalAxisMaxInput = document.getElementById('adminPersonalAxisMaxInput');
 const currentAdminBadge = document.getElementById('currentAdminBadge');
 const catalogSummary = document.getElementById('catalogSummary');
 const adminTabButtons = [...document.querySelectorAll('[data-admin-tab]')];
@@ -70,12 +74,20 @@ let adminChartStats = null;
 let adminColorEditTheme = 'light';
 let adminColorSelection = null;
 let adminUsersCache = [];
+let adminGroupTargetsCache = [];
 let presetOptionsCache = [];
-const adminCharts = [
-      { key: 'fabYear', label: 'Ticket per FAB' },
-  { key: 'catYear', label: 'Ticket per categoria' },
-  { key: 'teamYear', label: 'Ticket per Team' },
-  { key: 'severityYear', label: 'Severity Ticket' }
+const adminColorGroups = [
+  { group: 'categories', label: 'Categorie', statsKey: 'catYear' },
+  { group: 'teams', label: 'Team', statsKey: 'teamYear' },
+  { group: 'severities', label: 'Severity', statsKey: 'severityYear' }
+];
+const adminChartDefinitions = [
+  { key: 'personalMineChart', label: 'Ticket personali', preview: false, helper: 'Titolo del grafico personale in dashboard.' },
+  { key: 'personalGroupChart', label: 'Ticket gruppo', preview: false, helper: 'Titolo del grafico gruppo in dashboard.' },
+  { key: 'fabYear', label: 'Ticket per FAB', preview: true, helper: 'Grafico riepilogo per FAB.' },
+  { key: 'catYear', label: 'Ticket per categoria', preview: true, helper: 'Grafico riepilogo per categoria.' },
+  { key: 'teamYear', label: 'Ticket per Team', preview: true, helper: 'Grafico riepilogo per team.' },
+  { key: 'severityYear', label: 'Severity Ticket', preview: true, helper: 'Grafico riepilogo per severity.' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 
@@ -142,6 +154,17 @@ function defaultUiColors() {
       fabs: { light: {}, dark: {} },
       teams: { light: {}, dark: {} },
       severities: { light: {}, dark: {} }
+    },
+    titles: {
+      personalMineChart: 'Ticket personali',
+      personalGroupChart: 'Ticket gruppo',
+      fabYear: 'Ticket per FAB',
+      catYear: 'Ticket per categoria',
+      teamYear: 'Ticket per Team',
+      severityYear: 'Severity Ticket'
+    },
+    settings: {
+      personal_axis_max: 0
     }
   };
 }
@@ -156,7 +179,9 @@ function normalizeUiColors(input) {
   const out = {
     charts: {},
     bars: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } }
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } },
+    titles: { ...defaults.titles },
+    settings: { ...defaults.settings }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = { ...defaults.charts[key] };
@@ -191,6 +216,14 @@ function normalizeUiColors(input) {
       });
     });
   }
+  if (input?.titles && typeof input.titles === 'object') {
+    Object.keys(out.titles || {}).forEach((key) => {
+      const title = String(input.titles[key] || '').trim();
+      if (title) out.titles[key] = title;
+    });
+  }
+  const personalAxisMax = Number(input?.settings?.personal_axis_max || 0);
+  out.settings.personal_axis_max = Number.isFinite(personalAxisMax) && personalAxisMax > 0 ? Math.round(personalAxisMax) : 0;
   return out;
 }
 
@@ -342,10 +375,36 @@ function updateColorEditor() {
   adminColorEditorSwatch.style.background = color;
 }
 
+function getAdminChartLabel(chartKey) {
+  ensureAdminUiColors();
+  const fallback = adminChartDefinitions.find((chart) => chart.key === chartKey)?.label || chartKey;
+  return String(adminUiColors?.titles?.[chartKey] || fallback);
+}
+
+function setAdminChartLabel(chartKey, value) {
+  ensureAdminUiColors();
+  const fallback = adminChartDefinitions.find((chart) => chart.key === chartKey)?.label || chartKey;
+  const next = String(value || '').trim();
+  adminUiColors.titles[chartKey] = next || fallback;
+}
+
+function setDirectGroupColor(group, label, value) {
+  const clean = normalizeHexColor(value);
+  if (!clean) return;
+  ensureAdminUiColors();
+  if (!adminUiColors.labels[group]) adminUiColors.labels[group] = { light: {}, dark: {} };
+  adminUiColors.labels[group][adminColorEditTheme][label] = clean;
+  chartKeysForGroup(group).forEach((chartKey) => {
+    if (!adminUiColors.bars[chartKey]) adminUiColors.bars[chartKey] = { light: {}, dark: {} };
+    adminUiColors.bars[chartKey][adminColorEditTheme][label] = clean;
+  });
+}
+
 function selectAdminColorTarget(chartId, label) {
   const group = chartGroupForId(chartId);
   if (!group) return;
-  const chartLabel = adminCharts.find((chart) => chart.key === chartId.replace('Chart', ''))?.label || chartId;
+  const chartKey = chartId.replace('Chart', '');
+  const chartLabel = getAdminChartLabel(chartKey);
   adminColorSelection = {
     chartId,
     chartLabel,
@@ -521,11 +580,11 @@ function renderAdminChart(chart, stats) {
   card.innerHTML = `
     <div class="panel-heading-row">
       <div>
-        <h3>${escapeHtml(chart.label)}</h3>
+        <h3>${escapeHtml(getAdminChartLabel(chart.key))}</h3>
         <p class="muted">Anteprima colori: clicca un elemento per modificarne il colore nel tema ${escapeHtml(adminColorEditTheme)}.</p>
       </div>
       <div class="chart-controls">
-        <select class="chart-type-select" data-chart-target="${chart.key}" aria-label="Tipo grafico ${escapeHtml(chart.label)}">
+        <select class="chart-type-select" data-chart-target="${chart.key}" aria-label="Tipo grafico ${escapeHtml(getAdminChartLabel(chart.key))}">
           ${chartTypeChoices.map((choice) => `<option value="${choice.value}">${choice.label}</option>`).join('')}
         </select>
       </div>
@@ -547,15 +606,98 @@ function renderAdminChart(chart, stats) {
   return card;
 }
 
-function renderColorSettings() {
-  if (!adminChartsPreview || !adminChartStats) return;
+function renderAdminChartTitlesEditor() {
+  if (!adminChartTitlesEditor) return;
+  ensureAdminUiColors();
+  adminChartTitlesEditor.innerHTML = adminChartDefinitions.map((chart) => {
+    const value = getAdminChartLabel(chart.key);
+    return `
+      <label class="admin-chart-title-row">
+        <span class="admin-chart-title-copy">
+          <strong>${escapeHtml(chart.label)}</strong>
+          <small>${escapeHtml(chart.helper || '')}</small>
+        </span>
+        <input type="text" class="admin-chart-title-input" data-chart-title="${chart.key}" value="${escapeHtml(value)}" maxlength="80" />
+      </label>
+    `;
+  }).join('');
+  adminChartTitlesEditor.querySelectorAll('[data-chart-title]').forEach((input) => {
+    input.addEventListener('input', () => {
+      setAdminChartLabel(input.dataset.chartTitle, input.value);
+      renderColorSettings();
+    });
+  });
+}
+
+function collectAdminGroupLabels(group, statsKey) {
+  const labels = {};
+  const rows = Array.isArray(adminChartStats && adminChartStats[statsKey]) ? adminChartStats[statsKey] : [];
+  rows.forEach((item) => {
+    const label = String(item && item.label ? item.label : '').trim();
+    if (label) labels[label] = true;
+  });
+  ['light', 'dark'].forEach((theme) => {
+    const saved = adminUiColors?.labels?.[group]?.[theme];
+    if (!saved || typeof saved !== 'object') return;
+    Object.keys(saved).forEach((label) => {
+      const clean = String(label || '').trim();
+      if (clean) labels[clean] = true;
+    });
+  });
+  return Object.keys(labels).sort((a, b) => a.localeCompare(b));
+}
+
+function renderAdminColorLists() {
+  if (!adminChartsPreview) return;
   ensureAdminUiColors();
   adminChartsPreview.innerHTML = '';
-  adminCharts.forEach((chart) => {
-    const card = renderAdminChart(chart, adminChartStats[chart.key] || []);
-    adminChartsPreview.appendChild(card);
+  adminColorGroups.forEach((config) => {
+    const labels = collectAdminGroupLabels(config.group, config.statsKey);
+    const section = document.createElement('section');
+    section.className = 'panel admin-color-list-card';
+    section.innerHTML = `
+      <div class="panel-heading-row">
+        <div>
+          <h3>${escapeHtml(config.label)}</h3>
+          <p class="muted">Tema attivo: ${escapeHtml(adminColorEditTheme.toUpperCase())}</p>
+        </div>
+      </div>
+    `;
+    const list = document.createElement('div');
+    list.className = 'admin-color-list';
+    if (!labels.length) {
+      list.innerHTML = '<p class="muted">Nessun elemento disponibile.</p>';
+    } else {
+      labels.forEach((label) => {
+        const color = getAdminThemeColor(config.group, label);
+        const row = document.createElement('label');
+        row.className = 'admin-color-row';
+        row.innerHTML = `
+          <span class="admin-color-row-label">${escapeHtml(label)}</span>
+          <span class="admin-color-row-picker">
+            <span class="admin-color-row-swatch" style="background:${color}"></span>
+            <input type="color" value="${color}" data-color-group="${config.group}" data-color-label="${escapeHtml(label)}" aria-label="Colore ${escapeHtml(label)}" />
+          </span>
+        `;
+        const input = row.querySelector('input[type="color"]');
+        const swatch = row.querySelector('.admin-color-row-swatch');
+        input.addEventListener('input', () => {
+          setDirectGroupColor(config.group, label, input.value);
+          swatch.style.background = input.value;
+        });
+        list.appendChild(row);
+      });
+    }
+    section.appendChild(list);
+    adminChartsPreview.appendChild(section);
   });
-  updateColorEditor();
+}
+
+function renderColorSettings() {
+  ensureAdminUiColors();
+  if (adminPersonalAxisMaxInput) adminPersonalAxisMaxInput.value = String(Number(adminUiColors?.settings?.personal_axis_max || 0) || 0);
+  renderAdminChartTitlesEditor();
+  renderAdminColorLists();
 }
 
 async function loadUiColors() {
@@ -581,14 +723,19 @@ async function loadAdminChartsPreviewData() {
     renderColorSettings();
   } catch (error) {
     adminChartStats = {};
-  if (adminChartsPreview) {
-      adminChartsPreview.innerHTML = `<p class="muted">Impossibile caricare l'anteprima dei grafici: ${escapeHtml(error.message || error)}</p>`;
+    renderAdminChartTitlesEditor();
+    if (adminChartsPreview) {
+      adminChartsPreview.innerHTML = `<p class="muted">Impossibile caricare l'elenco colori: ${escapeHtml(error.message || error)}</p>`;
     }
   }
 }
 
 async function saveUiColors() {
   ensureAdminUiColors();
+  if (adminPersonalAxisMaxInput) {
+    const axisMax = Number(adminPersonalAxisMaxInput.value || 0);
+    adminUiColors.settings.personal_axis_max = Number.isFinite(axisMax) && axisMax > 0 ? Math.round(axisMax) : 0;
+  }
   adminUiColors = normalizeUiColors(adminUiColors);
   await fetchJson('/api/ui-colors', {
     method: 'PUT',
@@ -600,7 +747,7 @@ async function saveUiColors() {
   } catch (error) {
     // ignore storage issues
   }
-  alert('Colori salvati.');
+  alert('Grafici, colori e titoli salvati.');
 }
 
 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -735,6 +882,11 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function normalizeGroupName(value) {
+  const name = String(value || '').trim();
+  return name || 'ProdOps';
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -804,7 +956,7 @@ function renderUsers() {
             ${['A', 'B', 'C', 'D', 'E'].map((item) => `<option value="${item}" ${team === item ? 'selected' : ''}>Team ${item}</option>`).join('')}
           </select>
         </td>
-        <td><input class="user-group-input" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}" type="text" value="${escapeHtml(String(user.group_name || 'ProdOps'))}" placeholder="Gruppo" style="width:90px" /></td>
+        <td><input class="user-group-input" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}" type="text" value="${escapeHtml(String(user.group_name || 'ProdOps'))}" placeholder="Gruppo" style="width:110px" /></td>
         <td><input class="user-password-input" aria-label="Nuova password ${username}" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" autocomplete="new-password" /></td>
         <td><span class="user-table-note">${roleLocked ? escapeHtml(lockReason) : 'Modificabile'}</span></td>
         <td>
@@ -837,7 +989,7 @@ function renderUsers() {
       const groupInput = row?.querySelector('.user-group-input');
       const passwordInput = row?.querySelector('.user-password-input');
       const current = adminUsersCache.find((user) => Number(user.id) === userId);
-      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: (groupInput?.value || '').trim() || 'ProdOps' };
+      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: normalizeGroupName(groupInput?.value || current?.group_name || 'ProdOps') };
       const password = (passwordInput?.value || '').trim();
       if (password) payload.password = password;
       try {
@@ -848,7 +1000,7 @@ function renderUsers() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        await loadUsers();
+        await Promise.all([loadUsers(), loadGroupTargets()]);
       } catch (error) {
         alert(`Errore salvataggio utente: ${error.message || error}`);
         btn.disabled = false;
@@ -864,7 +1016,7 @@ function renderUsers() {
       if (!userId || !confirm(`Eliminare definitivamente l'utente "${username}"?`)) return;
       try {
         await fetchJson(`/api/users/${userId}`, { method: 'DELETE' });
-        await loadUsers();
+        await Promise.all([loadUsers(), loadGroupTargets()]);
       } catch (error) {
         alert(`Errore eliminazione utente: ${error.message || error}`);
       }
@@ -877,9 +1029,96 @@ async function loadUsers() {
   try {
     adminUsersCache = await fetchJson('/api/users');
     renderUsers();
+    renderGroupTargets();
   } catch (error) {
     if (usersSummary) usersSummary.textContent = 'Impossibile caricare gli utenti.';
     usersList.innerHTML = `<div class="users-empty muted">Errore caricamento utenti: ${escapeHtml(error.message || error)}</div>`;
+  }
+}
+
+function renderGroupTargets() {
+  if (!groupTargetsList) return;
+  const groupsMap = new Map();
+  adminUsersCache.forEach((user) => {
+    const groupName = normalizeGroupName(user.group_name || 'ProdOps');
+    if (!groupsMap.has(groupName)) groupsMap.set(groupName, { group_name: groupName, members: 0 });
+    groupsMap.get(groupName).members += 1;
+  });
+  adminGroupTargetsCache.forEach((item) => {
+    const groupName = normalizeGroupName(item.group_name || 'ProdOps');
+    if (!groupsMap.has(groupName)) groupsMap.set(groupName, { group_name: groupName, members: 0 });
+  });
+  const groups = Array.from(groupsMap.values()).sort((a, b) => a.group_name.localeCompare(b.group_name, 'it', { sensitivity: 'base' }));
+  if (groupTargetsSummary) groupTargetsSummary.textContent = `${groups.length} gruppi configurati`;
+  if (!groups.length) {
+    groupTargetsList.innerHTML = '<div class="users-empty muted">Nessun gruppo disponibile.</div>';
+    return;
+  }
+  groupTargetsList.innerHTML = `
+    <div class="users-table-wrap">
+      <table class="users-table">
+        <thead>
+          <tr><th>Gruppo</th><th>Membri</th><th>Membri mensile</th><th>Membri annuale</th><th>Gruppo mensile</th><th>Gruppo annuale</th><th>Azioni</th></tr>
+        </thead>
+        <tbody>
+          ${groups.map((group) => {
+            const current = adminGroupTargetsCache.find((item) => normalizeGroupName(item.group_name) === group.group_name) || {};
+            return `
+              <tr data-group-name="${escapeHtml(group.group_name)}">
+                <td><strong>${escapeHtml(group.group_name)}</strong></td>
+                <td>${Number(group.members || 0)}</td>
+                <td><input class="group-personal-target-monthly-input" type="number" min="1" value="${Number(current.personal_target_monthly || current.personal_target || 20)}" aria-label="Target membri mensile ${escapeHtml(group.group_name)}" style="width:110px" /></td>
+                <td><input class="group-personal-target-annual-input" type="number" min="1" value="${Number(current.personal_target_annual || ((current.personal_target_monthly || current.personal_target || 20) * 12))}" aria-label="Target membri annuale ${escapeHtml(group.group_name)}" style="width:110px" /></td>
+                <td><input class="group-total-target-monthly-input" type="number" min="1" value="${Number(current.group_target_monthly || current.group_target || 20)}" aria-label="Target gruppo mensile ${escapeHtml(group.group_name)}" style="width:110px" /></td>
+                <td><input class="group-total-target-annual-input" type="number" min="1" value="${Number(current.group_target_annual || ((current.group_target_monthly || current.group_target || 20) * 12))}" aria-label="Target gruppo annuale ${escapeHtml(group.group_name)}" style="width:110px" /></td>
+                <td><button type="button" class="save-group-target-btn primary" data-group-name="${escapeHtml(group.group_name)}">Salva</button></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  groupTargetsList.querySelectorAll('.save-group-target-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const groupName = normalizeGroupName(btn.dataset.groupName || 'ProdOps');
+      const row = btn.closest('tr');
+      const personalMonthlyInput = row?.querySelector('.group-personal-target-monthly-input');
+      const personalAnnualInput = row?.querySelector('.group-personal-target-annual-input');
+      const groupMonthlyInput = row?.querySelector('.group-total-target-monthly-input');
+      const groupAnnualInput = row?.querySelector('.group-total-target-annual-input');
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Salvataggio...';
+        await fetchJson('/api/group-targets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            group_name: groupName,
+            personal_target_monthly: Number(personalMonthlyInput?.value || 20) || 20,
+            personal_target_annual: Number(personalAnnualInput?.value || 240) || 240,
+            group_target_monthly: Number(groupMonthlyInput?.value || 20) || 20,
+            group_target_annual: Number(groupAnnualInput?.value || 240) || 240
+          })
+        });
+        await loadGroupTargets();
+      } catch (error) {
+        alert(`Errore salvataggio target gruppo: ${error.message || error}`);
+        btn.disabled = false;
+        btn.textContent = 'Salva';
+      }
+    });
+  });
+}
+
+async function loadGroupTargets() {
+  if (!groupTargetsList) return;
+  try {
+    adminGroupTargetsCache = await fetchJson('/api/group-targets');
+    renderGroupTargets();
+  } catch (error) {
+    if (groupTargetsSummary) groupTargetsSummary.textContent = 'Impossibile caricare i target gruppo.';
+    groupTargetsList.innerHTML = `<div class="users-empty muted">Errore caricamento target gruppo: ${escapeHtml(error.message || error)}</div>`;
   }
 }
 
@@ -1445,7 +1684,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   const password = (newPasswordInput?.value || '').trim();
   const role = (newUserRoleSelect?.value || 'user').trim();
   const team = (newUserTeamSelect?.value || 'A').trim();
-  const group_name = (newUserGroupInput?.value || 'ProdOps').trim() || 'ProdOps';
+  const group_name = normalizeGroupName(newUserGroupInput?.value || 'ProdOps');
   if (!username || !password) {
     alert('Inserisci username e password.');
     return;
@@ -1461,7 +1700,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
     if (newUserTeamSelect) newUserTeamSelect.value = 'A';
     if (newUserGroupInput) newUserGroupInput.value = 'ProdOps';
     closeUserCreateModal();
-    await loadUsers();
+    await Promise.all([loadUsers(), loadGroupTargets()]);
   } catch (error) {
     alert(`Errore creazione utente: ${error.message || error}`);
   }
@@ -1481,6 +1720,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   await Promise.allSettled([
     loadAdminMenu(null),
     loadUsers(),
+    loadGroupTargets(),
     loadPresetOptionRequests(),
     loadPresetOptionsManager(),
     loadUiColors(),
