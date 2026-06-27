@@ -219,7 +219,9 @@ function default_ui_colors()
             'severityYear' => 'Severity Ticket'
         ),
         'settings' => array(
-            'personal_axis_max' => 0
+            'personal_axis_max' => 0,
+            'personal_axis_max_mine' => 0,
+            'personal_axis_max_group' => 0
         )
     );
 }
@@ -291,7 +293,14 @@ function normalize_ui_colors($colors)
         }
     }
     if (isset($colors['settings']) && is_array($colors['settings'])) {
-        $out['settings']['personal_axis_max'] = normalize_axis_max_setting(isset($colors['settings']['personal_axis_max']) ? $colors['settings']['personal_axis_max'] : 0);
+        $legacyAxisMax = normalize_axis_max_setting(isset($colors['settings']['personal_axis_max']) ? $colors['settings']['personal_axis_max'] : 0);
+        $out['settings']['personal_axis_max'] = $legacyAxisMax;
+        $out['settings']['personal_axis_max_mine'] = isset($colors['settings']['personal_axis_max_mine'])
+            ? normalize_axis_max_setting($colors['settings']['personal_axis_max_mine'])
+            : 0;
+        $out['settings']['personal_axis_max_group'] = isset($colors['settings']['personal_axis_max_group'])
+            ? normalize_axis_max_setting($colors['settings']['personal_axis_max_group'])
+            : 0;
     }
     return $out;
 }
@@ -1021,13 +1030,19 @@ function load_db($defaultUsers)
     if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
-    if (!count($db['incidents'])) {
-        foreach ($db['categories'] as $categoryRow) {
-            $categoryId = isset($categoryRow['id']) ? intval($categoryRow['id']) : 0;
-            $nestedIncidents = isset($categoryRow['incidents']) && is_array($categoryRow['incidents']) ? $categoryRow['incidents'] : array();
-            foreach ($nestedIncidents as $incidentRow) {
+    $existingIncidentIds = array();
+    foreach ($db['incidents'] as $incRow) {
+        $existingIncidentIds[intval($incRow['id'])] = true;
+    }
+    foreach ($db['categories'] as $categoryRow) {
+        $categoryId = isset($categoryRow['id']) ? intval($categoryRow['id']) : 0;
+        $nestedIncidents = isset($categoryRow['incidents']) && is_array($categoryRow['incidents']) ? $categoryRow['incidents'] : array();
+        foreach ($nestedIncidents as $incidentRow) {
+            $incidentId = isset($incidentRow['id']) ? intval($incidentRow['id']) : 0;
+            if ($incidentId > 0 && !isset($existingIncidentIds[$incidentId])) {
                 $incidentRow['category_id'] = $categoryId;
                 $db['incidents'][] = $incidentRow;
+                $existingIncidentIds[$incidentId] = true;
             }
         }
     }
@@ -2666,7 +2681,8 @@ if ($path === '/api/user-charts' && $method === 'GET') {
     $charts = isset($userData['charts']) && is_array($userData['charts']) ? array_values($userData['charts']) : (is_array($userData) && isset($userData[0]) ? array_values($userData) : array());
     $hiddenPanels = isset($userData['hidden_panels']) && is_array($userData['hidden_panels']) ? array_values($userData['hidden_panels']) : array();
     $panelOrder = isset($userData['panel_order']) && is_array($userData['panel_order']) ? array_values($userData['panel_order']) : array();
-    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder), 200);
+    $panelTitles = isset($userData['panel_titles']) && is_array($userData['panel_titles']) ? $userData['panel_titles'] : array();
+    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles), 200);
 }
 
 if ($path === '/api/user-charts' && $method === 'PUT') {
@@ -2744,9 +2760,18 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
         if ($pid !== '') $cleanOrder[] = $pid;
     }
     $cleanOrder = array_slice(array_unique($cleanOrder), 0, 48);
-    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder);
+    $incomingTitles = isset($payload['panel_titles']) && is_array($payload['panel_titles']) ? $payload['panel_titles'] : array();
+    $allowedTitlePanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelSeverity','chartPanelUser');
+    $cleanTitles = array();
+    foreach ($incomingTitles as $pid => $ptitle) {
+        $pid = strval($pid);
+        if (!in_array($pid, $allowedTitlePanels, true)) continue;
+        $ptitle = trim(strval($ptitle));
+        if ($ptitle !== '') $cleanTitles[$pid] = substr($ptitle, 0, 80);
+    }
+    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles);
     save_db($db);
-    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder), 200);
+    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles), 200);
 }
 
 if ($path === '/api/ping' && $method === 'GET') {

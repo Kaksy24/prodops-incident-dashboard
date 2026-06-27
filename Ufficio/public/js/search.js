@@ -29,6 +29,8 @@ const incidentIdToNameMap = {};
 let currentUser = null;
 let uiColors = null;
 let searchModalCloseTimer = null;
+let categorySelectHandle = null;
+let incidentSelectHandle = null;
 
 const chartPalette = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -42,6 +44,137 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function makeSearchableSelect(select) {
+  if (select.dataset.sdInit) return { update: function() {} };
+  select.dataset.sdInit = '1';
+
+  var placeholderText = '';
+  var allItems = [];
+
+  function syncItems() {
+    allItems = [];
+    placeholderText = '';
+    for (var i = 0; i < select.options.length; i++) {
+      var o = select.options[i];
+      if (!o.value) { placeholderText = o.textContent; continue; }
+      allItems.push({ value: o.value, text: o.textContent });
+    }
+  }
+  syncItems();
+
+  if (allItems.length <= 10) return null;
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'sd-wrap';
+
+  var trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'sd-trigger';
+
+  var triggerLabel = document.createElement('span');
+  triggerLabel.className = 'sd-label sd-placeholder';
+
+  var triggerArrow = document.createElement('span');
+  triggerArrow.className = 'sd-arrow';
+  triggerArrow.setAttribute('aria-hidden', 'true');
+
+  trigger.appendChild(triggerLabel);
+  trigger.appendChild(triggerArrow);
+
+  var panel = document.createElement('div');
+  panel.className = 'sd-panel';
+  panel.hidden = true;
+
+  var search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'sd-search';
+  search.placeholder = 'Cerca...';
+  search.setAttribute('aria-label', 'Cerca nelle opzioni');
+
+  var list = document.createElement('ul');
+  list.className = 'sd-list';
+  list.setAttribute('role', 'listbox');
+
+  panel.appendChild(search);
+  panel.appendChild(list);
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(panel);
+
+  function updateTriggerLabel() {
+    var val = select.value;
+    if (!val) {
+      triggerLabel.textContent = placeholderText || 'Seleziona...';
+      triggerLabel.classList.add('sd-placeholder');
+    } else {
+      var found = allItems.find(function(o) { return o.value === val; });
+      triggerLabel.textContent = found ? found.text : val;
+      triggerLabel.classList.remove('sd-placeholder');
+    }
+  }
+
+  function renderList(q) {
+    list.innerHTML = '';
+    var filtered = q ? allItems.filter(function(o) { return o.text.toLowerCase().includes(q); }) : allItems;
+    if (!filtered.length) {
+      var empty = document.createElement('li');
+      empty.className = 'sd-empty';
+      empty.textContent = 'Nessun risultato';
+      list.appendChild(empty);
+    }
+    filtered.forEach(function(item) {
+      var li = document.createElement('li');
+      li.className = 'sd-option' + (item.value === select.value ? ' sd-selected' : '');
+      li.dataset.value = item.value;
+      li.textContent = item.text;
+      li.setAttribute('role', 'option');
+      li.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        select.value = item.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        updateTriggerLabel();
+        closePanel();
+      });
+      list.appendChild(li);
+    });
+  }
+
+  function openPanel() {
+    panel.hidden = false;
+    wrapper.setAttribute('aria-expanded', 'true');
+    search.value = '';
+    renderList('');
+    search.focus();
+  }
+
+  function closePanel() {
+    panel.hidden = true;
+    wrapper.setAttribute('aria-expanded', 'false');
+  }
+
+  trigger.addEventListener('click', function() {
+    if (panel.hidden) openPanel();
+    else closePanel();
+  });
+
+  search.addEventListener('input', function() {
+    renderList(search.value.trim().toLowerCase());
+  });
+
+  search.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closePanel(); trigger.focus(); }
+  });
+
+  document.addEventListener('mousedown', function(e) {
+    if (!wrapper.contains(e.target)) closePanel();
+  }, true);
+
+  select.style.display = 'none';
+  select.parentNode.insertBefore(wrapper, select);
+  updateTriggerLabel();
+
+  return { update: updateTriggerLabel };
 }
 
 function escapeHtml(value) {
@@ -258,6 +391,7 @@ async function loadCategories() {
       opt.textContent = cat.name;
       ticketSearchCategorySelect.appendChild(opt);
     });
+    categorySelectHandle = makeSearchableSelect(ticketSearchCategorySelect);
   }
 
   if (ticketSearchIncidentSelect) {
@@ -270,6 +404,7 @@ async function loadCategories() {
         ticketSearchIncidentSelect.appendChild(opt);
       });
     });
+    incidentSelectHandle = makeSearchableSelect(ticketSearchIncidentSelect);
   }
 }
 
@@ -369,7 +504,9 @@ function applyTicketSearchListeners() {
     if (ticketSearchToInput) ticketSearchToInput.value = '';
     if (ticketSearchFabSelect) ticketSearchFabSelect.value = '';
     if (ticketSearchCategorySelect) ticketSearchCategorySelect.value = '';
+    if (categorySelectHandle) categorySelectHandle.update();
     if (ticketSearchIncidentSelect) ticketSearchIncidentSelect.value = '';
+    if (incidentSelectHandle) incidentSelectHandle.update();
     if (ticketSearchSummary) ticketSearchSummary.textContent = 'Nessuna ricerca avviata.';
     if (ticketSearchResults) ticketSearchResults.innerHTML = '';
   });

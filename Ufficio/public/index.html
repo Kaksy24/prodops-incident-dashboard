@@ -50,10 +50,6 @@
               <div class="current-shift-filter-search">
                 <input id="currentShiftFilter" type="text" placeholder="Filtra ticket..." aria-label="Filtra ticket del turno corrente" autocomplete="off" />
               </div>
-              <label class="compact-toggle-label" title="Raggruppa i ticket per categoria in pile 3D">
-                <input type="checkbox" id="compactVisualToggle" />
-                <span>Compatta</span>
-              </label>
               <div class="current-shift-sort-group">
                 <div class="sort-select-row">
                   <select id="currentShiftSort" aria-label="Ordina per">
@@ -63,6 +59,10 @@
                     <option value="fab">FAB</option>
                   </select>
                   <button type="button" id="currentShiftSortDir" class="sort-dir-btn" title="Inverti ordine" aria-label="Inverti ordine">↓</button>
+                  <label class="compact-toggle-label" title="Raggruppa i ticket per categoria in pile 3D">
+                    <input type="checkbox" id="compactVisualToggle" />
+                    <span>Compatta</span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -79,7 +79,8 @@
       </section>
 
       <div class="charts-toolbar-row">
-        <button id="generatePptReportBtn" class="report-ppt-btn" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report PPT</button>
+        <button id="generatePptReportBtn" class="report-ppt-btn" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report</button>
+        <button id="editChartModeBtn" class="edit-chart-mode-btn" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Modifica grafici</button>
       </div>
 
       <section class="charts-grid" id="chartsGrid">
@@ -118,6 +119,7 @@
           <div class="panel-heading-row">
             <h3 id="fabYearChartTitle">Ticket per FAB</h3>
           </div>
+          <div class="chart-controls-row"></div>
           <div class="toggle-row">
             <button class="range-btn year-btn" data-target="fabYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="fabYear" data-mode="q1">Q1</button>
@@ -133,6 +135,7 @@
           <div class="panel-heading-row">
             <h3 id="catYearChartTitle">Ticket per categoria</h3>
           </div>
+          <div class="chart-controls-row"></div>
           <div class="toggle-row">
             <button class="range-btn year-btn" data-target="catYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="catYear" data-mode="q1">Q1</button>
@@ -148,6 +151,7 @@
           <div class="panel-heading-row">
             <h3 id="teamYearChartTitle">Ticket per Team</h3>
           </div>
+          <div class="chart-controls-row"></div>
           <div class="toggle-row">
             <button class="range-btn year-btn" data-target="teamYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="teamYear" data-mode="q1">Q1</button>
@@ -163,6 +167,7 @@
           <div class="panel-heading-row">
             <h3 id="severityYearChartTitle">Severity Ticket</h3>
           </div>
+          <div class="chart-controls-row"></div>
           <div class="toggle-row">
             <button class="range-btn year-btn" data-target="severityYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="severityYear" data-mode="q1">Q1</button>
@@ -178,6 +183,7 @@
           <div class="panel-heading-row">
             <h3 id="userYearChartTitle">Ticket per utente</h3>
           </div>
+          <div class="chart-controls-row"></div>
           <div class="toggle-row">
             <button class="range-btn year-btn" data-target="userYear" data-mode="months">Anno</button>
             <button class="range-btn" data-target="userYear" data-mode="q1">Q1</button>
@@ -217,6 +223,7 @@
 
         <label for="description">Descrizione problema</label>
         <textarea id="description" name="description" rows="7" required></textarea>
+        <div id="descriptionRead" class="ticket-read-desc" style="display:none"></div>
         <div id="presetInlineComposer" class="panel" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
 
         <div class="fab-severity-row">

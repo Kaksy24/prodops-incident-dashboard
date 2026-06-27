@@ -146,25 +146,21 @@
         <section class="panel admin-appearance-panel">
           <div class="admin-appearance-layout">
             <section class="admin-appearance-card">
-              <div class="admin-appearance-card-head">
-                <div>
-                  <span class="admin-eyebrow">Titoli</span>
-                  <h4>Titoli dashboard</h4>
-                  <p class="muted">Personalizza i nomi mostrati sopra ogni grafico.</p>
-                </div>
-              </div>
-              <div id="adminChartTitlesEditor" class="admin-chart-titles-editor"></div>
               <div class="admin-axis-settings-card">
                 <div class="admin-appearance-card-head">
                   <div>
                     <span class="admin-eyebrow">Scala grafici personali</span>
-                    <h4>Asse Y ticket personali</h4>
-                    <p class="muted">Imposta il massimo dell'asse verticale. Metti 0 per lasciare il calcolo automatico.</p>
+                    <h4>Asse Y grafici personali</h4>
+                    <p class="muted">Imposta il massimo dell'asse verticale separatamente per i due grafici. Metti 0 per lasciare il calcolo automatico.</p>
                   </div>
                 </div>
-                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxInput">
-                  <span>Massimo ticket asse ordinate</span>
-                  <input id="adminPersonalAxisMaxInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
+                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxMineInput">
+                  <span>Massimo ticket asse ordinate — Ticket personali</span>
+                  <input id="adminPersonalAxisMaxMineInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
+                </label>
+                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxGroupInput">
+                  <span>Massimo ticket asse ordinate — Ticket gruppo</span>
+                  <input id="adminPersonalAxisMaxGroupInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
                 </label>
               </div>
             </section>

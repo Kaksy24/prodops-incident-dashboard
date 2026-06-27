@@ -310,6 +310,10 @@ function setTicketModalReadMode(isReadMode) {
   if (deleteTicketBtn) deleteTicketBtn.style.display = readMode ? 'none' : (editingTicketId ? 'inline-block' : 'none');
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = readMode ? 'none' : 'grid';
   if (ticketForm) ticketForm.dataset.readMode = readMode ? '1' : '0';
+  const descTextarea = document.getElementById('description');
+  const descRead = document.getElementById('descriptionRead');
+  if (descTextarea) descTextarea.style.display = readMode ? 'none' : '';
+  if (descRead) descRead.style.display = readMode ? '' : 'none';
   if (editFromReadBtn) editFromReadBtn.style.display = 'none';
 }
 
@@ -378,6 +382,8 @@ function openTicketReadModal(ticket) {
   document.getElementById('description').readOnly = true;
   document.getElementById('description').style.display = '';
   document.getElementById('description').placeholder = '';
+  const descReadEl = document.getElementById('descriptionRead');
+  if (descReadEl) descReadEl.innerHTML = highlightPresetValues(String(item.description || ''));
   if (presetInlineComposer) {
     presetInlineComposer.style.display = 'none';
     presetInlineComposer.innerHTML = '';
@@ -437,7 +443,9 @@ function defaultUiColors() {
       severityYear: 'Severity Ticket'
     },
     settings: {
-      personal_axis_max: 0
+      personal_axis_max: 0,
+      personal_axis_max_mine: 0,
+      personal_axis_max_group: 0
     }
   };
 }
@@ -498,13 +506,23 @@ function normalizeUiColors(input) {
       if (title) out.titles[key] = title;
     });
   }
-  const personalAxisMax = Number(input?.settings?.personal_axis_max || 0);
-  out.settings.personal_axis_max = Number.isFinite(personalAxisMax) && personalAxisMax > 0 ? Math.round(personalAxisMax) : 0;
+  const cleanAxisMax = (raw) => {
+    const num = Number(raw || 0);
+    return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
+  };
+  const legacyAxisMax = cleanAxisMax(input?.settings?.personal_axis_max);
+  out.settings.personal_axis_max = legacyAxisMax;
+  out.settings.personal_axis_max_mine = input?.settings?.personal_axis_max_mine != null
+    ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
+  out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
+    ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
   return out;
 }
 
-function getPersonalChartAxisMaxSetting() {
-  const axisMax = Number(uiColors?.settings?.personal_axis_max || 0);
+function getPersonalChartAxisMaxSetting(chartId) {
+  const settings = (uiColors && uiColors.settings) ? uiColors.settings : {};
+  const key = chartId === 'personalGroupChart' ? 'personal_axis_max_group' : 'personal_axis_max_mine';
+  const axisMax = Number(settings[key] || 0);
   return Number.isFinite(axisMax) && axisMax > 0 ? Math.round(axisMax) : 0;
 }
 
@@ -995,16 +1013,41 @@ function getChartReportMeta(chartId) {
   return { username: '', targetMonthly: 0, targetAnnual: 0 };
 }
 
-const REPORT_CHART_OPTIONS = [
-  { id: 'personalMineChart',  label: 'Ticket personali' },
-  { id: 'personalGroupChart', label: 'Ticket gruppo' },
-  { id: 'fabYearChart',       label: 'Ticket per FAB' },
-  { id: 'catYearChart',       label: 'Ticket per categoria' },
-  { id: 'teamYearChart',      label: 'Ticket per Team' },
-  { id: 'severityYearChart',  label: 'Severity Ticket' },
-];
+const REPORT_DEFAULT_CHART_MAP = {
+  chartPanelPersonalMine:  { chartId: 'personalMineChart',  label: 'Ticket personali' },
+  chartPanelPersonalGroup: { chartId: 'personalGroupChart', label: 'Ticket gruppo' },
+  chartPanelFab:           { chartId: 'fabYearChart',       label: 'Ticket per FAB' },
+  chartPanelCat:           { chartId: 'catYearChart',       label: 'Ticket per categoria' },
+  chartPanelTeam:          { chartId: 'teamYearChart',      label: 'Ticket per Team' },
+  chartPanelSeverity:      { chartId: 'severityYearChart',  label: 'Severity Ticket' },
+  chartPanelUser:          { chartId: 'userYearChart',      label: 'Ticket per utente' }
+};
 
-const REPORT_PPT_BTN_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report PowerPoint';
+// Costruisce le opzioni del report dai grafici realmente visibili in dashboard
+// (rispetta ordine, pannelli nascosti e include i grafici personalizzati).
+function getVisibleReportChartOptions() {
+  const grid = document.getElementById('chartsGrid');
+  const options = [];
+  if (!grid) return options;
+  grid.querySelectorAll(':scope > .panel').forEach(function(panel) {
+    if (!panel.id || panel.style.display === 'none') return;
+    let entry = null;
+    if (panel.id.indexOf('chartPanelCustom_') === 0) {
+      const defId = panel.id.slice('chartPanelCustom_'.length);
+      const def = customCharts.find(function(c) { return String(c.id) === defId; });
+      if (def) entry = { id: customChartElementId(def), label: def.title || 'Grafico personalizzato' };
+    } else if (REPORT_DEFAULT_CHART_MAP[panel.id]) {
+      const map = REPORT_DEFAULT_CHART_MAP[panel.id];
+      const titleEl = panel.querySelector('.panel-heading-row h3, h3');
+      const label = titleEl ? String(titleEl.textContent || '').trim() : '';
+      entry = { id: map.chartId, label: label || map.label };
+    }
+    if (entry) options.push(entry);
+  });
+  return options;
+}
+
+const REPORT_BTN_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report';
 
 function openReportModal() {
   const overlay = document.createElement('div');
@@ -1016,7 +1059,7 @@ function openReportModal() {
   const header = document.createElement('div');
   header.className = 'report-modal-header';
   const title = document.createElement('h3');
-  title.textContent = 'Genera Report PowerPoint';
+  title.textContent = 'Genera Report';
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'report-modal-close';
@@ -1026,13 +1069,39 @@ function openReportModal() {
   header.appendChild(title);
   header.appendChild(closeBtn);
 
+  const formatRow = document.createElement('div');
+  formatRow.className = 'report-format-row';
+  var selectedFormat = 'ppt';
+  var formatBtns = [
+    { value: 'ppt', label: 'PowerPoint (.pptx)' },
+    { value: 'csv', label: 'CSV (.csv)' }
+  ];
+  formatBtns.forEach(function(fb) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-format-btn' + (fb.value === 'ppt' ? ' active' : '');
+    btn.textContent = fb.label;
+    btn.dataset.fmt = fb.value;
+    btn.addEventListener('click', function() {
+      selectedFormat = fb.value;
+      formatRow.querySelectorAll('.report-format-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.fmt === fb.value); });
+    });
+    formatRow.appendChild(btn);
+  });
+
   const desc = document.createElement('p');
   desc.className = 'report-modal-desc';
   desc.textContent = 'Seleziona i grafici da includere nel report.';
 
+  const reportOptions = getVisibleReportChartOptions();
+  if (!reportOptions.length) {
+    alert('Nessun grafico visibile in dashboard da includere nel report.');
+    return;
+  }
+
   const optionsList = document.createElement('div');
   optionsList.className = 'report-chart-options';
-  REPORT_CHART_OPTIONS.forEach(function(opt) {
+  reportOptions.forEach(function(opt) {
     const lbl = document.createElement('label');
     lbl.className = 'report-chart-option';
     const cb = document.createElement('input');
@@ -1061,12 +1130,17 @@ function openReportModal() {
     const selected = Array.from(optionsList.querySelectorAll('input[type=checkbox]:checked')).map(function(c) { return c.value; });
     if (!selected.length) { alert('Seleziona almeno un grafico.'); return; }
     closeOverlay();
-    generatePowerPointReport(selected).catch(console.error);
+    if (selectedFormat === 'csv') {
+      generateCsvReport(selected);
+    } else {
+      generatePowerPointReport(selected).catch(console.error);
+    }
   });
   actions.appendChild(cancelBtn);
   actions.appendChild(confirmBtn);
 
   panel.appendChild(header);
+  panel.appendChild(formatRow);
   panel.appendChild(desc);
   panel.appendChild(optionsList);
   panel.appendChild(actions);
@@ -1190,9 +1264,24 @@ async function generatePowerPointReport(selectedIds) {
   } finally {
     if (generatePptReportBtn) {
       generatePptReportBtn.disabled = false;
-      generatePptReportBtn.innerHTML = REPORT_PPT_BTN_HTML;
+      generatePptReportBtn.innerHTML = REPORT_BTN_HTML;
     }
   }
+}
+
+function generateCsvReport(selectedIds) {
+  const charts = collectDashboardReportCharts(selectedIds);
+  const stamp = formatLocalDateStamp(new Date());
+  const sections = [];
+  charts.forEach(function(chart) {
+    sections.push('"' + (chart.title || chart.id).replace(/"/g, '""') + '"');
+    sections.push('Etichetta,Totale');
+    (chart.stats || []).forEach(function(item) {
+      sections.push('"' + String(item.label || '').replace(/"/g, '""') + '",' + Number(item.total || 0));
+    });
+    sections.push('');
+  });
+  triggerDownload('ProdOps_Report_' + stamp + '.csv', sections.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 async function exportChart(targetId, format) {
@@ -1378,6 +1467,156 @@ function clearExtraTicketCards() {
   setTicketSubmitState(false);
 }
 
+function makeSearchableSelect(select) {
+  if (select.dataset.sdInit) return { update: function() {} };
+  select.dataset.sdInit = '1';
+
+  var placeholderText = '';
+  var proposeOpt = null;
+  var allItems = [];
+
+  function syncItems() {
+    allItems = [];
+    proposeOpt = null;
+    placeholderText = '';
+    for (var i = 0; i < select.options.length; i++) {
+      var o = select.options[i];
+      if (!o.value) { placeholderText = o.textContent; continue; }
+      if (o.value === '__propose_new__') { proposeOpt = { value: o.value, text: o.textContent }; continue; }
+      allItems.push({ value: o.value, text: o.textContent });
+    }
+  }
+  syncItems();
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'sd-wrap';
+
+  var trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'sd-trigger';
+
+  var triggerLabel = document.createElement('span');
+  triggerLabel.className = 'sd-label sd-placeholder';
+
+  var triggerArrow = document.createElement('span');
+  triggerArrow.className = 'sd-arrow';
+  triggerArrow.setAttribute('aria-hidden', 'true');
+
+  trigger.appendChild(triggerLabel);
+  trigger.appendChild(triggerArrow);
+
+  var panel = document.createElement('div');
+  panel.className = 'sd-panel';
+  panel.hidden = true;
+
+  var search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'sd-search';
+  search.placeholder = 'Cerca...';
+  search.setAttribute('aria-label', 'Cerca nelle opzioni');
+
+  var list = document.createElement('ul');
+  list.className = 'sd-list';
+  list.setAttribute('role', 'listbox');
+
+  panel.appendChild(search);
+  panel.appendChild(list);
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(panel);
+
+  function updateTriggerLabel() {
+    var val = select.value;
+    if (!val) {
+      triggerLabel.textContent = placeholderText || 'Seleziona...';
+      triggerLabel.classList.add('sd-placeholder');
+    } else {
+      var found = allItems.find(function(o) { return o.value === val; }) ||
+        Array.from(select.options).find(function(o) { return o.value === val; });
+      triggerLabel.textContent = found ? (found.text || found.textContent) : val;
+      triggerLabel.classList.remove('sd-placeholder');
+    }
+  }
+
+  function renderList(q) {
+    list.innerHTML = '';
+    var filtered = q ? allItems.filter(function(o) { return o.text.toLowerCase().includes(q); }) : allItems;
+    if (!filtered.length) {
+      var empty = document.createElement('li');
+      empty.className = 'sd-empty';
+      empty.textContent = 'Nessun risultato';
+      list.appendChild(empty);
+    }
+    filtered.forEach(function(item) {
+      var li = document.createElement('li');
+      li.className = 'sd-option' + (item.value === select.value ? ' sd-selected' : '');
+      li.dataset.value = item.value;
+      li.textContent = item.text;
+      li.setAttribute('role', 'option');
+      li.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        select.value = item.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        updateTriggerLabel();
+        closePanel();
+      });
+      list.appendChild(li);
+    });
+    if (proposeOpt) {
+      var li2 = document.createElement('li');
+      li2.className = 'sd-option sd-propose';
+      li2.dataset.value = proposeOpt.value;
+      li2.textContent = proposeOpt.text;
+      li2.setAttribute('role', 'option');
+      li2.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        select.value = '__propose_new__';
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        closePanel();
+        setTimeout(updateTriggerLabel, 80);
+      });
+      list.appendChild(li2);
+    }
+  }
+
+  function openPanel() {
+    syncItems();
+    panel.hidden = false;
+    wrapper.setAttribute('aria-expanded', 'true');
+    search.value = '';
+    renderList('');
+    search.focus();
+  }
+
+  function closePanel() {
+    panel.hidden = true;
+    wrapper.setAttribute('aria-expanded', 'false');
+  }
+
+  trigger.addEventListener('click', function() {
+    if (panel.hidden) openPanel();
+    else closePanel();
+  });
+
+  search.addEventListener('input', function() {
+    renderList(search.value.trim().toLowerCase());
+  });
+
+  search.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closePanel(); trigger.focus(); }
+  });
+
+  document.addEventListener('mousedown', function(e) {
+    if (!wrapper.contains(e.target)) closePanel();
+  }, true);
+
+  select.style.display = 'none';
+  select.parentNode.insertBefore(wrapper, select);
+  updateTriggerLabel();
+
+  return { update: updateTriggerLabel };
+}
+
 function presetFieldKey(label) {
   return String(label || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
 }
@@ -1418,16 +1657,8 @@ async function loadDbPresetOptions(token, select) {
     };
 
     renderOptions();
-    const existingSearch = select.parentElement?.querySelector('.preset-select-search');
-    if (existingSearch) existingSearch.remove();
-    if (options.length > 5 && select.parentElement) {
-      const search = document.createElement('input');
-      search.type = 'search';
-      search.className = 'preset-select-search';
-      search.placeholder = `Cerca ${token.label || 'elemento'}...`;
-      search.setAttribute('aria-label', `Cerca ${token.label || 'elemento'}`);
-      search.addEventListener('input', () => renderOptions(search.value));
-      select.parentElement.insertBefore(search, select);
+    if (options.length > 10) {
+      makeSearchableSelect(select);
     }
   } catch (error) {
     console.error(error);
@@ -1993,7 +2224,7 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   setChartExportState(target, stats);
   const targetAnnualMonthly = targetAnnual > 0 ? (targetAnnual / 12) : 0;
   const peakValue = Math.max(Math.max.apply(null, months.map(function(m) { return m.total; })), targetMonthly || 0, targetAnnualMonthly || 0, 1);
-  const configuredAxisMax = getPersonalChartAxisMaxSetting();
+  const configuredAxisMax = getPersonalChartAxisMaxSetting(target && target.id);
   const maxVal = Math.max(1, configuredAxisMax || 0, Math.ceil(peakValue * 1.15));
   const width = 900;
   const height = 320;
@@ -2009,23 +2240,6 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   const points = months.map(function(m, i) { return { x: xOf(i), y: yOf(m.total), m: m }; });
   const linePath = points.map(function(p, i) { return (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ');
   var targetMonthlyY = targetMonthly > 0 ? yOf(targetMonthly) : null;
-  var targetAnnualY = targetAnnualMonthly > 0 ? yOf(targetAnnualMonthly) : null;
-  if (targetMonthlyY !== null && targetAnnualY !== null && Math.abs(targetMonthlyY - targetAnnualY) < 14) {
-    var overlapGap = 12;
-    var topLimit = padT + 2;
-    var bottomLimit = height - padB - 2;
-    var baseTargetY = Math.min(targetMonthlyY, targetAnnualY);
-    if (baseTargetY <= padT + overlapGap) {
-      targetAnnualY = topLimit;
-      targetMonthlyY = Math.min(bottomLimit, topLimit + overlapGap);
-    } else if (baseTargetY >= bottomLimit - overlapGap) {
-      targetMonthlyY = bottomLimit;
-      targetAnnualY = Math.max(topLimit, bottomLimit - overlapGap);
-    } else {
-      targetMonthlyY = Math.min(bottomLimit, baseTargetY + (overlapGap / 2));
-      targetAnnualY = Math.max(topLimit, baseTargetY - (overlapGap / 2));
-    }
-  }
   const bottomY = (height - padB).toFixed(1);
   const firstX = points[0].x.toFixed(1);
   const lastX = points[points.length - 1].x.toFixed(1);
@@ -2054,11 +2268,7 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   var targetLines = '';
   if (targetMonthlyY !== null) {
     targetLines += '<line x1="' + padL + '" y1="' + targetMonthlyY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetMonthlyY.toFixed(1) + '" class="personal-chart-target personal-chart-target-monthly"/>' +
-      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 6).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">' + targetMonthly + '</text>';
-  }
-  if (targetAnnualY !== null) {
-    targetLines += '<line x1="' + padL + '" y1="' + targetAnnualY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetAnnualY.toFixed(1) + '" class="personal-chart-target personal-chart-target-annual"/>' +
-      '<text x="' + (width - padR - 4) + '" y="' + (targetAnnualY - 6).toFixed(1) + '" text-anchor="end" class="personal-chart-target-label personal-chart-target-label-annual">' + targetAnnual + '</text>';
+      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 5).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">T.mens. ' + targetMonthly + '</text>';
   }
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2119,8 +2329,10 @@ function setupChartTypeControls() {
   document.querySelectorAll('.charts-grid .chart[id]').forEach((chart) => {
     if (chart.classList.contains('custom-chart')) return;
     const targetId = chart.id || '';
-    const panelHeader = chart.closest('.panel') ? chart.closest('.panel').querySelector('.panel-heading-row') : null;
-    if (!panelHeader || panelHeader.querySelector(`.chart-type-select[data-chart-target="${targetId}"]`)) return;
+    const panel = chart.closest('.panel');
+    if (!panel) return;
+    const controlsRow = panel.querySelector('.chart-controls-row');
+    if (!controlsRow || controlsRow.querySelector(`.chart-type-select[data-chart-target="${targetId}"]`)) return;
     const select = document.createElement('select');
     select.className = 'chart-type-select';
     select.dataset.chartTarget = targetId;
@@ -2132,7 +2344,7 @@ function setupChartTypeControls() {
       select.appendChild(option);
     });
     select.value = getChartType(targetId);
-    panelHeader.appendChild(select);
+    controlsRow.insertBefore(select, controlsRow.firstChild);
   });
 
   document.querySelectorAll('.chart-type-select[data-chart-target]').forEach((select) => {
@@ -2252,6 +2464,25 @@ function createTicketRowElement(t, isAnimated) {
   return li;
 }
 
+// Marca le card la cui descrizione è troncata (line-clamp).
+// Hover sulla card espande il testo in loco senza aprire la modale.
+function decorateClampedDescriptions(root) {
+  if (!root) return;
+  root.querySelectorAll('.ticket-row').forEach((row) => {
+    if (row.style.display === 'none') return;
+    if (row.classList.contains('has-overflow')) return;
+    const desc = row.querySelector('.ticket-row-desc');
+    if (!desc) return;
+    if (desc.scrollHeight - desc.clientHeight <= 2) return;
+    row.classList.add('has-overflow');
+    const hint = document.createElement('span');
+    hint.className = 'ticket-more-hint';
+    hint.setAttribute('aria-hidden', 'true');
+    hint.textContent = '···';
+    desc.insertAdjacentElement('afterend', hint);
+  });
+}
+
 async function loadDayTickets(animatedTicketIds = []) {
   try {
     const data = await fetchJson('/api/tickets/current-shift');
@@ -2271,6 +2502,7 @@ async function loadDayTickets(animatedTicketIds = []) {
     ticketList.classList.toggle('ticket-list-scrollable', (data.tickets || []).length > 10);
     applyCurrentShiftFilter();
     sortTicketList();
+    requestAnimationFrame(() => decorateClampedDescriptions(ticketList));
   } catch (error) {
     console.error(error);
     updateCurrentShiftCounters([]);
@@ -2309,6 +2541,7 @@ function applyCurrentShiftFilter() {
     currentShiftFilterEmpty.hidden = !(hasFilter && ticketCount > 0 && visibleTicketCount === 0);
   }
   if (_compactActive) _compactBuild();
+  else requestAnimationFrame(() => decorateClampedDescriptions(ticketList));
 }
 
 function updateSortDirBtn() {
@@ -2542,6 +2775,7 @@ async function loadPreviousShifts() {
         list.appendChild(empty);
       } else {
         tickets.forEach((t) => list.appendChild(createTicketRowElement(t, false)));
+        requestAnimationFrame(() => decorateClampedDescriptions(list));
       }
       block.appendChild(list);
       previousShiftsContent.appendChild(block);
@@ -2556,6 +2790,35 @@ setupChartExportControls();
 if (generatePptReportBtn) {
   generatePptReportBtn.addEventListener('click', openReportModal);
 }
+
+const editChartModeBtn = document.getElementById('editChartModeBtn');
+if (editChartModeBtn) {
+  editChartModeBtn.addEventListener('click', function() {
+    toggleChartsEditMode();
+    var labelSpan = editChartModeBtn.childNodes;
+    // update text node (last child is text)
+    for (var i = editChartModeBtn.childNodes.length - 1; i >= 0; i--) {
+      if (editChartModeBtn.childNodes[i].nodeType === 3) {
+        editChartModeBtn.childNodes[i].textContent = chartsEditMode ? 'Fine modifica' : 'Modifica grafici';
+        break;
+      }
+    }
+  });
+}
+
+(function() {
+  var grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.addEventListener('click', function(e) {
+    if (!chartsEditMode) return;
+    if (e.target.closest('.chart-title-edit-input')) return;
+    var h3 = e.target.closest('.panel-heading-row h3');
+    if (!h3 || h3.querySelector('.chart-title-edit-input')) return;
+    var panel = h3.closest('.panel[id]');
+    if (!panel || panel.id === 'addChartCard') return;
+    startChartTitleEdit(panel, h3);
+  });
+}());
 
 async function loadCharts() {
   try {
@@ -2599,6 +2862,81 @@ async function loadCharts() {
 let customCharts = [];
 let hiddenDefaultPanels = [];
 let panelOrder = [];
+let panelTitles = {};
+let chartsEditMode = false;
+
+const PANEL_TITLE_ELEMENTS = {
+  chartPanelPersonalMine:  'personalMineChartTitleText',
+  chartPanelPersonalGroup: 'personalGroupChartTitleText',
+  chartPanelFab:           'fabYearChartTitle',
+  chartPanelCat:           'catYearChartTitle',
+  chartPanelTeam:          'teamYearChartTitle',
+  chartPanelSeverity:      'severityYearChartTitle',
+  chartPanelUser:          'userYearChartTitle'
+};
+
+function applyPanelTitles() {
+  Object.keys(PANEL_TITLE_ELEMENTS).forEach(function(panelId) {
+    if (!panelTitles[panelId]) return;
+    var el = document.getElementById(PANEL_TITLE_ELEMENTS[panelId]);
+    if (el) el.textContent = panelTitles[panelId];
+  });
+}
+
+function toggleChartsEditMode() {
+  chartsEditMode = !chartsEditMode;
+  var grid = document.getElementById('chartsGrid');
+  var btn = document.getElementById('editChartModeBtn');
+  if (grid) grid.classList.toggle('charts-edit-mode', chartsEditMode);
+  if (btn) {
+    btn.classList.toggle('active', chartsEditMode);
+    btn.querySelector('span') && (btn.querySelector('span').textContent = chartsEditMode ? 'Fine modifica' : 'Modifica grafici');
+  }
+  if (!chartsEditMode) {
+    var grid2 = document.getElementById('chartsGrid');
+    if (grid2) grid2.querySelectorAll('.chart-title-edit-input').forEach(function(inp) { inp.blur(); });
+  }
+}
+
+function startChartTitleEdit(panel, h3) {
+  var isCustom = panel.classList.contains('custom-chart-panel');
+  var titleEl = h3;
+  if (!isCustom && PANEL_TITLE_ELEMENTS[panel.id]) {
+    titleEl = document.getElementById(PANEL_TITLE_ELEMENTS[panel.id]) || h3;
+  }
+  var original = titleEl.textContent || '';
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.value = original;
+  input.className = 'chart-title-edit-input';
+  input.maxLength = 80;
+  titleEl.textContent = '';
+  titleEl.appendChild(input);
+  input.focus();
+  input.select();
+  var committed = false;
+  function finish(val) {
+    if (committed) return; committed = true;
+    titleEl.textContent = val || original;
+  }
+  async function commit() {
+    var val = (input.value || '').trim() || original;
+    finish(val);
+    if (isCustom) {
+      var defId = panel.id.replace('chartPanelCustom_', '');
+      var def = customCharts.find(function(c) { return String(c.id) === defId; });
+      if (def) { def.title = val; await saveUserCharts(); }
+    } else {
+      panelTitles[panel.id] = val;
+      await saveUserCharts();
+    }
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { input.blur(); }
+    if (ev.key === 'Escape') { finish(original); }
+  });
+}
 
 const DEFAULT_CHART_PANELS = [
   { id: 'chartPanelPersonalMine',  label: 'Ticket personali' },
@@ -2723,16 +3061,19 @@ async function loadUserCharts() {
     customCharts = Array.isArray(data.charts) ? data.charts : [];
     hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
+    panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
   } catch (e) {
     console.error(e);
     customCharts = [];
     hiddenDefaultPanels = [];
     panelOrder = [];
+    panelTitles = {};
   }
   applyDefaultPanelVisibility();
   setupDefaultPanelHideButtons();
-  renderAllCustomCharts(); // ricostruisce i custom panel, poi applyPanelOrder li riordina tutti
+  renderAllCustomCharts();
   if (panelOrder.length) applyPanelOrder();
+  applyPanelTitles();
 }
 
 async function saveUserCharts() {
@@ -2740,11 +3081,12 @@ async function saveUserCharts() {
     const data = await fetchJson('/api/user-charts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder })
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles })
     });
     if (Array.isArray(data.charts)) customCharts = data.charts;
     if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
     if (Array.isArray(data.panel_order)) panelOrder = data.panel_order;
+    if (data.panel_titles && typeof data.panel_titles === 'object') panelTitles = data.panel_titles;
   } catch (e) {
     console.error(e);
     alert('Impossibile salvare la dashboard personalizzata.');
@@ -2846,37 +3188,13 @@ function renderCustomChartCard(def) {
   panel.className = 'panel custom-chart-panel';
   panel.id = 'chartPanelCustom_' + def.id;
 
-  // --- heading ---
+  // --- heading (solo titolo + pulsante elimina) ---
   const head = document.createElement('div');
   head.className = 'panel-heading-row';
 
   const h3 = document.createElement('h3');
   h3.textContent = def.title || 'Grafico personalizzato';
   head.appendChild(h3);
-
-  const meta = document.createElement('span');
-  meta.className = 'custom-chart-meta';
-  meta.textContent = defDimensionsSummary(def) + ' · ' + customLabel(CUSTOM_SCOPES, def.scope);
-  head.appendChild(meta);
-
-  const typeSelect = document.createElement('select');
-  typeSelect.className = 'chart-type-select';
-  typeSelect.setAttribute('aria-label', 'Tipo grafico');
-  CUSTOM_TYPES.forEach((c) => {
-    const o = document.createElement('option');
-    o.value = c.value;
-    o.textContent = c.label;
-    typeSelect.appendChild(o);
-  });
-  typeSelect.value = def.type || 'column';
-  typeSelect.addEventListener('change', async () => {
-    def.type = normalizeChartType(typeSelect.value);
-    chartTypes[customChartKey(def)] = def.type;
-    const target = document.getElementById(customChartElementId(def));
-    if (target) await loadCustomChartData(def, target, activeWindow);
-    await saveUserCharts();
-  });
-  head.appendChild(typeSelect);
 
   const del = document.createElement('button');
   del.type = 'button';
@@ -2895,28 +3213,51 @@ function renderCustomChartCard(def) {
 
   panel.appendChild(head);
 
-  // --- toggle row (solo se più di una finestra) ---
-  if (windows.length > 1) {
-    const toggleRow = document.createElement('div');
-    toggleRow.className = 'toggle-row';
-    const chartDiv = () => document.getElementById(customChartElementId(def));
-    windows.forEach((w, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'range-btn' + (i === 0 ? ' active' : '');
-      btn.type = 'button';
-      btn.textContent = windowLabel(w);
-      btn.addEventListener('click', () => {
-        if (activeWindow === w) return;
-        activeWindow = w;
-        toggleRow.querySelectorAll('.range-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        const t = chartDiv();
-        if (t) loadCustomChartData(def, t, activeWindow);
-      });
-      toggleRow.appendChild(btn);
+  // --- riga controlli: tendina tipo grafico (frecce resize aggiunte da setupChartResizeControls) ---
+  const controlsRow = document.createElement('div');
+  controlsRow.className = 'chart-controls-row';
+
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'chart-type-select';
+  typeSelect.setAttribute('aria-label', 'Tipo grafico');
+  CUSTOM_TYPES.forEach((c) => {
+    const o = document.createElement('option');
+    o.value = c.value;
+    o.textContent = c.label;
+    typeSelect.appendChild(o);
+  });
+  typeSelect.value = def.type || 'column';
+  typeSelect.addEventListener('change', async () => {
+    def.type = normalizeChartType(typeSelect.value);
+    chartTypes[customChartKey(def)] = def.type;
+    const target = document.getElementById(customChartElementId(def));
+    if (target) await loadCustomChartData(def, target, activeWindow);
+    await saveUserCharts();
+  });
+  controlsRow.appendChild(typeSelect);
+
+  panel.appendChild(controlsRow);
+
+  // --- toggle row: sempre visibile (anche con una sola finestra) ---
+  const toggleRow = document.createElement('div');
+  toggleRow.className = 'toggle-row';
+  const chartDiv = () => document.getElementById(customChartElementId(def));
+  windows.forEach((w, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'range-btn' + (i === 0 ? ' active' : '');
+    btn.type = 'button';
+    btn.textContent = windowLabel(w);
+    btn.addEventListener('click', () => {
+      if (activeWindow === w) return;
+      activeWindow = w;
+      toggleRow.querySelectorAll('.range-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const t = chartDiv();
+      if (t) loadCustomChartData(def, t, activeWindow);
     });
-    panel.appendChild(toggleRow);
-  }
+    toggleRow.appendChild(btn);
+  });
+  panel.appendChild(toggleRow);
 
   // --- area grafico ---
   const chartDiv = document.createElement('div');
@@ -3730,8 +4071,8 @@ function setupChartResizeControls() {
   const grid = document.getElementById('chartsGrid');
   if (!grid) return;
   grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
-    const header = panel.querySelector('.panel-heading-row');
-    if (!header || header.querySelector('.chart-resize-controls')) return;
+    const target = panel.querySelector('.chart-controls-row') || panel.querySelector('.panel-heading-row');
+    if (!target || target.querySelector('.chart-resize-controls')) return;
     const controls = document.createElement('div');
     controls.className = 'chart-resize-controls';
     [{ dir: -1, label: '◀' }, { dir: 1, label: '▶' }].forEach(function (cfg) {
@@ -3752,7 +4093,7 @@ function setupChartResizeControls() {
       });
       controls.appendChild(btn);
     });
-    header.appendChild(controls);
+    target.appendChild(controls);
   });
 }
 

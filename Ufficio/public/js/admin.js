@@ -40,7 +40,8 @@ const adminChartsPreview = document.getElementById('adminChartsPreview');
 const adminChartTitlesEditor = document.getElementById('adminChartTitlesEditor');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
-const adminPersonalAxisMaxInput = document.getElementById('adminPersonalAxisMaxInput');
+const adminPersonalAxisMaxMineInput = document.getElementById('adminPersonalAxisMaxMineInput');
+const adminPersonalAxisMaxGroupInput = document.getElementById('adminPersonalAxisMaxGroupInput');
 const currentAdminBadge = document.getElementById('currentAdminBadge');
 const catalogSummary = document.getElementById('catalogSummary');
 const adminTabButtons = [...document.querySelectorAll('[data-admin-tab]')];
@@ -164,7 +165,9 @@ function defaultUiColors() {
       severityYear: 'Severity Ticket'
     },
     settings: {
-      personal_axis_max: 0
+      personal_axis_max: 0,
+      personal_axis_max_mine: 0,
+      personal_axis_max_group: 0
     }
   };
 }
@@ -222,8 +225,16 @@ function normalizeUiColors(input) {
       if (title) out.titles[key] = title;
     });
   }
-  const personalAxisMax = Number(input?.settings?.personal_axis_max || 0);
-  out.settings.personal_axis_max = Number.isFinite(personalAxisMax) && personalAxisMax > 0 ? Math.round(personalAxisMax) : 0;
+  const cleanAxisMax = (raw) => {
+    const num = Number(raw || 0);
+    return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
+  };
+  const legacyAxisMax = cleanAxisMax(input?.settings?.personal_axis_max);
+  out.settings.personal_axis_max = legacyAxisMax;
+  out.settings.personal_axis_max_mine = input?.settings?.personal_axis_max_mine != null
+    ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
+  out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
+    ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
   return out;
 }
 
@@ -695,7 +706,8 @@ function renderAdminColorLists() {
 
 function renderColorSettings() {
   ensureAdminUiColors();
-  if (adminPersonalAxisMaxInput) adminPersonalAxisMaxInput.value = String(Number(adminUiColors?.settings?.personal_axis_max || 0) || 0);
+  if (adminPersonalAxisMaxMineInput) adminPersonalAxisMaxMineInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_mine || 0) || 0);
+  if (adminPersonalAxisMaxGroupInput) adminPersonalAxisMaxGroupInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_group || 0) || 0);
   renderAdminChartTitlesEditor();
   renderAdminColorLists();
 }
@@ -732,9 +744,15 @@ async function loadAdminChartsPreviewData() {
 
 async function saveUiColors() {
   ensureAdminUiColors();
-  if (adminPersonalAxisMaxInput) {
-    const axisMax = Number(adminPersonalAxisMaxInput.value || 0);
-    adminUiColors.settings.personal_axis_max = Number.isFinite(axisMax) && axisMax > 0 ? Math.round(axisMax) : 0;
+  const cleanAxisInput = (input) => {
+    const num = Number((input && input.value) || 0);
+    return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
+  };
+  if (adminPersonalAxisMaxMineInput) {
+    adminUiColors.settings.personal_axis_max_mine = cleanAxisInput(adminPersonalAxisMaxMineInput);
+  }
+  if (adminPersonalAxisMaxGroupInput) {
+    adminUiColors.settings.personal_axis_max_group = cleanAxisInput(adminPersonalAxisMaxGroupInput);
   }
   adminUiColors = normalizeUiColors(adminUiColors);
   await fetchJson('/api/ui-colors', {
