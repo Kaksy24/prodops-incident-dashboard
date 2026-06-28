@@ -3241,7 +3241,7 @@ function renderCustomChartCard(def) {
   // --- toggle row: sempre visibile (anche con una sola finestra) ---
   const toggleRow = document.createElement('div');
   toggleRow.className = 'toggle-row';
-  const chartDiv = () => document.getElementById(customChartElementId(def));
+  const getChartDiv = () => document.getElementById(customChartElementId(def));
   windows.forEach((w, i) => {
     const btn = document.createElement('button');
     btn.className = 'range-btn' + (i === 0 ? ' active' : '');
@@ -3252,7 +3252,7 @@ function renderCustomChartCard(def) {
       activeWindow = w;
       toggleRow.querySelectorAll('.range-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
-      const t = chartDiv();
+      const t = getChartDiv();
       if (t) loadCustomChartData(def, t, activeWindow);
     });
     toggleRow.appendChild(btn);
