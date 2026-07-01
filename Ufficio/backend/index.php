@@ -2793,7 +2793,7 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
 
 if ($path === '/api/ping' && $method === 'GET') {
     $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
-    json_response(array('ts' => $ts));
+    json_response(array('ts' => $ts), 200);
 }
 
 json_response(array('error' => 'Endpoint non trovato'), 404);

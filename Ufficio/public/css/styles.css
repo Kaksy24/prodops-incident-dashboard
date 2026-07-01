@@ -1069,19 +1069,14 @@ body.theme-dark .preset-option-card {
 .report-format-btn { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s; }
 .report-format-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .report-format-btn:not(.active):hover { background: var(--hover-bg, rgba(0,0,0,.06)); }
-.report-desc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.report-modal-desc { margin: 0; font-size: .83rem; color: var(--muted); }
-.report-select-all-btn { padding: 3px 10px; border: 1px solid var(--border); border-radius: 5px; background: none; color: var(--muted); font-size: .78rem; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-.report-select-all-btn:hover { background: var(--input-bg); color: var(--text); border-color: var(--brand); }
 .report-modal-section-label { font-size: .82rem; font-weight: 700; color: var(--text); margin: 0 0 6px; }
-.report-period-row { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; }
+.report-preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.report-preset-btn { padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-size: .8rem; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s; }
+.report-preset-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.report-preset-btn:not(.active):hover { background: var(--hover-bg, rgba(0,0,0,.06)); }
+.report-period-row { display: flex; align-items: center; gap: 6px; }
 .report-date-input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-size: .82rem; min-width: 0; }
 .report-period-sep { font-size: .82rem; color: var(--muted); flex-shrink: 0; }
-.report-chart-options { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
-.report-chart-option { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; transition: background .12s; user-select: none; }
-.report-chart-option:hover { background: var(--input-bg); }
-.report-chart-option input[type=checkbox] { width: 15px; height: 15px; margin: 0; cursor: pointer; accent-color: var(--brand); flex-shrink: 0; }
-.report-chart-option span { font-size: .875rem; font-weight: 500; }
 .report-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .chart-type-select {
   width: auto;

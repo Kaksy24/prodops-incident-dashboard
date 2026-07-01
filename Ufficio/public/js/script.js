@@ -923,241 +923,186 @@ function chartModeLabel(mode) {
   return String(mode || '').toUpperCase();
 }
 
-function getDashboardReportModeLabel(chartId) {
-  if (chartId === 'fabYearChart') return chartModeLabel(fabYearMode);
-  if (chartId === 'catYearChart') return chartModeLabel(catYearMode);
-  if (chartId === 'teamYearChart') return chartModeLabel(teamYearMode);
-  if (chartId === 'severityYearChart') return chartModeLabel(severityYearMode);
-  if (chartId === 'userYearChart') return chartModeLabel(userYearMode);
-  return 'Andamento mensile ' + currentYear;
-}
-
-function sumChartStats(stats) {
-  return (Array.isArray(stats) ? stats : []).reduce((sum, item) => sum + Number(item.total || 0), 0);
-}
-
-function percentOf(total, all) {
-  if (!all) return 0;
-  return Math.round((Number(total || 0) / Number(all || 1)) * 100);
-}
-
-function buildGenericChartNarrative(chart) {
-  const stats = Array.isArray(chart.stats) ? chart.stats : [];
-  const total = sumChartStats(stats);
-  if (!stats.length || total <= 0) {
-    return [
-      'Nessun ticket registrato nel periodo selezionato.',
-      'Il grafico non mostra concentrazioni utili da commentare.'
-    ];
-  }
-  const top = stats[0];
-  const second = stats.length > 1 ? stats[1] : null;
-  const tailCount = stats.filter((item) => Number(item.total || 0) === 0).length;
-  const lines = [
-    'Periodo analizzato: ' + chart.modeLabel + '. Totale ticket letti: ' + total + '.',
-    top.label + ' e la voce dominante con ' + top.total + ' ticket (' + percentOf(top.total, total) + '% del totale).'
-  ];
-  if (second) {
-    lines.push('Segue ' + second.label + ' con ' + second.total + ' ticket (' + percentOf(second.total, total) + '%).');
-  }
-  if (tailCount > 0) {
-    lines.push(tailCount + ' voci risultano a zero nel periodo selezionato.');
-  }
-  return lines;
-}
-
-function buildPersonalChartNarrative(chart) {
-  const stats = Array.isArray(chart.stats) ? chart.stats : [];
-  const total = sumChartStats(stats);
-  const latest = stats.length ? stats[stats.length - 1] : null;
-  const previous = stats.length > 1 ? stats[stats.length - 2] : null;
-  const best = stats.reduce((winner, item) => {
-    if (!winner || Number(item.total || 0) > Number(winner.total || 0)) return item;
-    return winner;
-  }, null);
-  const targetMonthly = Number(chart.targetMonthly || 0);
-  const targetAnnual = Number(chart.targetAnnual || 0);
-  const lines = [
-    'Progressivo anno corrente: ' + total + ' ticket. Target annuale impostato: ' + targetAnnual + '.',
-    best ? 'Picco registrato in ' + best.label + ' con ' + best.total + ' ticket.' : 'Nessun picco disponibile da commentare.'
-  ];
-  if (latest) {
-    const delta = previous ? (Number(latest.total || 0) - Number(previous.total || 0)) : Number(latest.total || 0);
-    const trendText = delta > 0 ? 'in crescita di ' + delta : (delta < 0 ? 'in calo di ' + Math.abs(delta) : 'stabile');
-    lines.push('Ultimo mese visibile: ' + latest.label + ' con ' + latest.total + ' ticket, ' + trendText + ' rispetto al mese precedente.');
-  }
-  if (targetMonthly > 0 && latest) {
-    lines.push('Target mensile: ' + targetMonthly + '. Copertura mese corrente: ' + percentOf(latest.total, targetMonthly) + '%.');
-  }
-  return lines;
-}
-
-function buildChartDetailLines(stats, limit) {
-  const rows = (Array.isArray(stats) ? stats : []).slice(0, limit || 6);
-  const total = sumChartStats(rows);
-  if (!rows.length) return ['Nessun dato disponibile.'];
-  return rows.map((item) => item.label + ': ' + item.total + ' ticket' + (total > 0 ? ' (' + percentOf(item.total, total) + '%)' : ''));
-}
-
-function getChartReportMeta(chartId) {
-  if (chartId === 'personalMineChart') {
-    return {
-      username: personalMineChartUsername ? String(personalMineChartUsername.textContent || '').replace(/^[-\s]+/, '') : '',
-      targetMonthly: Number(personalMineTargetMonthlyInput && personalMineTargetMonthlyInput.value ? personalMineTargetMonthlyInput.value : 0),
-      targetAnnual: Number(personalMineTargetAnnualInput && personalMineTargetAnnualInput.value ? personalMineTargetAnnualInput.value : 0)
-    };
-  }
-  if (chartId === 'personalGroupChart') {
-    return {
-      username: personalGroupChartUsername ? String(personalGroupChartUsername.textContent || '').replace(/^[-\s]+/, '') : '',
-      targetMonthly: Number(personalGroupTargetMonthlyInput && personalGroupTargetMonthlyInput.value ? personalGroupTargetMonthlyInput.value : 0),
-      targetAnnual: Number(personalGroupTargetAnnualInput && personalGroupTargetAnnualInput.value ? personalGroupTargetAnnualInput.value : 0)
-    };
-  }
-  return { username: '', targetMonthly: 0, targetAnnual: 0 };
-}
-
-const REPORT_DEFAULT_CHART_MAP = {
-  chartPanelPersonalMine:  { chartId: 'personalMineChart',  label: 'Ticket personali' },
-  chartPanelPersonalGroup: { chartId: 'personalGroupChart', label: 'Ticket gruppo' },
-  chartPanelFab:           { chartId: 'fabYearChart',       label: 'Ticket per FAB' },
-  chartPanelCat:           { chartId: 'catYearChart',       label: 'Ticket per categoria' },
-  chartPanelTeam:          { chartId: 'teamYearChart',      label: 'Ticket per Team' },
-  chartPanelSeverity:      { chartId: 'severityYearChart',  label: 'Severity Ticket' },
-  chartPanelUser:          { chartId: 'userYearChart',      label: 'Ticket per utente' }
-};
-
-// Costruisce le opzioni del report dai grafici realmente visibili in dashboard
-// (rispetta ordine, pannelli nascosti e include i grafici personalizzati).
-function getVisibleReportChartOptions() {
-  const grid = document.getElementById('chartsGrid');
-  const options = [];
-  if (!grid) return options;
-  grid.querySelectorAll(':scope > .panel').forEach(function(panel) {
-    if (!panel.id || panel.style.display === 'none') return;
-    let entry = null;
-    if (panel.id.indexOf('chartPanelCustom_') === 0) {
-      const defId = panel.id.slice('chartPanelCustom_'.length);
-      const def = customCharts.find(function(c) { return String(c.id) === defId; });
-      if (def) entry = { id: customChartElementId(def), label: def.title || 'Grafico personalizzato' };
-    } else if (REPORT_DEFAULT_CHART_MAP[panel.id]) {
-      const map = REPORT_DEFAULT_CHART_MAP[panel.id];
-      const titleEl = panel.querySelector('.panel-heading-row h3, h3');
-      const label = titleEl ? String(titleEl.textContent || '').trim() : '';
-      entry = { id: map.chartId, label: label || map.label };
-    }
-    if (entry) options.push(entry);
-  });
-  return options;
-}
+// ── Report ────────────────────────────────────────────────────────────────────
 
 const REPORT_BTN_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Report';
 
 function openReportModal() {
   const overlay = document.createElement('div');
   overlay.className = 'report-modal-overlay';
-
   const panel = document.createElement('div');
   panel.className = 'report-modal-panel';
 
+  // ── Header ──
   const header = document.createElement('div');
   header.className = 'report-modal-header';
-  const title = document.createElement('h3');
-  title.textContent = 'Genera Report';
+  const titleEl = document.createElement('h3');
+  titleEl.textContent = 'Genera Report';
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'report-modal-close';
   closeBtn.setAttribute('aria-label', 'Chiudi');
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', closeOverlay);
-  header.appendChild(title);
+  header.appendChild(titleEl);
   header.appendChild(closeBtn);
 
-  const formatRow = document.createElement('div');
-  formatRow.className = 'report-format-row';
-  var selectedFormat = 'ppt';
-  var formatBtns = [
-    { value: 'ppt', label: 'PowerPoint (.pptx)' },
-    { value: 'csv', label: 'CSV (.csv)' }
-  ];
-  formatBtns.forEach(function(fb) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'report-format-btn' + (fb.value === 'ppt' ? ' active' : '');
-    btn.textContent = fb.label;
-    btn.dataset.fmt = fb.value;
-    btn.addEventListener('click', function() {
-      selectedFormat = fb.value;
-      formatRow.querySelectorAll('.report-format-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.fmt === fb.value); });
-    });
-    formatRow.appendChild(btn);
-  });
+  // ── Periodo ──
+  var selectedPeriod = 'month';
+  var customFrom = '';
+  var customTo = '';
+
+  function getPeriodDates() {
+    const now = new Date();
+    const pad = function(n) { return String(n).padStart(2, '0'); };
+    const fmt = function(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+    if (selectedPeriod === 'today') {
+      const s = fmt(now);
+      return { from: s, to: s, label: 'Oggi (' + s + ')' };
+    }
+    if (selectedPeriod === 'week') {
+      const day = now.getDay() || 7;
+      const mon = new Date(now); mon.setDate(now.getDate() - day + 1);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return { from: fmt(mon), to: fmt(sun), label: 'Questa settimana' };
+    }
+    if (selectedPeriod === 'month') {
+      const from = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-01';
+      return { from: from, to: fmt(now), label: 'Questo mese' };
+    }
+    if (selectedPeriod === 'quarter') {
+      const q = Math.floor(now.getMonth() / 3);
+      const qFrom = new Date(now.getFullYear(), q * 3, 1);
+      return { from: fmt(qFrom), to: fmt(now), label: 'Questo trimestre' };
+    }
+    if (selectedPeriod === 'year') {
+      return { from: now.getFullYear() + '-01-01', to: fmt(now), label: 'Quest\'anno' };
+    }
+    return { from: customFrom, to: customTo, label: (customFrom || '?') + ' → ' + (customTo || '?') };
+  }
 
   const periodSection = document.createElement('div');
+  periodSection.style.cssText = 'margin-bottom:14px';
   const periodLabel = document.createElement('p');
   periodLabel.className = 'report-modal-section-label';
-  periodLabel.textContent = 'Periodo analisi incident:';
-  const periodRow = document.createElement('div');
-  periodRow.className = 'report-period-row';
+  periodLabel.textContent = 'Periodo';
+  const periodPresets = document.createElement('div');
+  periodPresets.className = 'report-preset-row';
+
+  const presets = [
+    { value: 'today', label: 'Oggi' },
+    { value: 'week', label: 'Settimana' },
+    { value: 'month', label: 'Mese' },
+    { value: 'quarter', label: 'Trimestre' },
+    { value: 'year', label: 'Anno' },
+    { value: 'custom', label: 'Custom' }
+  ];
+
+  const customDateRow = document.createElement('div');
+  customDateRow.className = 'report-period-row';
+  customDateRow.style.cssText = 'display:none;margin-top:8px';
   const dateFromInput = document.createElement('input');
   dateFromInput.type = 'date';
   dateFromInput.className = 'report-date-input';
-  dateFromInput.setAttribute('aria-label', 'Da data');
   const dateToInput = document.createElement('input');
   dateToInput.type = 'date';
   dateToInput.className = 'report-date-input';
-  dateToInput.setAttribute('aria-label', 'A data');
-  const nowDate = new Date();
-  dateFromInput.value = nowDate.getFullYear() + '-01-01';
-  dateToInput.value = nowDate.toISOString().split('T')[0];
+  const nowD = new Date();
+  dateFromInput.value = nowD.getFullYear() + '-01-01';
+  dateToInput.value = nowD.toISOString().split('T')[0];
+  customFrom = dateFromInput.value;
+  customTo = dateToInput.value;
+  dateFromInput.addEventListener('change', function() { customFrom = dateFromInput.value; });
+  dateToInput.addEventListener('change', function() { customTo = dateToInput.value; });
   const periodSep = document.createElement('span');
   periodSep.className = 'report-period-sep';
   periodSep.textContent = '→';
-  periodRow.appendChild(dateFromInput);
-  periodRow.appendChild(periodSep);
-  periodRow.appendChild(dateToInput);
+  customDateRow.appendChild(dateFromInput);
+  customDateRow.appendChild(periodSep);
+  customDateRow.appendChild(dateToInput);
+
+  presets.forEach(function(pr) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-preset-btn' + (pr.value === selectedPeriod ? ' active' : '');
+    btn.textContent = pr.label;
+    btn.dataset.period = pr.value;
+    btn.addEventListener('click', function() {
+      selectedPeriod = pr.value;
+      periodPresets.querySelectorAll('.report-preset-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.period === pr.value);
+      });
+      customDateRow.style.display = pr.value === 'custom' ? 'flex' : 'none';
+    });
+    periodPresets.appendChild(btn);
+  });
+
   periodSection.appendChild(periodLabel);
-  periodSection.appendChild(periodRow);
+  periodSection.appendChild(periodPresets);
+  periodSection.appendChild(customDateRow);
 
-  const descRow = document.createElement('div');
-  descRow.className = 'report-desc-row';
-  const desc = document.createElement('p');
-  desc.className = 'report-modal-desc';
-  desc.textContent = 'Seleziona i grafici da includere nel report.';
-  const selectAllBtn = document.createElement('button');
-  selectAllBtn.type = 'button';
-  selectAllBtn.className = 'report-select-all-btn';
-  selectAllBtn.textContent = 'Deseleziona tutti';
-  selectAllBtn.addEventListener('click', function() {
-    const allChecked = Array.from(optionsList.querySelectorAll('input[type=checkbox]')).every(function(c) { return c.checked; });
-    optionsList.querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = !allChecked; });
-    selectAllBtn.textContent = allChecked ? 'Seleziona tutti' : 'Deseleziona tutti';
+  // ── Analisi per ──
+  var selectedDimension = 'category';
+  const dimSection = document.createElement('div');
+  dimSection.style.cssText = 'margin-bottom:14px';
+  const dimLabel = document.createElement('p');
+  dimLabel.className = 'report-modal-section-label';
+  dimLabel.textContent = 'Analisi per';
+  const dimRow = document.createElement('div');
+  dimRow.className = 'report-format-row';
+  const dimensions = [
+    { value: 'category', label: 'Categoria' },
+    { value: 'incident', label: 'Incident' },
+    { value: 'fab', label: 'FAB' }
+  ];
+  dimensions.forEach(function(d) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-format-btn' + (d.value === selectedDimension ? ' active' : '');
+    btn.textContent = d.label;
+    btn.dataset.dim = d.value;
+    btn.addEventListener('click', function() {
+      selectedDimension = d.value;
+      dimRow.querySelectorAll('.report-format-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.dim === d.value);
+      });
+    });
+    dimRow.appendChild(btn);
   });
-  descRow.appendChild(desc);
-  descRow.appendChild(selectAllBtn);
+  dimSection.appendChild(dimLabel);
+  dimSection.appendChild(dimRow);
 
-  const reportOptions = getVisibleReportChartOptions();
-  if (!reportOptions.length) {
-    alert('Nessun grafico visibile in dashboard da includere nel report.');
-    return;
-  }
-
-  const optionsList = document.createElement('div');
-  optionsList.className = 'report-chart-options';
-  reportOptions.forEach(function(opt) {
-    const lbl = document.createElement('label');
-    lbl.className = 'report-chart-option';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = opt.id;
-    cb.checked = true;
-    const span = document.createElement('span');
-    span.textContent = opt.label;
-    lbl.appendChild(cb);
-    lbl.appendChild(span);
-    optionsList.appendChild(lbl);
+  // ── Formato ──
+  var selectedFormat = 'ppt';
+  const fmtSection = document.createElement('div');
+  fmtSection.style.cssText = 'margin-bottom:20px';
+  const fmtLabel = document.createElement('p');
+  fmtLabel.className = 'report-modal-section-label';
+  fmtLabel.textContent = 'Formato';
+  const fmtRow = document.createElement('div');
+  fmtRow.className = 'report-format-row';
+  const formats = [
+    { value: 'ppt', label: 'PowerPoint (.pptx)' },
+    { value: 'csv', label: 'CSV (.csv)' }
+  ];
+  formats.forEach(function(f) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-format-btn' + (f.value === selectedFormat ? ' active' : '');
+    btn.textContent = f.label;
+    btn.dataset.fmt = f.value;
+    btn.addEventListener('click', function() {
+      selectedFormat = f.value;
+      fmtRow.querySelectorAll('.report-format-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.fmt === f.value);
+      });
+    });
+    fmtRow.appendChild(btn);
   });
+  fmtSection.appendChild(fmtLabel);
+  fmtSection.appendChild(fmtRow);
 
+  // ── Azioni ──
   const actions = document.createElement('div');
   actions.className = 'report-modal-actions';
   const cancelBtn = document.createElement('button');
@@ -1170,62 +1115,36 @@ function openReportModal() {
   confirmBtn.className = 'primary';
   confirmBtn.textContent = 'Genera →';
   confirmBtn.addEventListener('click', function() {
-    const selected = Array.from(optionsList.querySelectorAll('input[type=checkbox]:checked')).map(function(c) { return c.value; });
-    if (!selected.length) { alert('Seleziona almeno un grafico.'); return; }
-    const dateFrom = dateFromInput.value;
-    const dateTo = dateToInput.value;
+    const dates = getPeriodDates();
+    if (!dates.from || !dates.to) { alert('Seleziona un periodo valido.'); return; }
     closeOverlay();
+    const dimLabels = { category: 'Categoria', incident: 'Incident', fab: 'FAB' };
+    const cfg = {
+      dateFrom: dates.from,
+      dateTo: dates.to,
+      periodLabel: dates.label,
+      dimension: selectedDimension,
+      dimensionLabel: dimLabels[selectedDimension] || selectedDimension
+    };
     if (selectedFormat === 'csv') {
-      generateCsvReport(selected);
+      generateCsvReport(cfg).catch(console.error);
     } else {
-      generatePowerPointReport(selected, dateFrom, dateTo).catch(console.error);
+      generatePowerPointReport(cfg).catch(console.error);
     }
   });
   actions.appendChild(cancelBtn);
   actions.appendChild(confirmBtn);
 
   panel.appendChild(header);
-  panel.appendChild(formatRow);
   panel.appendChild(periodSection);
-  panel.appendChild(descRow);
-  panel.appendChild(optionsList);
+  panel.appendChild(dimSection);
+  panel.appendChild(fmtSection);
   panel.appendChild(actions);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
-
   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeOverlay(); });
 
   function closeOverlay() { overlay.remove(); }
-}
-
-function collectDashboardReportCharts(selectedIds) {
-  const chartIds = selectedIds && selectedIds.length ? selectedIds : ['personalMineChart', 'personalGroupChart', 'fabYearChart', 'catYearChart', 'teamYearChart', 'severityYearChart'];
-  return chartIds.map((chartId) => {
-    const payload = getChartExportPayload(chartId) || { title: chartId, stats: [] };
-    const meta = getChartReportMeta(chartId);
-    const chart = {
-      id: chartId,
-      title: payload.title || chartId,
-      stats: Array.isArray(payload.stats) ? payload.stats : [],
-      modeLabel: getDashboardReportModeLabel(chartId),
-      username: meta.username,
-      targetMonthly: meta.targetMonthly,
-      targetAnnual: meta.targetAnnual
-    };
-    chart.narrative = chartId === 'personalMineChart' || chartId === 'personalGroupChart'
-      ? buildPersonalChartNarrative(chart)
-      : buildGenericChartNarrative(chart);
-    chart.detailLines = buildChartDetailLines(chart.stats, chartId.indexOf('personal') === 0 ? 8 : 6);
-    return chart;
-  });
-}
-
-async function buildReportChartImageData(chart) {
-  if (!chart) return '';
-  const blob = (chart.id === 'personalMineChart' || chart.id === 'personalGroupChart')
-    ? await buildPersonalChartPngBlob(chart.title, chart.stats, chart)
-    : await buildChartPngBlob(chart.title, chart.stats);
-  return blobToDataUrl(blob);
 }
 
 function buildTopBarsAnalysis(stats, topN) {
@@ -1252,11 +1171,8 @@ function buildRecurringIncidentsAnalysis(tickets, topN) {
   return recurring.map(function(name) { return name + ' (' + counts[name] + ' occorrenze)'; });
 }
 
-// ── Aggregazione ticket per periodo selezionato ──────────────────────────────
-
 function _buildIncidentCategoryMap(meta) {
   const map = {};
-  // meta.incidents è flat: [{id, name, category_id, category_name}]
   ((meta && meta.incidents) || []).forEach(function(inc) {
     const catName = inc.category_name || '';
     if (!catName) return;
@@ -1266,54 +1182,26 @@ function _buildIncidentCategoryMap(meta) {
   return map;
 }
 
-function aggregatePeriodByMonth(tickets, dateFrom, dateTo) {
-  const MN = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
-  const from = new Date(dateFrom + 'T00:00:00');
-  const to   = new Date(dateTo   + 'T23:59:59');
-  const months = [];
-  const cur = new Date(from.getFullYear(), from.getMonth(), 1);
-  const end = new Date(to.getFullYear(),   to.getMonth(),   1);
-  while (cur <= end) {
-    months.push({ key: cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0'), label: MN[cur.getMonth()], total: 0 });
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  tickets.forEach(function(t) {
-    const d = new Date(t.created_at);
-    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    const entry = months.find(function(m) { return m.key === key; });
-    if (entry) entry.total++;
-  });
-  return months.map(function(m) { return { label: m.label, total: m.total }; });
-}
-
 function _aggregateBy(tickets, keyFn) {
   const counts = {};
   tickets.forEach(function(t) { const k = keyFn(t); counts[k] = (counts[k] || 0) + 1; });
   return Object.keys(counts).map(function(k) { return { label: k, total: counts[k] }; }).sort(function(a, b) { return b.total - a.total; });
 }
 
-function computePeriodStats(chartId, periodTickets, user, meta, dateFrom, dateTo) {
-  if (!periodTickets || !periodTickets.length) return null;
-  if (chartId === 'personalMineChart') {
-    const mine = periodTickets.filter(function(t) { return user && t.owner_user_id === user.id; });
-    return aggregatePeriodByMonth(mine, dateFrom, dateTo);
-  }
-  if (chartId === 'personalGroupChart') {
-    const grp = periodTickets.filter(function(t) { return user && t.owner_team === user.team; });
-    return aggregatePeriodByMonth(grp, dateFrom, dateTo);
-  }
-  if (chartId === 'fabYearChart')      return _aggregateBy(periodTickets, function(t) { return (t.fab || 'N/D').trim(); });
-  if (chartId === 'catYearChart') {
+function aggregateTicketsByDimension(tickets, dimension, meta) {
+  if (dimension === 'category') {
     const catMap = _buildIncidentCategoryMap(meta);
-    return _aggregateBy(periodTickets, function(t) { return catMap[String(t.incident_id)] || catMap[t.incident_name] || 'Altro'; });
+    return _aggregateBy(tickets, function(t) {
+      return catMap[String(t.incident_id)] || catMap[String(t.incident_name || '')] || 'Altro';
+    });
   }
-  if (chartId === 'teamYearChart')     return _aggregateBy(periodTickets, function(t) { return (t.owner_team || 'N/D').trim(); });
-  if (chartId === 'severityYearChart') return _aggregateBy(periodTickets, function(t) { return 'P' + (t.severity != null ? t.severity : '?'); });
-  if (chartId === 'userYearChart')     return _aggregateBy(periodTickets, function(t) { return t.owner_username || String(t.owner_user_id || 'N/D'); });
-  return null;
+  if (dimension === 'incident') {
+    return _aggregateBy(tickets, function(t) { return (t.incident_name || 'N/D').trim(); });
+  }
+  return _aggregateBy(tickets, function(t) { return (t.fab || 'N/D').trim(); });
 }
 
-async function generatePowerPointReport(selectedIds, dateFrom, dateTo) {
+async function generatePowerPointReport(cfg) {
   if (typeof window.PptxGenJS !== 'function') {
     alert('Modulo PowerPoint non disponibile.');
     return;
@@ -1323,204 +1211,132 @@ async function generatePowerPointReport(selectedIds, dateFrom, dateTo) {
     generatePptReportBtn.textContent = 'Generazione...';
   }
   try {
+    let periodTickets = [];
+    try {
+      const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(cfg.dateFrom) + '&to=' + encodeURIComponent(cfg.dateTo) + '&query=');
+      periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
+    } catch (e) { periodTickets = []; }
+
+    const meta = await fetchMeta();
+    const stats = aggregateTicketsByDimension(periodTickets, cfg.dimension, meta);
+    const total = periodTickets.length;
+
     const deck = new window.PptxGenJS();
     deck.layout = 'LAYOUT_WIDE';
-    deck.author = 'ProdOps Dashboard';
-    deck.company = 'ProdOps';
-    deck.subject = 'Report dashboard automatico';
+    deck.title = 'ProdOps Report · ' + cfg.periodLabel;
 
     const isDark = document.body.classList.contains('theme-dark');
-    const slideBg      = isDark ? '0F1B2D' : 'FFFFFF';
-    const headerBg     = isDark ? '0C4A6E' : '0C5F8C';
-    const headerMuted  = isDark ? 'A5C8E1' : 'BFE0F5';
-    const panelBg      = isDark ? '162236' : 'EFF6FC';
-    const borderColor  = isDark ? '253A52' : 'C9DCF0';
-    const titleColor   = isDark ? 'E6EEF9' : '111827';
-    const textColor    = isDark ? 'D4E2F0' : '374151';
-    const mutedColor   = isDark ? '9DB1C9' : '6B7280';
-    const accentBlue   = isDark ? '38BDF8' : '0C5F8C';
-    const accentTeal   = isDark ? '2EC4D6' : '0891B2';
-    const accentOrange = isDark ? 'FBBF24' : 'B45309';
-    const footerBg     = isDark ? '0A1422' : 'E2EDF6';
-    const footerText   = isDark ? '4B6580' : '7A96AE';
+    const slideBg     = isDark ? '0F1B2D' : 'FFFFFF';
+    const headerBg    = isDark ? '0C4A6E' : '0C5F8C';
+    const headerMuted = isDark ? 'A5C8E1' : 'BFE0F5';
+    const panelBg     = isDark ? '162236' : 'EFF6FC';
+    const borderColor = isDark ? '253A52' : 'C9DCF0';
+    const titleColor  = isDark ? 'E6EEF9' : '111827';
+    const mutedColor  = isDark ? '9DB1C9' : '6B7280';
+    const accentBlue  = isDark ? '38BDF8' : '0C5F8C';
+    const accentTeal  = isDark ? '2EC4D6' : '0891B2';
+    const accentOrange= isDark ? 'FBBF24' : 'B45309';
+    const footerBg    = isDark ? '0A1422' : 'E2EDF6';
+    const footerText  = isDark ? '4B6580' : '7A96AE';
 
     const createdAt = new Date();
     const fileDate = formatLocalDateStamp(createdAt);
     const generatedLabel = createdAt.toLocaleString('it-IT');
-    const periodLabelStr = (dateFrom && dateTo) ? dateFrom + ' → ' + dateTo : 'Anno corrente';
 
-    // ── Fetch tickets periodo ──
-    let periodTickets = [];
-    if (dateFrom && dateTo) {
-      try {
-        const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(dateFrom) + '&to=' + encodeURIComponent(dateTo) + '&query=');
-        periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
-      } catch (e) { periodTickets = []; }
-    }
-
-    // ── Carica meta se necessario ──
-    if (!_metaCache) {
-      try { _metaCache = await fetchJson('/api/stats/meta'); } catch (e) { _metaCache = { categories: [], incidents: [] }; }
-    }
-
-    // ── Raccogli grafici e sovrapponi stats del periodo ──
-    const charts = collectDashboardReportCharts(selectedIds);
-    charts.forEach(function(chart) {
-      const ps = computePeriodStats(chart.id, periodTickets, currentUser, _metaCache, dateFrom, dateTo);
-      if (ps && ps.length) {
-        chart.displayStats = ps;
-        const pc = Object.assign({}, chart, { stats: ps, modeLabel: 'Periodo: ' + periodLabelStr });
-        chart.displayNarrative = (chart.id === 'personalMineChart' || chart.id === 'personalGroupChart')
-          ? buildPersonalChartNarrative(pc) : buildGenericChartNarrative(pc);
-      } else {
-        chart.displayStats = chart.stats;
-        chart.displayNarrative = chart.narrative;
-      }
-    });
-
-    const personalMine  = charts.find(function(c) { return c.id === 'personalMineChart'; });
-    const personalGroup = charts.find(function(c) { return c.id === 'personalGroupChart'; });
-    const categoryChart = charts.find(function(c) { return c.id === 'catYearChart'; });
-    const teamChart     = charts.find(function(c) { return c.id === 'teamYearChart'; });
-    const severityChart = charts.find(function(c) { return c.id === 'severityYearChart'; });
-
-    deck.title = 'ProdOps Report · ' + periodLabelStr;
-
-    const totalSlides = charts.length + 1;
-
-    // ── Helper footer ──
-    function addSlideFooter(slide, pageNum) {
+    function addFooter(slide, n, tot) {
       slide.addShape('rect', { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: footerBg }, line: { color: footerBg } });
       slide.addText(
-        'ProdOps Dashboard  ·  Periodo: ' + periodLabelStr +
-        (currentUser && currentUser.username ? '  ·  Generato da: ' + currentUser.username : '') +
+        'ProdOps Dashboard  ·  ' + cfg.periodLabel +
+        (currentUser && currentUser.username ? '  ·  ' + currentUser.username : '') +
         '  ·  ' + generatedLabel,
         { x: 0.25, y: 7.22, w: 11.8, h: 0.28, fontSize: 7, color: footerText, valign: 'middle' }
       );
-      slide.addText(pageNum + ' / ' + totalSlides, { x: 12.7, y: 7.22, w: 0.4, h: 0.28, fontSize: 7, color: footerText, valign: 'middle', align: 'right' });
+      slide.addText(n + ' / ' + tot, { x: 12.7, y: 7.22, w: 0.4, h: 0.28, fontSize: 7, color: footerText, valign: 'middle', align: 'right' });
     }
 
-    // ────────────────────────────────────────────────────────────
-    //  COVER
-    // ────────────────────────────────────────────────────────────
+    // ── SLIDE 1: COVER ──
     const cover = deck.addSlide();
     cover.background = { color: slideBg };
-
-    // Pannello sinistro blu
     cover.addShape('rect', { x: 0, y: 0, w: 4.5, h: 7.5, fill: { color: headerBg }, line: { color: headerBg } });
     cover.addShape('rect', { x: 4.5, y: 0, w: 0.035, h: 7.5, fill: { color: accentTeal }, line: { color: accentTeal } });
-
     cover.addText('PRODOPS', { x: 0.4, y: 0.9, w: 3.7, h: 0.65, fontSize: 32, bold: true, color: 'FFFFFF', charSpacing: 4 });
     cover.addText('Report Dashboard', { x: 0.4, y: 1.6, w: 3.7, h: 0.38, fontSize: 15, color: headerMuted });
     cover.addShape('rect', { x: 0.4, y: 2.18, w: 3.0, h: 0.025, fill: { color: headerMuted }, line: { color: headerMuted } });
-
-    cover.addText('PERIODO ANALIZZATO', { x: 0.4, y: 2.45, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-    cover.addText(periodLabelStr, { x: 0.4, y: 2.7, w: 3.7, h: 0.38, fontSize: 14, color: 'FFFFFF', bold: true });
-
-    cover.addText('GENERATO IL', { x: 0.4, y: 3.32, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-    cover.addText(generatedLabel, { x: 0.4, y: 3.57, w: 3.7, h: 0.3, fontSize: 10.5, color: 'FFFFFF' });
-
+    cover.addText('PERIODO', { x: 0.4, y: 2.45, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+    cover.addText(cfg.periodLabel, { x: 0.4, y: 2.7, w: 3.7, h: 0.38, fontSize: 13, color: 'FFFFFF', bold: true });
+    cover.addText('ANALISI PER', { x: 0.4, y: 3.22, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+    cover.addText(cfg.dimensionLabel, { x: 0.4, y: 3.47, w: 3.7, h: 0.38, fontSize: 13, color: 'FFFFFF', bold: true });
+    cover.addText('GENERATO IL', { x: 0.4, y: 3.99, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+    cover.addText(generatedLabel, { x: 0.4, y: 4.24, w: 3.7, h: 0.3, fontSize: 10.5, color: 'FFFFFF' });
     if (currentUser && currentUser.username) {
-      cover.addText('UTENTE', { x: 0.4, y: 4.05, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-      cover.addText(currentUser.username, { x: 0.4, y: 4.3, w: 3.7, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+      cover.addText('UTENTE', { x: 0.4, y: 4.72, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+      cover.addText(currentUser.username, { x: 0.4, y: 4.97, w: 3.7, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
     }
+    cover.addText('Ticket nel periodo: ' + total, { x: 0.4, y: 6.7, w: 3.7, h: 0.28, fontSize: 9.5, color: headerMuted, italic: true });
 
-    cover.addText('Ticket nel periodo: ' + periodTickets.length, {
-      x: 0.4, y: 6.7, w: 3.7, h: 0.28, fontSize: 9.5, color: headerMuted, italic: true
-    });
-
-    // KPI cards
     cover.addText('RIEPILOGO ESECUTIVO', { x: 4.85, y: 0.45, w: 8.2, h: 0.3, fontSize: 8.5, color: accentBlue, bold: true, charSpacing: 1.5 });
     cover.addShape('rect', { x: 4.85, y: 0.82, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
-
-    const mineDs     = personalMine  ? (personalMine.displayStats  || personalMine.stats)  : [];
-    const groupDs    = personalGroup ? (personalGroup.displayStats || personalGroup.stats) : [];
-    const catDs      = categoryChart ? (categoryChart.displayStats || categoryChart.stats) : [];
-    const teamDs     = teamChart     ? (teamChart.displayStats     || teamChart.stats)     : [];
-    const sevDs      = severityChart ? (severityChart.displayStats || severityChart.stats) : [];
-    const kpis = [
-      { label: 'Ticket personali nel periodo', value: personalMine ? sumChartStats(mineDs)  + ' / target ' + Number(personalMine.targetAnnual  || 0) : 'n.d.' },
-      { label: 'Ticket gruppo nel periodo',    value: personalGroup ? sumChartStats(groupDs) + ' / target ' + Number(personalGroup.targetAnnual || 0) : 'n.d.' },
-      { label: 'Categoria dominante',  value: catDs[0]  ? catDs[0].label  + ' (' + catDs[0].total  + ' ticket)' : 'n.d.' },
-      { label: 'Team più carico',      value: teamDs[0] ? teamDs[0].label + ' (' + teamDs[0].total + ' ticket)' : 'n.d.' },
-      { label: 'Severity prevalente',  value: sevDs[0]  ? sevDs[0].label  + ' (' + sevDs[0].total  + ' casi)'  : 'n.d.' },
-    ];
-    kpis.forEach(function(kpi, idx) {
+    const kpiData = [{ label: 'Ticket totali nel periodo', value: String(total) }]
+      .concat(stats.slice(0, 3).map(function(s, i) {
+        return { label: (i + 1) + '° per ' + cfg.dimensionLabel, value: s.label + ' (' + s.total + ' ticket)' };
+      }));
+    if (stats.length > 3) kpiData.push({ label: 'Voci distinte analizzate', value: String(stats.length) });
+    kpiData.forEach(function(kpi, idx) {
       const ky = 1.0 + idx * 0.56;
       cover.addShape('rect', { x: 4.85, y: ky, w: 8.2, h: 0.5, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
       cover.addText(kpi.label.toUpperCase(), { x: 5.05, y: ky + 0.04, w: 7.9, h: 0.18, fontSize: 7, color: mutedColor, bold: true, charSpacing: 0.5 });
       cover.addText(kpi.value, { x: 5.05, y: ky + 0.24, w: 7.9, h: 0.22, fontSize: 11, color: titleColor, bold: true });
     });
-
-    // Problematiche ricorrenti cover
-    const recY = 1.0 + kpis.length * 0.56 + 0.22;
-    cover.addText('PROBLEMATICHE RICORRENTI NEL PERIODO', { x: 4.85, y: recY, w: 8.2, h: 0.28, fontSize: 8.5, color: accentOrange, bold: true, charSpacing: 1.5 });
+    const recY = 1.0 + kpiData.length * 0.56 + 0.22;
+    cover.addText('PROBLEMATICHE RICORRENTI', { x: 4.85, y: recY, w: 8.2, h: 0.28, fontSize: 8.5, color: accentOrange, bold: true, charSpacing: 1.5 });
     cover.addShape('rect', { x: 4.85, y: recY + 0.3, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
-    const topRec = buildRecurringIncidentsAnalysis(periodTickets, 5);
-    topRec.forEach(function(line, idx) {
+    buildRecurringIncidentsAnalysis(periodTickets, 5).forEach(function(line, idx) {
       cover.addText((idx + 1) + '.   ' + line, { x: 4.85, y: recY + 0.42 + idx * 0.3, w: 8.2, h: 0.26, fontSize: 10, color: titleColor });
     });
+    addFooter(cover, 1, 2);
 
-    addSlideFooter(cover, 1);
+    // ── SLIDE 2: ANALISI ──
+    const slide = deck.addSlide();
+    slide.background = { color: slideBg };
+    const slideTitle = 'Ticket per ' + cfg.dimensionLabel + ' · ' + cfg.periodLabel;
+    slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
+    slide.addText(slideTitle.toUpperCase(), { x: 0.25, y: 0, w: 9.5, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 12, valign: 'middle', charSpacing: 1 });
+    slide.addText(String(total) + ' ticket totali', { x: 9.8, y: 0, w: 3.3, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
+    slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
+    slide.addShape('rect', { x: 7.88, y: 0.55, w: 5.45, h: 6.65, fill: { color: panelBg }, line: { color: panelBg } });
+    slide.addShape('rect', { x: 7.88, y: 0.55, w: 0.025, h: 6.65, fill: { color: borderColor }, line: { color: borderColor } });
 
-    // ────────────────────────────────────────────────────────────
-    //  SLIDE GRAFICI
-    // ────────────────────────────────────────────────────────────
-    for (let i = 0; i < charts.length; i++) {
-      const chart = charts[i];
-      const slide = deck.addSlide();
-      slide.background = { color: slideBg };
-
-      // Header band
-      slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
-      slide.addText(chart.title.toUpperCase(), { x: 0.25, y: 0, w: 8.5, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 13, valign: 'middle', charSpacing: 1 });
-      slide.addText('Periodo: ' + periodLabelStr, { x: 9.0, y: 0, w: 4.1, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
-      // Accent line under header
-      slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
-
-      // Right panel background
-      slide.addShape('rect', { x: 7.88, y: 0.55, w: 5.45, h: 6.65, fill: { color: panelBg }, line: { color: panelBg } });
-      // Divider line
-      slide.addShape('rect', { x: 7.88, y: 0.55, w: 0.025, h: 6.65, fill: { color: borderColor }, line: { color: borderColor } });
-
-      // Immagine grafico con stats del periodo
-      const imageData = await buildReportChartImageData(Object.assign({}, chart, { stats: chart.displayStats }));
-      if (imageData) {
-        slide.addImage({ data: imageData, x: 0.22, y: 0.64, w: 7.52, h: 5.52 });
-      }
-
-      // ── SOMMARIO ──
-      slide.addText('SOMMARIO', { x: 8.05, y: 0.66, w: 5.1, h: 0.24, fontSize: 7.5, color: accentBlue, bold: true, charSpacing: 1.5 });
-      slide.addText(chart.displayNarrative.slice(0, 3).map(function(l) { return { text: l }; }), {
-        x: 8.05, y: 0.94, w: 5.1, h: 1.22, fontSize: 9.5, color: textColor, breakLine: true, bullet: { indent: 12 }, lineSpacingMultiple: 1.25
-      });
-
-      // Separatore 1
-      slide.addShape('rect', { x: 8.05, y: 2.21, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
-
-      // ── PICCHI PIÙ ALTI ──
-      slide.addText('PICCHI PIÙ ALTI', { x: 8.05, y: 2.28, w: 5.1, h: 0.24, fontSize: 7.5, color: accentTeal, bold: true, charSpacing: 1.5 });
-      const topBars = buildTopBarsAnalysis(chart.displayStats, 5);
-      topBars.forEach(function(bar, bi) {
-        slide.addText((bi + 1) + '.  ' + bar, { x: 8.05, y: 2.55 + bi * 0.28, w: 5.1, h: 0.26, fontSize: 9.5, color: titleColor });
-      });
-
-      // Separatore 2
-      slide.addShape('rect', { x: 8.05, y: 4.02, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
-
-      // ── PROBLEMATICHE RICORRENTI ──
-      slide.addText('PROBLEMATICHE RICORRENTI', { x: 8.05, y: 4.09, w: 5.1, h: 0.24, fontSize: 7.5, color: accentOrange, bold: true, charSpacing: 1.5 });
-      const recurring = buildRecurringIncidentsAnalysis(periodTickets, 7);
-      recurring.forEach(function(rec, ri) {
-        slide.addText('·  ' + rec, { x: 8.05, y: 4.36 + ri * 0.28, w: 5.1, h: 0.26, fontSize: 9.5, color: titleColor });
-      });
-
-      addSlideFooter(slide, i + 2);
+    const imgBlob = await buildChartPngBlob('Ticket per ' + cfg.dimensionLabel, stats.slice(0, 15));
+    if (imgBlob) {
+      const imgData = await blobToDataUrl(imgBlob);
+      slide.addImage({ data: imgData, x: 0.22, y: 0.64, w: 7.52, h: 5.52 });
     }
 
+    slide.addText('RANKING', { x: 8.05, y: 0.66, w: 5.1, h: 0.24, fontSize: 7.5, color: accentBlue, bold: true, charSpacing: 1.5 });
+    stats.slice(0, 12).forEach(function(s, i) {
+      const y = 0.95 + i * 0.45;
+      if (y > 6.9) return;
+      const pct = total > 0 ? ' · ' + Math.round((s.total / total) * 100) + '%' : '';
+      slide.addText((i + 1) + '.  ' + s.label + ': ' + s.total + ' ticket' + pct, {
+        x: 8.05, y: y, w: 5.1, h: 0.38, fontSize: 9, color: i < 3 ? titleColor : mutedColor, bold: i < 3
+      });
+    });
+
+    const sepY = 0.95 + Math.min(12, stats.length) * 0.45 + 0.1;
+    if (sepY < 6.5) {
+      slide.addShape('rect', { x: 8.05, y: sepY, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
+      slide.addText('INCIDENT PIÙ FREQUENTI', { x: 8.05, y: sepY + 0.07, w: 5.1, h: 0.24, fontSize: 7.5, color: accentOrange, bold: true, charSpacing: 1.5 });
+      buildRecurringIncidentsAnalysis(periodTickets, 4).forEach(function(rec, ri) {
+        const ry = sepY + 0.38 + ri * 0.28;
+        if (ry > 7.0) return;
+        slide.addText('·  ' + rec, { x: 8.05, y: ry, w: 5.1, h: 0.26, fontSize: 9, color: titleColor });
+      });
+    }
+    addFooter(slide, 2, 2);
+
     await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     alert('Impossibile generare il report PowerPoint.');
   } finally {
     if (generatePptReportBtn) {
@@ -1530,19 +1346,30 @@ async function generatePowerPointReport(selectedIds, dateFrom, dateTo) {
   }
 }
 
-function generateCsvReport(selectedIds) {
-  const charts = collectDashboardReportCharts(selectedIds);
+async function generateCsvReport(cfg) {
+  let periodTickets = [];
+  try {
+    const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(cfg.dateFrom) + '&to=' + encodeURIComponent(cfg.dateTo) + '&query=');
+    periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
+  } catch (e) { periodTickets = []; }
+
+  const meta = await fetchMeta();
+  const stats = aggregateTicketsByDimension(periodTickets, cfg.dimension, meta);
+  const total = periodTickets.length;
   const stamp = formatLocalDateStamp(new Date());
-  const sections = [];
-  charts.forEach(function(chart) {
-    sections.push('"' + (chart.title || chart.id).replace(/"/g, '""') + '"');
-    sections.push('Etichetta,Totale');
-    (chart.stats || []).forEach(function(item) {
-      sections.push('"' + String(item.label || '').replace(/"/g, '""') + '",' + Number(item.total || 0));
-    });
-    sections.push('');
+
+  const rows = [
+    '"Report ProdOps – Per ' + cfg.dimensionLabel + ' – ' + cfg.periodLabel + '"',
+    '"Ticket totali nel periodo: ' + total + '"',
+    '',
+    'Rank,Etichetta,Ticket,% sul totale'
+  ];
+  stats.forEach(function(item, i) {
+    const pct = total > 0 ? (Math.round((item.total / total) * 1000) / 10).toFixed(1) : '0.0';
+    rows.push((i + 1) + ',"' + String(item.label || '').replace(/"/g, '""') + '",' + item.total + ',' + pct + '%');
   });
-  triggerDownload('ProdOps_Report_' + stamp + '.csv', sections.join('\r\n'), 'text/csv;charset=utf-8');
+
+  triggerDownload('ProdOps_Report_' + stamp + '.csv', rows.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 async function exportChart(targetId, format) {
@@ -3445,6 +3272,26 @@ function applyDefaultPanelVisibility() {
   });
 }
 
+async function resetDashboardLayout() {
+  hiddenDefaultPanels = [];
+  panelOrder = [];
+  const grid = document.getElementById('chartsGrid');
+  const addCard = document.getElementById('addChartCard');
+  if (grid) {
+    // Ripristina ordine DOM: prima i default, poi i custom, poi il card +
+    DEFAULT_CHART_PANELS.forEach(function(def) {
+      const el = document.getElementById(def.id);
+      if (el) {
+        el.style.display = '';
+        if (addCard) grid.insertBefore(el, addCard); else grid.appendChild(el);
+      }
+    });
+    // I pannelli custom rimangono dove sono (non vengono toccati)
+    if (addCard) grid.appendChild(addCard);
+  }
+  await saveUserCharts();
+}
+
 function setupDefaultPanelHideButtons() {
   DEFAULT_CHART_PANELS.forEach((def) => {
     const panel = document.getElementById(def.id);
@@ -3716,20 +3563,32 @@ function openAddChartModal() {
   const defAddBtn = document.createElement('button');
   defAddBtn.type = 'button';
   defAddBtn.className = 'primary';
-  defAddBtn.textContent = 'Ripristina';
+  defAddBtn.textContent = 'Ripristina grafico';
   defAddBtn.addEventListener('click', async () => {
     const panelId = defSelect.value;
     if (!panelId) { alert('Seleziona un grafico dalla lista.'); return; }
     hiddenDefaultPanels = hiddenDefaultPanels.filter((id) => id !== panelId);
-    const panel = document.getElementById(panelId);
-    if (panel) panel.style.display = '';
+    const el = document.getElementById(panelId);
+    if (el) el.style.display = '';
     closeOverlay();
     await saveUserCharts();
+  });
+
+  const resetAllBtn = document.createElement('button');
+  resetAllBtn.type = 'button';
+  resetAllBtn.className = 'secondary';
+  resetAllBtn.style.cssText = 'margin-top:8px;width:100%';
+  resetAllBtn.textContent = '↺ Ripristina tutto (posizioni e grafici iniziali)';
+  resetAllBtn.addEventListener('click', async () => {
+    if (!confirm('Ripristinare tutti i grafici alle posizioni iniziali?')) return;
+    closeOverlay();
+    await resetDashboardLayout();
   });
 
   defWrap.appendChild(defSelect);
   defWrap.appendChild(defAddBtn);
   defSection.appendChild(defWrap);
+  defSection.appendChild(resetAllBtn);
 
   // --- Divisore ---
   const divider = document.createElement('div');
