@@ -86,6 +86,7 @@ const incidentIdToCategoryMap = {};
 const incidentIdToPresetMap = {};
 const incidentIdToSeverityMap = {};
 const incidentIdToFabDefaultMap = {};
+const incidentIdToNameModeMap = {};
 const incidentPresetMap = {};
 const incidentSeverityMap = {};
 const incidentFabDefaultMap = {};
@@ -326,6 +327,9 @@ function getIncidentBaseName(incidentId) {
 }
 
 function isGenericIncidentId(incidentId) {
+  const id = String(Number(incidentId || 0));
+  if (incidentIdToNameModeMap[id] === 'custom') return true;
+  if (incidentIdToNameModeMap[id] === 'default') return false;
   return isGenericIncidentName(getIncidentBaseName(incidentId));
 }
 
@@ -1089,9 +1093,48 @@ function openReportModal() {
     formatRow.appendChild(btn);
   });
 
+  const periodSection = document.createElement('div');
+  const periodLabel = document.createElement('p');
+  periodLabel.className = 'report-modal-section-label';
+  periodLabel.textContent = 'Periodo analisi incident:';
+  const periodRow = document.createElement('div');
+  periodRow.className = 'report-period-row';
+  const dateFromInput = document.createElement('input');
+  dateFromInput.type = 'date';
+  dateFromInput.className = 'report-date-input';
+  dateFromInput.setAttribute('aria-label', 'Da data');
+  const dateToInput = document.createElement('input');
+  dateToInput.type = 'date';
+  dateToInput.className = 'report-date-input';
+  dateToInput.setAttribute('aria-label', 'A data');
+  const nowDate = new Date();
+  dateFromInput.value = nowDate.getFullYear() + '-01-01';
+  dateToInput.value = nowDate.toISOString().split('T')[0];
+  const periodSep = document.createElement('span');
+  periodSep.className = 'report-period-sep';
+  periodSep.textContent = '→';
+  periodRow.appendChild(dateFromInput);
+  periodRow.appendChild(periodSep);
+  periodRow.appendChild(dateToInput);
+  periodSection.appendChild(periodLabel);
+  periodSection.appendChild(periodRow);
+
+  const descRow = document.createElement('div');
+  descRow.className = 'report-desc-row';
   const desc = document.createElement('p');
   desc.className = 'report-modal-desc';
   desc.textContent = 'Seleziona i grafici da includere nel report.';
+  const selectAllBtn = document.createElement('button');
+  selectAllBtn.type = 'button';
+  selectAllBtn.className = 'report-select-all-btn';
+  selectAllBtn.textContent = 'Deseleziona tutti';
+  selectAllBtn.addEventListener('click', function() {
+    const allChecked = Array.from(optionsList.querySelectorAll('input[type=checkbox]')).every(function(c) { return c.checked; });
+    optionsList.querySelectorAll('input[type=checkbox]').forEach(function(c) { c.checked = !allChecked; });
+    selectAllBtn.textContent = allChecked ? 'Seleziona tutti' : 'Deseleziona tutti';
+  });
+  descRow.appendChild(desc);
+  descRow.appendChild(selectAllBtn);
 
   const reportOptions = getVisibleReportChartOptions();
   if (!reportOptions.length) {
@@ -1129,11 +1172,13 @@ function openReportModal() {
   confirmBtn.addEventListener('click', function() {
     const selected = Array.from(optionsList.querySelectorAll('input[type=checkbox]:checked')).map(function(c) { return c.value; });
     if (!selected.length) { alert('Seleziona almeno un grafico.'); return; }
+    const dateFrom = dateFromInput.value;
+    const dateTo = dateToInput.value;
     closeOverlay();
     if (selectedFormat === 'csv') {
       generateCsvReport(selected);
     } else {
-      generatePowerPointReport(selected).catch(console.error);
+      generatePowerPointReport(selected, dateFrom, dateTo).catch(console.error);
     }
   });
   actions.appendChild(cancelBtn);
@@ -1141,7 +1186,8 @@ function openReportModal() {
 
   panel.appendChild(header);
   panel.appendChild(formatRow);
-  panel.appendChild(desc);
+  panel.appendChild(periodSection);
+  panel.appendChild(descRow);
   panel.appendChild(optionsList);
   panel.appendChild(actions);
   overlay.appendChild(panel);
@@ -1182,7 +1228,92 @@ async function buildReportChartImageData(chart) {
   return blobToDataUrl(blob);
 }
 
-async function generatePowerPointReport(selectedIds) {
+function buildTopBarsAnalysis(stats, topN) {
+  if (!stats || !stats.length) return ['Dati non disponibili.'];
+  const sorted = stats.slice().sort(function(a, b) { return (b.total || 0) - (a.total || 0); });
+  return sorted.slice(0, topN).map(function(s) {
+    return (s.label || '—') + ': ' + (s.total || 0) + ' ticket';
+  });
+}
+
+function buildRecurringIncidentsAnalysis(tickets, topN) {
+  if (!tickets || !tickets.length) return ['Nessun ticket nel periodo selezionato.'];
+  const counts = {};
+  tickets.forEach(function(t) {
+    const name = (t.incident_name || '').trim();
+    if (!name) return;
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  const recurring = Object.keys(counts)
+    .filter(function(name) { return counts[name] > 1; })
+    .sort(function(a, b) { return counts[b] - counts[a]; })
+    .slice(0, topN);
+  if (!recurring.length) return ['Nessuna problematica ricorrente nel periodo.'];
+  return recurring.map(function(name) { return name + ' (' + counts[name] + ' occorrenze)'; });
+}
+
+// ── Aggregazione ticket per periodo selezionato ──────────────────────────────
+
+function _buildIncidentCategoryMap(meta) {
+  const map = {};
+  // meta.incidents è flat: [{id, name, category_id, category_name}]
+  ((meta && meta.incidents) || []).forEach(function(inc) {
+    const catName = inc.category_name || '';
+    if (!catName) return;
+    if (inc.id)   map[String(inc.id)]   = catName;
+    if (inc.name) map[String(inc.name)] = catName;
+  });
+  return map;
+}
+
+function aggregatePeriodByMonth(tickets, dateFrom, dateTo) {
+  const MN = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const from = new Date(dateFrom + 'T00:00:00');
+  const to   = new Date(dateTo   + 'T23:59:59');
+  const months = [];
+  const cur = new Date(from.getFullYear(), from.getMonth(), 1);
+  const end = new Date(to.getFullYear(),   to.getMonth(),   1);
+  while (cur <= end) {
+    months.push({ key: cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0'), label: MN[cur.getMonth()], total: 0 });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  tickets.forEach(function(t) {
+    const d = new Date(t.created_at);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const entry = months.find(function(m) { return m.key === key; });
+    if (entry) entry.total++;
+  });
+  return months.map(function(m) { return { label: m.label, total: m.total }; });
+}
+
+function _aggregateBy(tickets, keyFn) {
+  const counts = {};
+  tickets.forEach(function(t) { const k = keyFn(t); counts[k] = (counts[k] || 0) + 1; });
+  return Object.keys(counts).map(function(k) { return { label: k, total: counts[k] }; }).sort(function(a, b) { return b.total - a.total; });
+}
+
+function computePeriodStats(chartId, periodTickets, user, meta, dateFrom, dateTo) {
+  if (!periodTickets || !periodTickets.length) return null;
+  if (chartId === 'personalMineChart') {
+    const mine = periodTickets.filter(function(t) { return user && t.owner_user_id === user.id; });
+    return aggregatePeriodByMonth(mine, dateFrom, dateTo);
+  }
+  if (chartId === 'personalGroupChart') {
+    const grp = periodTickets.filter(function(t) { return user && t.owner_team === user.team; });
+    return aggregatePeriodByMonth(grp, dateFrom, dateTo);
+  }
+  if (chartId === 'fabYearChart')      return _aggregateBy(periodTickets, function(t) { return (t.fab || 'N/D').trim(); });
+  if (chartId === 'catYearChart') {
+    const catMap = _buildIncidentCategoryMap(meta);
+    return _aggregateBy(periodTickets, function(t) { return catMap[String(t.incident_id)] || catMap[t.incident_name] || 'Altro'; });
+  }
+  if (chartId === 'teamYearChart')     return _aggregateBy(periodTickets, function(t) { return (t.owner_team || 'N/D').trim(); });
+  if (chartId === 'severityYearChart') return _aggregateBy(periodTickets, function(t) { return 'P' + (t.severity != null ? t.severity : '?'); });
+  if (chartId === 'userYearChart')     return _aggregateBy(periodTickets, function(t) { return t.owner_username || String(t.owner_user_id || 'N/D'); });
+  return null;
+}
+
+async function generatePowerPointReport(selectedIds, dateFrom, dateTo) {
   if (typeof window.PptxGenJS !== 'function') {
     alert('Modulo PowerPoint non disponibile.');
     return;
@@ -1192,69 +1323,199 @@ async function generatePowerPointReport(selectedIds) {
     generatePptReportBtn.textContent = 'Generazione...';
   }
   try {
-    const charts = collectDashboardReportCharts(selectedIds);
     const deck = new window.PptxGenJS();
-    const isDark = document.body.classList.contains('theme-dark');
-    const bgColor = isDark ? '101A2A' : 'F4F8FC';
-    const titleColor = isDark ? 'E6EEF9' : '17202F';
-    const textColor = isDark ? 'D4E2F0' : '344256';
-    const accentColor = isDark ? '2EC4D6' : '0C5F8C';
-    const mutedColor = isDark ? '9DB1C9' : '5C6B7D';
-    const createdAt = new Date();
-    const fileDate = formatLocalDateStamp(createdAt);
-    const generatedLabel = createdAt.toLocaleString('it-IT');
-    const personalMine   = charts.find(function(c) { return c.id === 'personalMineChart'; })  || charts[0];
-    const personalGroup  = charts.find(function(c) { return c.id === 'personalGroupChart'; }) || charts[0];
-    const categoryChart  = charts.find(function(c) { return c.id === 'catYearChart'; });
-    const teamChart      = charts.find(function(c) { return c.id === 'teamYearChart'; });
-    const severityChart  = charts.find(function(c) { return c.id === 'severityYearChart'; });
-
     deck.layout = 'LAYOUT_WIDE';
     deck.author = 'ProdOps Dashboard';
     deck.company = 'ProdOps';
     deck.subject = 'Report dashboard automatico';
-    deck.title = 'Report Dashboard ProdOps ' + fileDate;
 
+    const isDark = document.body.classList.contains('theme-dark');
+    const slideBg      = isDark ? '0F1B2D' : 'FFFFFF';
+    const headerBg     = isDark ? '0C4A6E' : '0C5F8C';
+    const headerMuted  = isDark ? 'A5C8E1' : 'BFE0F5';
+    const panelBg      = isDark ? '162236' : 'EFF6FC';
+    const borderColor  = isDark ? '253A52' : 'C9DCF0';
+    const titleColor   = isDark ? 'E6EEF9' : '111827';
+    const textColor    = isDark ? 'D4E2F0' : '374151';
+    const mutedColor   = isDark ? '9DB1C9' : '6B7280';
+    const accentBlue   = isDark ? '38BDF8' : '0C5F8C';
+    const accentTeal   = isDark ? '2EC4D6' : '0891B2';
+    const accentOrange = isDark ? 'FBBF24' : 'B45309';
+    const footerBg     = isDark ? '0A1422' : 'E2EDF6';
+    const footerText   = isDark ? '4B6580' : '7A96AE';
+
+    const createdAt = new Date();
+    const fileDate = formatLocalDateStamp(createdAt);
+    const generatedLabel = createdAt.toLocaleString('it-IT');
+    const periodLabelStr = (dateFrom && dateTo) ? dateFrom + ' → ' + dateTo : 'Anno corrente';
+
+    // ── Fetch tickets periodo ──
+    let periodTickets = [];
+    if (dateFrom && dateTo) {
+      try {
+        const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(dateFrom) + '&to=' + encodeURIComponent(dateTo) + '&query=');
+        periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
+      } catch (e) { periodTickets = []; }
+    }
+
+    // ── Carica meta se necessario ──
+    if (!_metaCache) {
+      try { _metaCache = await fetchJson('/api/stats/meta'); } catch (e) { _metaCache = { categories: [], incidents: [] }; }
+    }
+
+    // ── Raccogli grafici e sovrapponi stats del periodo ──
+    const charts = collectDashboardReportCharts(selectedIds);
+    charts.forEach(function(chart) {
+      const ps = computePeriodStats(chart.id, periodTickets, currentUser, _metaCache, dateFrom, dateTo);
+      if (ps && ps.length) {
+        chart.displayStats = ps;
+        const pc = Object.assign({}, chart, { stats: ps, modeLabel: 'Periodo: ' + periodLabelStr });
+        chart.displayNarrative = (chart.id === 'personalMineChart' || chart.id === 'personalGroupChart')
+          ? buildPersonalChartNarrative(pc) : buildGenericChartNarrative(pc);
+      } else {
+        chart.displayStats = chart.stats;
+        chart.displayNarrative = chart.narrative;
+      }
+    });
+
+    const personalMine  = charts.find(function(c) { return c.id === 'personalMineChart'; });
+    const personalGroup = charts.find(function(c) { return c.id === 'personalGroupChart'; });
+    const categoryChart = charts.find(function(c) { return c.id === 'catYearChart'; });
+    const teamChart     = charts.find(function(c) { return c.id === 'teamYearChart'; });
+    const severityChart = charts.find(function(c) { return c.id === 'severityYearChart'; });
+
+    deck.title = 'ProdOps Report · ' + periodLabelStr;
+
+    const totalSlides = charts.length + 1;
+
+    // ── Helper footer ──
+    function addSlideFooter(slide, pageNum) {
+      slide.addShape('rect', { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: footerBg }, line: { color: footerBg } });
+      slide.addText(
+        'ProdOps Dashboard  ·  Periodo: ' + periodLabelStr +
+        (currentUser && currentUser.username ? '  ·  Generato da: ' + currentUser.username : '') +
+        '  ·  ' + generatedLabel,
+        { x: 0.25, y: 7.22, w: 11.8, h: 0.28, fontSize: 7, color: footerText, valign: 'middle' }
+      );
+      slide.addText(pageNum + ' / ' + totalSlides, { x: 12.7, y: 7.22, w: 0.4, h: 0.28, fontSize: 7, color: footerText, valign: 'middle', align: 'right' });
+    }
+
+    // ────────────────────────────────────────────────────────────
+    //  COVER
+    // ────────────────────────────────────────────────────────────
     const cover = deck.addSlide();
-    cover.background = { color: bgColor };
-    cover.addText('Report Dashboard ProdOps', { x: 0.6, y: 0.5, w: 6.8, h: 0.5, bold: true, fontSize: 24, color: titleColor });
-    cover.addText('Riepilogo completo dei grafici con commento automatico dell\'andamento.', { x: 0.6, y: 1.05, w: 9.4, h: 0.4, fontSize: 11, color: mutedColor });
-    cover.addText('Generato il ' + generatedLabel + (currentUser && currentUser.username ? ' da ' + currentUser.username : ''), { x: 0.6, y: 1.45, w: 5.8, h: 0.3, fontSize: 10, color: textColor });
-    cover.addText([
-      { text: 'Ticket personali YTD: ' + (personalMine ? sumChartStats(personalMine.stats) + ' su target annuo ' + Number(personalMine.targetAnnual || 0) : 'n.d.') },
-      { text: 'Ticket gruppo YTD: ' + (personalGroup ? sumChartStats(personalGroup.stats) + ' su target annuo ' + Number(personalGroup.targetAnnual || 0) : 'n.d.') },
-      { text: 'Categoria dominante: ' + (categoryChart && categoryChart.stats[0] ? categoryChart.stats[0].label + ' (' + categoryChart.stats[0].total + ')' : 'n.d.') },
-      { text: 'Team piu carico: ' + (teamChart && teamChart.stats[0] ? teamChart.stats[0].label + ' (' + teamChart.stats[0].total + ')' : 'n.d.') },
-      { text: 'Severity prevalente: ' + (severityChart && severityChart.stats[0] ? severityChart.stats[0].label + ' (' + severityChart.stats[0].total + ')' : 'n.d.') }
-    ], {
-      x: 0.6, y: 2.1, w: 5.8, h: 3.3, fontSize: 15, color: titleColor, breakLine: true, bullet: { indent: 18 }
-    });
-    cover.addText('Il report riflette esattamente i filtri e gli intervalli attivi nella dashboard al momento della generazione.', {
-      x: 0.6, y: 6.6, w: 9.6, h: 0.4, fontSize: 9, italic: true, color: mutedColor
+    cover.background = { color: slideBg };
+
+    // Pannello sinistro blu
+    cover.addShape('rect', { x: 0, y: 0, w: 4.5, h: 7.5, fill: { color: headerBg }, line: { color: headerBg } });
+    cover.addShape('rect', { x: 4.5, y: 0, w: 0.035, h: 7.5, fill: { color: accentTeal }, line: { color: accentTeal } });
+
+    cover.addText('PRODOPS', { x: 0.4, y: 0.9, w: 3.7, h: 0.65, fontSize: 32, bold: true, color: 'FFFFFF', charSpacing: 4 });
+    cover.addText('Report Dashboard', { x: 0.4, y: 1.6, w: 3.7, h: 0.38, fontSize: 15, color: headerMuted });
+    cover.addShape('rect', { x: 0.4, y: 2.18, w: 3.0, h: 0.025, fill: { color: headerMuted }, line: { color: headerMuted } });
+
+    cover.addText('PERIODO ANALIZZATO', { x: 0.4, y: 2.45, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+    cover.addText(periodLabelStr, { x: 0.4, y: 2.7, w: 3.7, h: 0.38, fontSize: 14, color: 'FFFFFF', bold: true });
+
+    cover.addText('GENERATO IL', { x: 0.4, y: 3.32, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+    cover.addText(generatedLabel, { x: 0.4, y: 3.57, w: 3.7, h: 0.3, fontSize: 10.5, color: 'FFFFFF' });
+
+    if (currentUser && currentUser.username) {
+      cover.addText('UTENTE', { x: 0.4, y: 4.05, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
+      cover.addText(currentUser.username, { x: 0.4, y: 4.3, w: 3.7, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
+    }
+
+    cover.addText('Ticket nel periodo: ' + periodTickets.length, {
+      x: 0.4, y: 6.7, w: 3.7, h: 0.28, fontSize: 9.5, color: headerMuted, italic: true
     });
 
-    for (let i = 0; i < charts.length; i += 1) {
+    // KPI cards
+    cover.addText('RIEPILOGO ESECUTIVO', { x: 4.85, y: 0.45, w: 8.2, h: 0.3, fontSize: 8.5, color: accentBlue, bold: true, charSpacing: 1.5 });
+    cover.addShape('rect', { x: 4.85, y: 0.82, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
+
+    const mineDs     = personalMine  ? (personalMine.displayStats  || personalMine.stats)  : [];
+    const groupDs    = personalGroup ? (personalGroup.displayStats || personalGroup.stats) : [];
+    const catDs      = categoryChart ? (categoryChart.displayStats || categoryChart.stats) : [];
+    const teamDs     = teamChart     ? (teamChart.displayStats     || teamChart.stats)     : [];
+    const sevDs      = severityChart ? (severityChart.displayStats || severityChart.stats) : [];
+    const kpis = [
+      { label: 'Ticket personali nel periodo', value: personalMine ? sumChartStats(mineDs)  + ' / target ' + Number(personalMine.targetAnnual  || 0) : 'n.d.' },
+      { label: 'Ticket gruppo nel periodo',    value: personalGroup ? sumChartStats(groupDs) + ' / target ' + Number(personalGroup.targetAnnual || 0) : 'n.d.' },
+      { label: 'Categoria dominante',  value: catDs[0]  ? catDs[0].label  + ' (' + catDs[0].total  + ' ticket)' : 'n.d.' },
+      { label: 'Team più carico',      value: teamDs[0] ? teamDs[0].label + ' (' + teamDs[0].total + ' ticket)' : 'n.d.' },
+      { label: 'Severity prevalente',  value: sevDs[0]  ? sevDs[0].label  + ' (' + sevDs[0].total  + ' casi)'  : 'n.d.' },
+    ];
+    kpis.forEach(function(kpi, idx) {
+      const ky = 1.0 + idx * 0.56;
+      cover.addShape('rect', { x: 4.85, y: ky, w: 8.2, h: 0.5, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
+      cover.addText(kpi.label.toUpperCase(), { x: 5.05, y: ky + 0.04, w: 7.9, h: 0.18, fontSize: 7, color: mutedColor, bold: true, charSpacing: 0.5 });
+      cover.addText(kpi.value, { x: 5.05, y: ky + 0.24, w: 7.9, h: 0.22, fontSize: 11, color: titleColor, bold: true });
+    });
+
+    // Problematiche ricorrenti cover
+    const recY = 1.0 + kpis.length * 0.56 + 0.22;
+    cover.addText('PROBLEMATICHE RICORRENTI NEL PERIODO', { x: 4.85, y: recY, w: 8.2, h: 0.28, fontSize: 8.5, color: accentOrange, bold: true, charSpacing: 1.5 });
+    cover.addShape('rect', { x: 4.85, y: recY + 0.3, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
+    const topRec = buildRecurringIncidentsAnalysis(periodTickets, 5);
+    topRec.forEach(function(line, idx) {
+      cover.addText((idx + 1) + '.   ' + line, { x: 4.85, y: recY + 0.42 + idx * 0.3, w: 8.2, h: 0.26, fontSize: 10, color: titleColor });
+    });
+
+    addSlideFooter(cover, 1);
+
+    // ────────────────────────────────────────────────────────────
+    //  SLIDE GRAFICI
+    // ────────────────────────────────────────────────────────────
+    for (let i = 0; i < charts.length; i++) {
       const chart = charts[i];
       const slide = deck.addSlide();
-      slide.background = { color: bgColor };
-      slide.addText(chart.title, { x: 0.55, y: 0.4, w: 7.2, h: 0.45, bold: true, fontSize: 21, color: titleColor });
-      slide.addText(chart.modeLabel + (chart.username ? ' - ' + chart.username : ''), { x: 0.55, y: 0.88, w: 6.4, h: 0.25, fontSize: 10, color: mutedColor });
-      const imageData = await buildReportChartImageData(chart);
+      slide.background = { color: slideBg };
+
+      // Header band
+      slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
+      slide.addText(chart.title.toUpperCase(), { x: 0.25, y: 0, w: 8.5, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 13, valign: 'middle', charSpacing: 1 });
+      slide.addText('Periodo: ' + periodLabelStr, { x: 9.0, y: 0, w: 4.1, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
+      // Accent line under header
+      slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
+
+      // Right panel background
+      slide.addShape('rect', { x: 7.88, y: 0.55, w: 5.45, h: 6.65, fill: { color: panelBg }, line: { color: panelBg } });
+      // Divider line
+      slide.addShape('rect', { x: 7.88, y: 0.55, w: 0.025, h: 6.65, fill: { color: borderColor }, line: { color: borderColor } });
+
+      // Immagine grafico con stats del periodo
+      const imageData = await buildReportChartImageData(Object.assign({}, chart, { stats: chart.displayStats }));
       if (imageData) {
-        slide.addImage({ data: imageData, x: 0.45, y: 1.25, w: 7.0, h: 4.35 });
+        slide.addImage({ data: imageData, x: 0.22, y: 0.64, w: 7.52, h: 5.52 });
       }
-      slide.addText(chart.narrative.map((line) => ({ text: line })), {
-        x: 7.75, y: 1.25, w: 5.0, h: 2.45, fontSize: 12, color: titleColor, breakLine: true, bullet: { indent: 16 }, margin: 0.08
+
+      // ── SOMMARIO ──
+      slide.addText('SOMMARIO', { x: 8.05, y: 0.66, w: 5.1, h: 0.24, fontSize: 7.5, color: accentBlue, bold: true, charSpacing: 1.5 });
+      slide.addText(chart.displayNarrative.slice(0, 3).map(function(l) { return { text: l }; }), {
+        x: 8.05, y: 0.94, w: 5.1, h: 1.22, fontSize: 9.5, color: textColor, breakLine: true, bullet: { indent: 12 }, lineSpacingMultiple: 1.25
       });
-      slide.addText('Dettaglio principali voci', {
-        x: 7.75, y: 3.95, w: 3.4, h: 0.3, bold: true, fontSize: 12, color: accentColor
+
+      // Separatore 1
+      slide.addShape('rect', { x: 8.05, y: 2.21, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
+
+      // ── PICCHI PIÙ ALTI ──
+      slide.addText('PICCHI PIÙ ALTI', { x: 8.05, y: 2.28, w: 5.1, h: 0.24, fontSize: 7.5, color: accentTeal, bold: true, charSpacing: 1.5 });
+      const topBars = buildTopBarsAnalysis(chart.displayStats, 5);
+      topBars.forEach(function(bar, bi) {
+        slide.addText((bi + 1) + '.  ' + bar, { x: 8.05, y: 2.55 + bi * 0.28, w: 5.1, h: 0.26, fontSize: 9.5, color: titleColor });
       });
-      slide.addText(chart.detailLines.map((line) => ({ text: line })), {
-        x: 7.75, y: 4.25, w: 5.0, h: 2.0, fontSize: 10, color: textColor, breakLine: true, bullet: { indent: 14 }, margin: 0.05
+
+      // Separatore 2
+      slide.addShape('rect', { x: 8.05, y: 4.02, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
+
+      // ── PROBLEMATICHE RICORRENTI ──
+      slide.addText('PROBLEMATICHE RICORRENTI', { x: 8.05, y: 4.09, w: 5.1, h: 0.24, fontSize: 7.5, color: accentOrange, bold: true, charSpacing: 1.5 });
+      const recurring = buildRecurringIncidentsAnalysis(periodTickets, 7);
+      recurring.forEach(function(rec, ri) {
+        slide.addText('·  ' + rec, { x: 8.05, y: 4.36 + ri * 0.28, w: 5.1, h: 0.26, fontSize: 9.5, color: titleColor });
       });
-      slide.addText('Report generato automaticamente dalla dashboard ProdOps.', {
-        x: 7.75, y: 6.55, w: 4.8, h: 0.25, fontSize: 8, italic: true, color: mutedColor
-      });
+
+      addSlideFooter(slide, i + 2);
     }
 
     await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
@@ -2219,7 +2480,6 @@ function renderLineChart(target, stats) {
 
 function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   target.innerHTML = '';
-  // dati mensili grezzi (non cumulativi)
   const months = stats.map(function(m) { var d = m.total || 0; return { label: m.label, total: d, monthly: d }; });
   setChartExportState(target, stats);
   const targetAnnualMonthly = targetAnnual > 0 ? (targetAnnual / 12) : 0;
@@ -2227,11 +2487,11 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   const configuredAxisMax = getPersonalChartAxisMaxSetting(target && target.id);
   const maxVal = Math.max(1, configuredAxisMax || 0, Math.ceil(peakValue * 1.15));
   const width = 900;
-  const height = 320;
-  const padL = 52;
-  const padR = 20;
-  const padT = 32;
-  const padB = 38;
+  const height = 340;
+  const padL = 58;
+  const padR = 22;
+  const padT = 50;
+  const padB = 44;
   const usableW = width - padL - padR;
   const usableH = height - padT - padB;
   const n = months.length;
@@ -2244,7 +2504,18 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   const firstX = points[0].x.toFixed(1);
   const lastX = points[points.length - 1].x.toFixed(1);
   const areaPath = linePath + ' L ' + lastX + ' ' + bottomY + ' L ' + firstX + ' ' + bottomY + ' Z';
-  const gradId = 'pcfill_' + (target.id || Math.random().toString(36).slice(2));
+
+  const isGroup = target.id === 'personalGroupChart';
+  const uid = target.id || Math.random().toString(36).slice(2);
+  const gradId   = 'pcfill_'  + uid;
+  const lineGradId = 'pcline_' + uid;
+  const ptGradId = 'pcpt_'   + uid;
+  const glowId   = 'pcglow_'  + uid;
+
+  // Ticket personali: viola→ciano  |  Ticket gruppo: arancio→viola
+  const colA = isGroup ? '#f97316' : '#6366f1';
+  const colB = isGroup ? '#a855f7' : '#06b6d4';
+  const colMid = isGroup ? '#ec4899' : '#818cf8';
 
   var yTicks = '';
   var tickCount = 6;
@@ -2252,23 +2523,42 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
     var tv = Math.round((maxVal * ti) / tickCount);
     var ty = yOf(tv).toFixed(1);
     yTicks += '<line x1="' + (padL - 4) + '" y1="' + ty + '" x2="' + (width - padR) + '" y2="' + ty + '" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 3"/>';
-    yTicks += '<text x="' + (padL - 6) + '" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="personal-chart-label">' + tv + '</text>';
+    yTicks += '<text x="' + (padL - 8) + '" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="personal-chart-label">' + tv + '</text>';
   }
 
   var circles = points.map(function(p) {
-    var cls = p.m.monthly > 0 ? 'personal-chart-value' : 'personal-chart-zero';
-    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="5.5" class="personal-chart-point"/>' +
-      '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 9).toFixed(1) + '" text-anchor="middle" class="' + cls + '">' + p.m.monthly + '</text>';
+    var val = p.m.monthly;
+    var dotColor;
+    if (targetMonthly > 0) {
+      var ratio = val / targetMonthly;
+      dotColor = ratio >= 1 ? '#22c55e' : ratio >= 0.75 ? '#eab308' : '#ef4444';
+    } else {
+      dotColor = null; // nessun target: usa gradiente
+    }
+    var dotFill = dotColor ? dotColor : ('url(#' + ptGradId + ')');
+    var badgeColor = dotColor ? dotColor : colA;
+    if (val > 0) {
+      var badgeW = String(val).length > 1 ? 30 : 24;
+      var badge = '<rect x="' + (p.x - badgeW / 2).toFixed(1) + '" y="' + (p.y - 36).toFixed(1) + '" width="' + badgeW + '" height="19" rx="9.5" fill="' + badgeColor + '" opacity="0.93"/>';
+      var valText = '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 26.5).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle" class="personal-chart-value">' + val + '</text>';
+      var dot = '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="7" fill="' + dotFill + '" stroke="#fff" stroke-width="2.5"/>';
+      return badge + valText + dot;
+    } else {
+      var zeroColor = (targetMonthly > 0) ? '#ef4444' : 'var(--border)';
+      var dot0 = '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="5" fill="' + zeroColor + '" stroke="#fff" stroke-width="2"/>';
+      var zeroText = '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 12).toFixed(1) + '" text-anchor="middle" class="personal-chart-zero">0</text>';
+      return dot0 + zeroText;
+    }
   }).join('');
 
   var labels = points.map(function(p) {
-    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 16) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 18) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
   }).join('');
 
   var targetLines = '';
   if (targetMonthlyY !== null) {
     targetLines += '<line x1="' + padL + '" y1="' + targetMonthlyY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetMonthlyY.toFixed(1) + '" class="personal-chart-target personal-chart-target-monthly"/>' +
-      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 5).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">T.mens. ' + targetMonthly + '</text>';
+      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 6).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">T.mens. ' + targetMonthly + '</text>';
   }
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2276,16 +2566,27 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'personal-chart-svg');
   svg.innerHTML =
-    '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0%" stop-color="var(--brand)" stop-opacity="0.28"/>' +
-      '<stop offset="100%" stop-color="var(--brand)" stop-opacity="0.02"/>' +
-    '</linearGradient></defs>' +
+    '<defs>' +
+      '<linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + colA + '" stop-opacity="0.38"/>' +
+        '<stop offset="65%" stop-color="' + colB + '" stop-opacity="0.10"/>' +
+        '<stop offset="100%" stop-color="' + colB + '" stop-opacity="0.01"/>' +
+      '</linearGradient>' +
+      '<radialGradient id="' + ptGradId + '" cx="35%" cy="30%" r="70%">' +
+        '<stop offset="0%" stop-color="' + colMid + '"/>' +
+        '<stop offset="100%" stop-color="' + colA + '"/>' +
+      '</radialGradient>' +
+      '<filter id="' + glowId + '" x="-20%" y="-60%" width="140%" height="220%">' +
+        '<feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>' +
+        '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+      '</filter>' +
+    '</defs>' +
     yTicks +
     '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
     '<line x1="' + padL + '" y1="' + (height - padB) + '" x2="' + (width - padR) + '" y2="' + (height - padB) + '" class="personal-chart-axis"/>' +
     targetLines +
     '<path d="' + areaPath + '" fill="url(#' + gradId + ')" stroke="none"/>' +
-    '<path d="' + linePath + '" class="personal-chart-path"/>' +
+    '<path d="' + linePath + '" fill="none" stroke="' + colA + '" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" filter="url(#' + glowId + ')"/>' +
     circles +
     labels;
   target.appendChild(svg);
@@ -2373,6 +2674,7 @@ async function loadCategories() {
   Object.keys(incidentIdToPresetMap).forEach((k) => delete incidentIdToPresetMap[k]);
   Object.keys(incidentIdToSeverityMap).forEach((k) => delete incidentIdToSeverityMap[k]);
   Object.keys(incidentIdToFabDefaultMap).forEach((k) => delete incidentIdToFabDefaultMap[k]);
+  Object.keys(incidentIdToNameModeMap).forEach((k) => delete incidentIdToNameModeMap[k]);
   Object.keys(incidentPresetMap).forEach((k) => delete incidentPresetMap[k]);
   Object.keys(incidentSeverityMap).forEach((k) => delete incidentSeverityMap[k]);
   Object.keys(incidentFabDefaultMap).forEach((k) => delete incidentFabDefaultMap[k]);
@@ -2394,6 +2696,7 @@ async function loadCategories() {
         severity_mode: inc.severity_mode || 'default'
       };
       incidentIdToFabDefaultMap[String(inc.id)] = (inc.fab_default || '').toUpperCase();
+      incidentIdToNameModeMap[String(inc.id)] = inc.name_mode || 'default';
       incidentPresetMap[inc.name] = Array.isArray(inc.presets) ? inc.presets : [];
       incidentSeverityMap[inc.name] = {
         severity_default: Number(inc.severity_default || 1),
@@ -3062,6 +3365,25 @@ async function loadUserCharts() {
     hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
+    if (data.chart_modes && typeof data.chart_modes === 'object') {
+      const modes = data.chart_modes;
+      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4'];
+      if (allowed.includes(modes.fabYear)) fabYearMode = modes.fabYear;
+      if (allowed.includes(modes.catYear)) catYearMode = modes.catYear;
+      if (allowed.includes(modes.teamYear)) teamYearMode = modes.teamYear;
+      if (allowed.includes(modes.severityYear)) severityYearMode = modes.severityYear;
+      if (allowed.includes(modes.userYear)) userYearMode = modes.userYear;
+      document.querySelectorAll('.range-btn').forEach((btn) => {
+        const t = btn.dataset.target;
+        const m = btn.dataset.mode;
+        if (t && m) {
+          const active = (t === 'fabYear' && m === fabYearMode) || (t === 'catYear' && m === catYearMode) ||
+            (t === 'teamYear' && m === teamYearMode) || (t === 'severityYear' && m === severityYearMode) ||
+            (t === 'userYear' && m === userYearMode);
+          btn.classList.toggle('active', active);
+        }
+      });
+    }
   } catch (e) {
     console.error(e);
     customCharts = [];
@@ -3081,7 +3403,7 @@ async function saveUserCharts() {
     const data = await fetchJson('/api/user-charts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles })
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode } })
     });
     if (Array.isArray(data.charts)) customCharts = data.charts;
     if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
@@ -3916,6 +4238,7 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
     if (target === 'severityYear') severityYearMode = mode;
     if (target === 'userYear') userYearMode = mode;
     await loadCharts();
+    saveUserCharts();
   });
 });
 

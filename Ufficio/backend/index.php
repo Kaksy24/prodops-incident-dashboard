@@ -683,7 +683,8 @@ function mysql_ensure_schema($conn)
         "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
         "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
-        "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"
+        "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
+        "ALTER TABLE incidents ADD COLUMN name_mode VARCHAR(10) NOT NULL DEFAULT 'default' AFTER fab_default"
     );
     foreach ($alterStatements as $statement) {
         if (@mysqli_query($conn, $statement)) continue;
@@ -743,7 +744,7 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rc);
     }
 
-    $ri = @mysqli_query($conn, "SELECT id, category_id, name, hidden, severity_default, severity_mode, fab_default, sort_order FROM incidents ORDER BY sort_order ASC, id ASC");
+    $ri = @mysqli_query($conn, "SELECT id, category_id, name, hidden, severity_default, severity_mode, fab_default, name_mode, sort_order FROM incidents ORDER BY sort_order ASC, id ASC");
     if ($ri) {
         while ($row = mysqli_fetch_assoc($ri)) {
             $iid = intval($row['id']);
@@ -755,6 +756,7 @@ function mysql_load_db($defaultUsers)
                 'severity_default' => intval($row['severity_default'] ? $row['severity_default'] : 1),
                 'severity_mode' => $row['severity_mode'] ? $row['severity_mode'] : 'default',
                 'fab_default' => $row['fab_default'] ? $row['fab_default'] : '',
+                'name_mode' => isset($row['name_mode']) && $row['name_mode'] === 'custom' ? 'custom' : 'default',
                 'sort_order' => intval($row['sort_order']),
                 'presets' => isset($presetsByIncident[$iid]) ? $presetsByIncident[$iid] : array()
             );
@@ -909,8 +911,9 @@ function mysql_save_db($db)
             $sev = isset($i['severity_default']) ? intval($i['severity_default']) : 1;
             $mode = mysql_escape($conn, isset($i['severity_mode']) ? $i['severity_mode'] : 'default');
             $fab = mysql_escape($conn, isset($i['fab_default']) ? $i['fab_default'] : '');
+            $nm = (isset($i['name_mode']) && $i['name_mode'] === 'custom') ? 'custom' : 'default';
             $so = intval($sortByCat[$cat]);
-            if (!mysqli_query($conn, "INSERT INTO incidents (id,category_id,name,hidden,severity_default,severity_mode,fab_default,sort_order) VALUES ($id,$cat,'$name',$hidden,$sev,'$mode','" . ($fab === '' ? '' : $fab) . "',$so)")) { $ok = false; break; }
+            if (!mysqli_query($conn, "INSERT INTO incidents (id,category_id,name,hidden,severity_default,severity_mode,fab_default,name_mode,sort_order) VALUES ($id,$cat,'$name',$hidden,$sev,'$mode','$fab','$nm',$so)")) { $ok = false; break; }
 
             if ($ok && isset($i['presets']) && is_array($i['presets'])) {
                 $po = 1;
@@ -1872,7 +1875,7 @@ if ($path === '/api/admin/preset-options' && $method === 'DELETE') {
 if ($path === '/api/categories' && $method === 'GET') {
     if (supabase_enabled()) {
         $catsResp = sb_select('categories', 'id,name,hidden,sort_order', array(), 'sort_order.asc');
-        $incResp = sb_select('incidents', 'id,category_id,name,hidden,severity_default,severity_mode,fab_default,sort_order', array(), 'sort_order.asc');
+        $incResp = sb_select('incidents', 'id,category_id,name,hidden,severity_default,severity_mode,fab_default,name_mode,sort_order', array(), 'sort_order.asc');
         if ($catsResp['ok'] && $incResp['ok']) {
             $cats = is_array($catsResp['data']) ? $catsResp['data'] : array();
             $incs = is_array($incResp['data']) ? $incResp['data'] : array();
@@ -1889,6 +1892,7 @@ if ($path === '/api/categories' && $method === 'GET') {
                         if (!isset($inc['severity_default']) || $inc['severity_default'] === null) $inc['severity_default'] = 1;
                         if (!isset($inc['severity_mode']) || !$inc['severity_mode']) $inc['severity_mode'] = 'default';
                         if (!isset($inc['fab_default']) || $inc['fab_default'] === null) $inc['fab_default'] = '';
+                        if (!isset($inc['name_mode']) || !$inc['name_mode']) $inc['name_mode'] = 'default';
                         $items[] = $inc;
                     }
                 }
@@ -1914,6 +1918,7 @@ if ($path === '/api/categories' && $method === 'GET') {
                 if (!isset($inc['severity_default'])) $inc['severity_default'] = 1;
                 if (!isset($inc['severity_mode'])) $inc['severity_mode'] = 'default';
                 if (!isset($inc['fab_default'])) $inc['fab_default'] = '';
+                if (!isset($inc['name_mode'])) $inc['name_mode'] = 'default';
                 if (!isset($inc['sort_order'])) $inc['sort_order'] = 0;
                 $items[] = $inc;
             }
@@ -2059,6 +2064,7 @@ if ($path === '/api/incidents' && $method === 'POST') {
         'severity_default' => 1,
         'severity_mode' => 'default',
         'fab_default' => '',
+        'name_mode' => 'default',
         'sort_order' => $maxOrder + 1,
         'presets' => array()
     );
@@ -2139,6 +2145,7 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
                 if (isset($payload['severity_default'])) $inc['severity_default'] = intval($payload['severity_default']);
                 if (isset($payload['severity_mode'])) $inc['severity_mode'] = strval($payload['severity_mode']);
                 if (isset($payload['fab_default'])) $inc['fab_default'] = strtoupper(trim(strval($payload['fab_default'])));
+                if (isset($payload['name_mode'])) $inc['name_mode'] = $payload['name_mode'] === 'custom' ? 'custom' : 'default';
                 save_db($db);
                 json_response(array('ok' => true), 200);
             }
@@ -2682,7 +2689,8 @@ if ($path === '/api/user-charts' && $method === 'GET') {
     $hiddenPanels = isset($userData['hidden_panels']) && is_array($userData['hidden_panels']) ? array_values($userData['hidden_panels']) : array();
     $panelOrder = isset($userData['panel_order']) && is_array($userData['panel_order']) ? array_values($userData['panel_order']) : array();
     $panelTitles = isset($userData['panel_titles']) && is_array($userData['panel_titles']) ? $userData['panel_titles'] : array();
-    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles), 200);
+    $chartModes = isset($userData['chart_modes']) && is_array($userData['chart_modes']) ? $userData['chart_modes'] : array();
+    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles, 'chart_modes' => $chartModes), 200);
 }
 
 if ($path === '/api/user-charts' && $method === 'PUT') {
@@ -2769,9 +2777,18 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
         $ptitle = trim(strval($ptitle));
         if ($ptitle !== '') $cleanTitles[$pid] = substr($ptitle, 0, 80);
     }
-    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles);
+    $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'severityYear', 'userYear');
+    $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4');
+    $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : array();
+    $cleanModes = array();
+    foreach ($allowedChartModeTargets as $t) {
+        if (isset($incomingModes[$t]) && in_array(strval($incomingModes[$t]), $allowedChartModeValues, true)) {
+            $cleanModes[$t] = strval($incomingModes[$t]);
+        }
+    }
+    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes);
     save_db($db);
-    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles), 200);
+    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes), 200);
 }
 
 if ($path === '/api/ping' && $method === 'GET') {

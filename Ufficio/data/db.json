@@ -32,7 +32,7 @@
         },
         {
             "id": 5,
-            "name": "REPERIBILITÀ",
+            "name": "REPERIBILIT\u00c0",
             "hidden": false,
             "sort_order": 6
         }
@@ -554,7 +554,7 @@
             "id": 32,
             "incident_id": 2,
             "incident_name": "Reset Interfaccia",
-            "description": "Richiesto Reset Interfaccia per la macchina: 〈wos05〉 ;\nMotivo del reset: 〈busy〉",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u3008wos05\u3009 ;\nMotivo del reset: \u3008busy\u3009",
             "fab": "EWS",
             "created_at": "2026-06-20T15:10:00+00:00",
             "severity": 1,
@@ -565,7 +565,7 @@
             "id": 33,
             "incident_id": 2,
             "incident_name": "Reset Interfaccia",
-            "description": "Richiesto Reset Interfaccia per la macchina: ã€ˆdis05ã€‰ ;\nMotivo del reset: ã€ˆbusyã€‰",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6busy\u00e3\u20ac\u2030",
             "fab": "L1",
             "created_at": "2026-06-20T19:28:00+00:00",
             "severity": 1,
@@ -576,7 +576,7 @@
             "id": 34,
             "incident_id": 2,
             "incident_name": "Reset Interfaccia",
-            "description": "Richiesto Reset Interfaccia per la macchina: ã€ˆwos05ã€‰ ;\nMotivo del reset: ã€ˆbusyã€‰",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6wos05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6busy\u00e3\u20ac\u2030",
             "fab": "WSIC",
             "created_at": "2026-06-21T20:12:00+00:00",
             "severity": 1,
@@ -642,7 +642,7 @@
             "id": 40,
             "incident_id": 12,
             "incident_name": "Restart ISL47 (SARA)",
-            "description": "Richiesto reset Robot SARA per: ã€ˆbhoã€‰",
+            "description": "Richiesto reset Robot SARA per: \u00e3\u20ac\u02c6bho\u00e3\u20ac\u2030",
             "fab": "M5",
             "created_at": "2026-06-21T20:22:00+00:00",
             "severity": 1,
@@ -796,7 +796,7 @@
             "id": 54,
             "incident_id": 8,
             "incident_name": "ADSC",
-            "description": "Eseguito ADSC per Box\/Lotto ã€ˆ2222222ã€‰ alla sequence ã€ˆ222222222ã€‰",
+            "description": "Eseguito ADSC per Box\/Lotto \u00e3\u20ac\u02c62222222\u00e3\u20ac\u2030 alla sequence \u00e3\u20ac\u02c6222222222\u00e3\u20ac\u2030",
             "fab": "WSIC",
             "created_at": "2026-06-21T20:42:00+00:00",
             "severity": 1,
@@ -862,7 +862,7 @@
             "id": 60,
             "incident_id": 4,
             "incident_name": "Generic",
-            "description": "òò",
+            "description": "\u00f2\u00f2",
             "fab": "M5",
             "created_at": "2026-06-21T20:53:00+00:00",
             "severity": 1,
@@ -906,7 +906,7 @@
             "id": 64,
             "incident_id": 2,
             "incident_name": "Reset Interfaccia",
-            "description": "Richiesto Reset Interfaccia per la macchina: ã€ˆdis05ã€‰ ;\nMotivo del reset: ã€ˆbusyã€‰",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6busy\u00e3\u20ac\u2030",
             "fab": "M5",
             "created_at": "2026-06-26T21:59:00+00:00",
             "severity": 1,
@@ -917,7 +917,7 @@
             "id": 65,
             "incident_id": 2,
             "incident_name": "Reset Interfaccia",
-            "description": "Richiesto Reset Interfaccia per la macchina: ã€ˆwos05ã€‰ ;\nMotivo del reset: ã€ˆcomm.downã€‰",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6wos05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6comm.down\u00e3\u20ac\u2030",
             "fab": "L1",
             "created_at": "2026-06-26T22:00:00+00:00",
             "severity": 1,
@@ -1018,7 +1018,7 @@
                     "AUTOMATION": "#4ED728",
                     "On Duty": "#FF0F1B",
                     "SICMA": "#D606E5",
-                    "REPERIBILITÀ": "#A30000"
+                    "REPERIBILIT\u00c0": "#A30000"
                 },
                 "dark": []
             },
@@ -1028,7 +1028,7 @@
                     "AUTOMATION": "#4ED728",
                     "On Duty": "#FF0F1B",
                     "SICMA": "#D606E5",
-                    "REPERIBILITÀ": "#A30000"
+                    "REPERIBILIT\u00c0": "#A30000"
                 },
                 "dark": []
             }
@@ -1040,7 +1040,7 @@
                     "AUTOMATION": "#4ED728",
                     "On Duty": "#FF0F1B",
                     "SICMA": "#D606E5",
-                    "REPERIBILITÀ": "#A30000"
+                    "REPERIBILIT\u00c0": "#A30000"
                 },
                 "dark": []
             },
@@ -1091,7 +1091,7 @@
                         "months"
                     ],
                     "scope": "all",
-                    "type": "column",
+                    "type": "bar",
                     "filters": []
                 },
                 {
@@ -1123,8 +1123,8 @@
             "hidden_panels": [],
             "panel_order": [
                 "chartPanelPersonalMine",
-                "chartPanelPersonalGroup",
                 "chartPanelUser",
+                "chartPanelPersonalGroup",
                 "chartPanelCat",
                 "chartPanelSeverity",
                 "chartPanelFab",

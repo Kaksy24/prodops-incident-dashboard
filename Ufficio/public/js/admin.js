@@ -19,6 +19,7 @@ const adminIncidentPresetInput = document.getElementById('adminIncidentPreset');
 const adminSeverityDefaultSelect = document.getElementById('adminSeverityDefault');
 const adminSeverityModeSelect = document.getElementById('adminSeverityMode');
 const adminFabDefaultSelect = document.getElementById('adminFabDefault');
+const adminNameModeCheckbox = document.getElementById('adminNameMode');
 const addPresetTextFieldBtn = document.getElementById('addPresetTextFieldBtn');
 const addPresetSelectFieldBtn = document.getElementById('addPresetSelectFieldBtn');
 const addPresetTimestampBtn = document.getElementById('addPresetTimestampBtn');
@@ -812,6 +813,7 @@ function openIncidentModal(incident) {
   adminSeverityDefaultSelect.value = String(incident.severity_default || 1);
   adminSeverityModeSelect.value = incident.severity_mode || 'default';
   adminFabDefaultSelect.value = incident.fab_default || '';
+  if (adminNameModeCheckbox) adminNameModeCheckbox.checked = (incident.name_mode === 'custom');
   adminIncidentModal.setAttribute('aria-hidden', 'false');
   document.documentElement.classList.add('modal-open');
   document.body.classList.add('modal-open');
@@ -1404,7 +1406,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
       li.dataset.incidentId = String(inc.id);
       li.draggable = true;
       const firstPreset = Array.isArray(inc.presets) ? (inc.presets[0] || '') : '';
-      li.innerHTML = `<div class="incident-btn"><span>${inc.name}${inc.hidden ? '<span class="admin-hidden-badge">Nascosto</span>' : ''}</span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" title="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}">${inc.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica incident" title="Modifica incident" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}" data-preset="${firstPreset.replace(/"/g, '&quot;')}" data-severity-default="${Number(inc.severity_default || 1)}" data-severity-mode="${inc.severity_mode || 'default'}" data-fab-default="${inc.fab_default || ''}">&#9998;</button><button type="button" class="tiny-delete" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" title="Elimina incident">x</button></span></div>`;
+      li.innerHTML = `<div class="incident-btn"><span>${inc.name}${inc.hidden ? '<span class="admin-hidden-badge">Nascosto</span>' : ''}</span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" title="${inc.hidden ? 'Mostra incident' : 'Nascondi incident'}" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}">${inc.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica incident" title="Modifica incident" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" data-hidden="${inc.hidden ? '1' : '0'}" data-preset="${firstPreset.replace(/"/g, '&quot;')}" data-severity-default="${Number(inc.severity_default || 1)}" data-severity-mode="${inc.severity_mode || 'default'}" data-fab-default="${inc.fab_default || ''}" data-name-mode="${inc.name_mode || 'default'}">&#9998;</button><button type="button" class="tiny-delete" data-type="incident" data-id="${inc.id}" data-name="${inc.name.replace(/"/g, '&quot;')}" title="Elimina incident">x</button></span></div>`;
 
       li.addEventListener('dragstart', () => {
         dragIncidentId = inc.id;
@@ -1495,7 +1497,8 @@ function bindAdminActions() {
           preset: btn.dataset.preset || '',
           severity_default: Number(btn.dataset.severityDefault || 1),
           severity_mode: btn.dataset.severityMode || 'default',
-          fab_default: btn.dataset.fabDefault || ''
+          fab_default: btn.dataset.fabDefault || '',
+          name_mode: btn.dataset.nameMode || 'default'
         });
       } catch (error) {
         alert(`Errore modifica: ${error.message || error}`);
@@ -1596,7 +1599,8 @@ function bindAdminActions() {
               hidden: !isHidden,
               severity_default: Number(editBtn?.dataset.severityDefault || 1),
               severity_mode: editBtn?.dataset.severityMode || 'default',
-              fab_default: editBtn?.dataset.fabDefault || ''
+              fab_default: editBtn?.dataset.fabDefault || '',
+              name_mode: editBtn?.dataset.nameMode || 'default'
             })
           });
         }
@@ -1678,12 +1682,13 @@ adminIncidentForm?.addEventListener('submit', async (e) => {
   const severity_default = Number(adminSeverityDefaultSelect.value || 1);
   const severity_mode = (adminSeverityModeSelect.value || 'default').toString();
   const fab_default = (adminFabDefaultSelect.value || '').trim().toUpperCase();
+  const name_mode = (adminNameModeCheckbox && adminNameModeCheckbox.checked) ? 'custom' : 'default';
   if (!nextName) return;
 
   await fetchJson(`/api/incidents/${editingIncidentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: nextName, severity_default, severity_mode, fab_default })
+    body: JSON.stringify({ name: nextName, severity_default, severity_mode, fab_default, name_mode })
   });
 
   await fetchJson(`/api/incidents/${editingIncidentId}/presets`, {
