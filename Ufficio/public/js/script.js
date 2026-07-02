@@ -146,7 +146,8 @@ function updateCurrentShiftCounters(tickets) {
     const ownerId = Number(ticket && ticket.owner_user_id ? ticket.owner_user_id : 0);
     const ownerTeam = String(ticket && ticket.owner_team ? ticket.owner_team : '').toUpperCase();
     if (userId > 0 && ownerId === userId) mine += 1;
-    if (userTeam && ownerTeam === userTeam && ownerId !== userId) team += 1;
+    const isSupervisor = currentUser && currentUser.role === 'supervisor';
+    if (isSupervisor ? (ownerId !== userId) : (userTeam && ownerTeam === userTeam && ownerId !== userId)) team += 1;
   });
   setTextContent(currentShiftTotalCount, rows.length);
   setTextContent(currentShiftMineCount, mine);
@@ -2186,7 +2187,7 @@ async function fetchJson(url, options, attempt = 0) {
 async function loadCurrentUser() {
   const data = await fetchJson('/api/me');
   currentUser = data.user;
-  if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  if (openAdminBtn) openAdminBtn.style.display = (currentUser?.role === 'admin' || currentUser?.role === 'supervisor') ? '' : 'none';
   const pill = document.getElementById('userPill');
   const pillName = document.getElementById('userPillName');
   if (pill && pillName && currentUser) {

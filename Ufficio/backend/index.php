@@ -1,5 +1,8 @@
 <?php
 
+ini_set('display_errors', 0);
+error_reporting(0);
+
 date_default_timezone_set('Europe/Rome');
 if (function_exists('mysqli_report')) {
     mysqli_report(MYSQLI_REPORT_OFF);
@@ -109,6 +112,11 @@ function normalize_team($team)
     $team = strtoupper(trim(strval($team)));
     $allowed = array('A', 'B', 'C', 'D', 'E');
     return in_array($team, $allowed, true) ? $team : 'A';
+}
+
+function is_supervisor($user)
+{
+    return isset($user['role']) && $user['role'] === 'supervisor';
 }
 
 function normalize_preset_field_key($value)
@@ -466,7 +474,7 @@ function supabase_bootstrap_if_needed($db)
 
 function json_response($data, $status)
 {
-    http_response_code($status);
+    header(' ', true, $status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate');
     header('Pragma: no-cache');
@@ -521,7 +529,7 @@ function proxy_remote_api_request($path, $method, $payload)
     curl_close($ch);
 
     if ($body === false) {
-        http_response_code(502);
+        header(' ', true, 502);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array('error' => $error ? $error : 'Proxy error'));
         exit;
@@ -543,7 +551,7 @@ function proxy_remote_api_request($path, $method, $payload)
         clear_auth_cookie();
     }
 
-    http_response_code($status);
+    header(' ', true, $status);
     header('Content-Type: application/json; charset=utf-8');
     echo $body;
     exit;
@@ -831,9 +839,6 @@ function mysql_load_db($defaultUsers)
     $db['counters']['ticket'] = max_id($db['tickets']);
     $db['counters']['user'] = max_id($db['users']);
     $db['counters']['preset_option_request'] = max_id($db['preset_option_requests']);
-    if (!count($db['categories']) && !count($db['incidents']) && !count($db['tickets'])) {
-        return null;
-    }
     return $db;
 }
 
@@ -1236,7 +1241,7 @@ function ticket_with_permissions($ticket, $user, $users = null)
     $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
     $ticket['owner_user_id'] = $ownerId > 0 ? $ownerId : null;
     $ticket['owner_team'] = normalize_team(isset($ticket['owner_team']) ? $ticket['owner_team'] : 'A');
-    $isAdmin = isset($user['role']) && $user['role'] === 'admin';
+    $isAdmin = isset($user['role']) && ($user['role'] === 'admin' || $user['role'] === 'supervisor');
     $ticket['can_edit'] = $isAdmin || ($ownerId > 0 && intval($user['id']) === $ownerId);
     if (!isset($ticket['severity'])) $ticket['severity'] = 1;
     $ticket['owner_username'] = '';
@@ -1249,7 +1254,7 @@ function ticket_with_permissions($ticket, $user, $users = null)
 
 function require_ticket_owner($ticket, $user, $action)
 {
-    if (isset($user['role']) && $user['role'] === 'admin') return;
+    if (isset($user['role']) && ($user['role'] === 'admin' || $user['role'] === 'supervisor')) return;
     $ownerId = isset($ticket['owner_user_id']) ? intval($ticket['owner_user_id']) : 0;
     if ($ownerId <= 0 || intval($user['id']) !== $ownerId) {
         json_response(array('error' => 'Puoi ' . $action . ' solo i ticket che hai inserito'), 403);
@@ -1460,7 +1465,7 @@ if ($path === '/login.html') {
 }
 
 if (strpos($path, '/api/') !== 0) {
-    http_response_code(404);
+    header(' ', true, 404);
     echo 'Not Found';
     exit;
 }
@@ -2479,8 +2484,10 @@ if ($path === '/api/stats/personal/current-year' && $method === 'GET') {
         $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
         if ($view === 'team') {
             if ($ownerId <= 0) continue;
-            $ownerGroup = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
-            if ($ownerGroup !== $userGroup) continue;
+            if (!is_supervisor($user)) {
+                $ownerGroup = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
+                if ($ownerGroup !== $userGroup) continue;
+            }
         } else {
             if ($ownerId !== $userId) continue;
         }

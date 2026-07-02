@@ -1,20 +1,19 @@
 <?php
 
-// Configurazione server LDAP — inserire i valori reali
 define('LDAP_BASE_DN', 'ou=people,dc=st,dc=com');
 
 $LDAP_SERVERS = array(
-    array('host' => 'da-inserire-1', 'port' => 389),
-    array('host' => 'da-inserire-2', 'port' => 389),
-    array('host' => 'da-inserire-3', 'port' => 389),
+    array('host' => 'ldap.ctn.st.com',   'port' => 389),
+    array('host' => 'LDAP_SERVER',        'port' => 389),
+    array('host' => 'f5ldap.ctn.st.com', 'port' => 389),
+    array('host' => 'ldap2.ctn.st.com',  'port' => 389),
 );
 
-// Impostazioni autenticazione LDAP
 $LDAP_CONFIG = array(
-    'enabled'           => false, // true = abilita LDAP in produzione
-    'dev_bypass'        => true,  // *** RIMUOVERE IN PRODUZIONE *** accetta qualsiasi login senza LDAP
+    'enabled'            => true,
+    'dev_bypass'         => false,
     'allow_dev_password' => false,
-    'dev_password'      => '',
+    'dev_password'       => '',
 );
 
 class LDAPQuery
