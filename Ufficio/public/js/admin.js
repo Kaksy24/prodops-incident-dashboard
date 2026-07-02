@@ -29,7 +29,6 @@ const usersSummary = document.getElementById('usersSummary');
 const groupTargetsList = document.getElementById('groupTargetsList');
 const groupTargetsSummary = document.getElementById('groupTargetsSummary');
 const newUsernameInput = document.getElementById('newUsername');
-const newPasswordInput = document.getElementById('newPassword');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
 const newUserGroupInput = document.getElementById('newUserGroup');
@@ -977,7 +976,6 @@ function renderUsers() {
           </select>
         </td>
         <td><input class="user-group-input" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}" type="text" value="${escapeHtml(String(user.group_name || 'ProdOps'))}" placeholder="Gruppo" style="width:110px" /></td>
-        <td><input class="user-password-input" aria-label="Nuova password ${username}" data-user-id="${Number(user.id)}" type="password" placeholder="Nuova password" autocomplete="new-password" /></td>
         <td><span class="user-table-note">${roleLocked ? escapeHtml(lockReason) : 'Modificabile'}</span></td>
         <td>
           <div class="user-actions-cell">
@@ -993,7 +991,7 @@ function renderUsers() {
     <div class="users-table-wrap">
       <table class="users-table">
         <thead>
-          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Nuova password</th><th>Protezioni</th><th>Azioni</th></tr>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Protezioni</th><th>Azioni</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1007,11 +1005,8 @@ function renderUsers() {
       const roleSelect = row?.querySelector('.user-role-select');
       const teamSelect = row?.querySelector('.user-team-select');
       const groupInput = row?.querySelector('.user-group-input');
-      const passwordInput = row?.querySelector('.user-password-input');
       const current = adminUsersCache.find((user) => Number(user.id) === userId);
       const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: normalizeGroupName(groupInput?.value || current?.group_name || 'ProdOps') };
-      const password = (passwordInput?.value || '').trim();
-      if (password) payload.password = password;
       try {
         btn.disabled = true;
         btn.textContent = 'Salvataggio...';
@@ -1704,19 +1699,19 @@ adminIncidentForm?.addEventListener('submit', async (e) => {
 userCreateForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = (newUsernameInput?.value || '').trim();
-  const password = (newPasswordInput?.value || '').trim();
   const role = (newUserRoleSelect?.value || 'user').trim();
   const team = (newUserTeamSelect?.value || 'A').trim();
   const group_name = normalizeGroupName(newUserGroupInput?.value || 'ProdOps');
-  if (!username || !password) {
-    alert('Inserisci username e password.');
+  if (!username) {
+    alert('Inserisci username.');
     return;
   }
+  const body = { username, role, team, group_name };
   try {
     await fetchJson('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role, team, group_name })
+      body: JSON.stringify(body)
     });
     userCreateForm.reset();
     if (newUserRoleSelect) newUserRoleSelect.value = 'user';

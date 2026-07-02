@@ -1,9 +1,9 @@
 <?php
 
 return array(
-    'MYSQL_HOST' => 'sqlXXX.infinityfree.com',
+    'MYSQL_HOST' => 'localhost',
     'MYSQL_PORT' => '3306',
-    'MYSQL_DB' => 'if0_xxxxxxxx_prodops',
-    'MYSQL_USER' => 'if0_xxxxxxxx',
+    'MYSQL_DB' => 'prodops',
+    'MYSQL_USER' => 'your-db-user',
     'MYSQL_PASS' => 'your-password-here'
 );

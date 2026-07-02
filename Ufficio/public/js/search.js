@@ -559,6 +559,12 @@ function applyTicketSearchListeners() {
   currentUser = me.user;
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
   await loadCategories();
+  const _today = new Date();
+  const _pad = function(n) { return String(n).padStart(2, '0'); };
+  const _yearStart = _today.getFullYear() + '-01-01';
+  const _todayStr = _today.getFullYear() + '-' + _pad(_today.getMonth() + 1) + '-' + _pad(_today.getDate());
+  if (ticketSearchFromInput) ticketSearchFromInput.value = _yearStart;
+  if (ticketSearchToInput) ticketSearchToInput.value = _todayStr;
   applyTicketSearchListeners();
   const initialQuery = new URLSearchParams(window.location.search).get('query');
   if (initialQuery && ticketSearchQueryInput) {

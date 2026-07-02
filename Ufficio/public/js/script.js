@@ -444,7 +444,8 @@ function defaultUiColors() {
       fabYear: 'Ticket per FAB',
       catYear: 'Ticket per categoria',
       teamYear: 'Ticket per Team',
-      severityYear: 'Severity Ticket'
+      severityYear: 'Severity Ticket',
+      userYear: 'Ticket Utenti'
     },
     settings: {
       personal_axis_max: 0,
@@ -718,12 +719,25 @@ function getChartExportPayload(targetId) {
   };
 }
 
-function buildChartCsv(stats) {
-  const rows = ['label,total'];
-  stats.forEach((item) => {
-    rows.push(String(item.label || '').replace(/\r?\n/g, ' ') + ',' + Number(item.total || 0));
+function buildChartCsv(title, stats) {
+  const BOM = '﻿';
+  const grandTotal = stats.reduce(function(s, item) { return s + Number(item.total || 0); }, 0);
+  const e = function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+  const now = new Date();
+  const exportedAt = now.toLocaleDateString('it-IT') + ' ' + now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  // 3 colonne fisse: Etichetta | Totale | %
+  const rows = [
+    e('Grafico') + ',' + e(title || 'Grafico') + ',',
+    e('Esportato il') + ',' + e(exportedAt) + ',',
+    ',,',
+    e('Etichetta') + ',' + e('Totale') + ',' + e('%')
+  ];
+  stats.forEach(function(item) {
+    const pct = grandTotal > 0 ? (Math.round((Number(item.total || 0) / grandTotal) * 1000) / 10).toFixed(1) : '0.0';
+    rows.push(e(item.label) + ',' + Number(item.total || 0) + ',' + pct + '%');
   });
-  return rows.join('\r\n');
+  if (stats.length) rows.push(e('TOTALE') + ',' + grandTotal + ',100.0%');
+  return BOM + rows.join('\r\n');
 }
 
 function buildChartXls(title, stats) {
@@ -1356,20 +1370,59 @@ async function generateCsvReport(cfg) {
   const meta = await fetchMeta();
   const stats = aggregateTicketsByDimension(periodTickets, cfg.dimension, meta);
   const total = periodTickets.length;
-  const stamp = formatLocalDateStamp(new Date());
+  const now = new Date();
+  const stamp = formatLocalDateStamp(now);
+  const generatedAt = now.toLocaleString('it-IT');
+  const BOM = '﻿';
+  const csvEsc = function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"'; };
+  const catMap = _buildIncidentCategoryMap(meta);
 
+  // Tutte le righe hanno 10 colonne (il numero massimo del dettaglio ticket)
+  const COLS = 10;
+  const pad = function(arr) {
+    while (arr.length < COLS) arr.push('');
+    return arr.map(function(v) { return csvEsc(v == null ? '' : v); }).join(',');
+  };
+  const sep = pad([]); // riga vuota da 10 celle
+
+  // ── Intestazione report ──────────────────────────────────────────────────
   const rows = [
-    '"Report ProdOps – Per ' + cfg.dimensionLabel + ' – ' + cfg.periodLabel + '"',
-    '"Ticket totali nel periodo: ' + total + '"',
-    '',
-    'Rank,Etichetta,Ticket,% sul totale'
+    pad(['REPORT PRODOPS']),
+    sep,
+    pad(['Periodo', cfg.periodLabel]),
+    pad(['Dimensione', cfg.dimensionLabel]),
+    pad(['Ticket totali', String(total)]),
+    pad(['Generato il', generatedAt]),
+    sep,
+    // ── Tabella riepilogo ────────────────────────────────────────────────
+    pad(['RIEPILOGO PER ' + String(cfg.dimensionLabel).toUpperCase()]),
+    pad(['Rank', 'Etichetta', 'Ticket', '% sul totale'])
   ];
   stats.forEach(function(item, i) {
     const pct = total > 0 ? (Math.round((item.total / total) * 1000) / 10).toFixed(1) : '0.0';
-    rows.push((i + 1) + ',"' + String(item.label || '').replace(/"/g, '""') + '",' + item.total + ',' + pct + '%');
+    rows.push(pad([String(i + 1), String(item.label || ''), String(item.total), pct + '%']));
+  });
+  rows.push(pad(['TOTALE', '', String(total), '100.0%']));
+  rows.push(sep);
+  // ── Tabella dettaglio ticket ─────────────────────────────────────────
+  rows.push(pad(['DETTAGLIO TICKET']));
+  rows.push(pad(['ID', 'Data', 'Ora', 'Categoria', 'Incident', 'FAB', 'Severità', 'Team', 'Utente', 'Descrizione']));
+  periodTickets.slice().sort(function(a, b) {
+    return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+  }).forEach(function(t) {
+    const dt = t.created_at ? new Date(t.created_at.replace(' ', 'T')) : null;
+    const dateStr = dt && !isNaN(dt) ? dt.toLocaleDateString('it-IT') : (t.created_at || '');
+    const timeStr = dt && !isNaN(dt) ? dt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
+    const category = catMap[String(t.incident_id || '')] || catMap[String(t.incident_name || '')] || 'N/D';
+    rows.push(pad([
+      String(t.id || ''), dateStr, timeStr, category,
+      String(t.incident_name || ''), String(t.fab || ''),
+      String(t.severity || 1), String(t.owner_team || ''),
+      String(t.owner_username || ''), String(t.description || '')
+    ]));
   });
 
-  triggerDownload('ProdOps_Report_' + stamp + '.csv', rows.join('\r\n'), 'text/csv;charset=utf-8');
+  triggerDownload('ProdOps_Report_' + stamp + '.csv', BOM + rows.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 async function exportChart(targetId, format) {
@@ -1381,7 +1434,7 @@ async function exportChart(targetId, format) {
   const fileRoot = sanitizeFileNamePart(payload.title || targetId) || targetId;
   const stamp = formatLocalDateStamp(new Date());
   if (format === 'csv') {
-    triggerDownload(fileRoot + '_' + stamp + '.csv', buildChartCsv(payload.stats), 'text/csv;charset=utf-8');
+    triggerDownload(fileRoot + '_' + stamp + '.csv', buildChartCsv(payload.title, payload.stats), 'text/csv;charset=utf-8');
     return;
   }
   if (format === 'xls') {
@@ -3075,7 +3128,7 @@ const DEFAULT_CHART_PANELS = [
   { id: 'chartPanelCat',           label: 'Ticket per categoria' },
   { id: 'chartPanelTeam',          label: 'Ticket per Team' },
   { id: 'chartPanelSeverity',      label: 'Severity Ticket' },
-  { id: 'chartPanelUser',          label: 'Ticket per utente' }
+  { id: 'chartPanelUser',          label: 'Ticket Utenti' }
 ];
 
 const CUSTOM_DIMENSIONS = [
@@ -3305,6 +3358,7 @@ function setupDefaultPanelHideButtons() {
     btn.setAttribute('aria-label', 'Rimuovi dalla dashboard');
     btn.textContent = '×';
     btn.addEventListener('click', async () => {
+      if (!confirm('Rimuovere questo pannello dalla dashboard?')) return;
       if (!hiddenDefaultPanels.includes(def.id)) hiddenDefaultPanels.push(def.id);
       panelOrder = panelOrder.filter((id) => id !== def.id);
       panel.style.display = 'none';

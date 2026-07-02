@@ -212,10 +212,6 @@
           <input id="newUsername" name="newUsername" type="text" autocomplete="username" required />
         </div>
         <div>
-          <label for="newPassword">Password</label>
-          <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="4" required />
-        </div>
-        <div>
           <label for="newUserRole">Ruolo</label>
           <select id="newUserRole" name="newUserRole">
             <option value="user">user</option>
@@ -251,7 +247,13 @@
         <button class="close-modal" type="button">x</button>
       </div>
       <form id="adminIncidentForm" class="ticket-form">
-        <label for="adminIncidentName">Nome incident</label>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+          <label for="adminIncidentName" style="margin:0;">Nome incident</label>
+          <label for="adminNameMode" style="display:flex; align-items:center; gap:3px; margin:0; font-size:0.85em; cursor:pointer;">
+            <input type="checkbox" id="adminNameMode" name="adminNameMode" style="margin:0;" />
+            (nome custom)
+          </label>
+        </div>
         <input id="adminIncidentName" name="adminIncidentName" type="text" required />
 
         <label for="adminIncidentPreset">Testo ticket precompilato (opzionale)</label>
@@ -292,11 +294,6 @@
             </select>
           </div>
         </div>
-
-        <label class="checkbox-label" style="margin-top:6px;">
-          <input type="checkbox" id="adminNameMode" name="adminNameMode" />
-          Richiedi nome incident personalizzato all'utente
-        </label>
 
         <div class="form-actions">
           <button type="button" class="secondary close-modal">Annulla</button>

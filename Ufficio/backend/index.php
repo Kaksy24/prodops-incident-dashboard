@@ -5,15 +5,13 @@ if (function_exists('mysqli_report')) {
     mysqli_report(MYSQLI_REPORT_OFF);
 }
 
-define('DB_PATH', __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json');
-define('SYNC_TS_PATH', __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'sync_ts');
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'auth.php';
+define('DB_PATH', dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json');
+define('SYNC_TS_PATH', dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'sync_ts');
+require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'auth.php';
+require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'ldap.php';
 
 $fabs = array('M5', 'L1', 'EWS', 'WSIC', 'NRK');
-$defaultUsers = array(
-    array('id' => 1, 'username' => 'admin', 'password' => 'admin', 'role' => 'admin', 'team' => 'A'),
-    array('id' => 2, 'username' => 'user', 'password' => 'user', 'role' => 'user', 'team' => 'B')
-);
+$defaultUsers = array();
 
 function load_env_file($path)
 {
@@ -34,7 +32,7 @@ function load_env_file($path)
     }
 }
 
-load_env_file(__DIR__ . DIRECTORY_SEPARATOR . '.env');
+load_env_file(dirname(__FILE__) . DIRECTORY_SEPARATOR . '.env');
 
 function load_runtime_config_file($path)
 {
@@ -51,8 +49,8 @@ function load_runtime_config_file($path)
     }
 }
 
-load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.php');
-load_runtime_config_file(__DIR__ . DIRECTORY_SEPARATOR . 'config.local.php');
+load_runtime_config_file(dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.php');
+load_runtime_config_file(dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.local.php');
 
 function is_local_dev_host()
 {
@@ -66,8 +64,8 @@ function runtime_config_values()
     if ($config !== null) return $config;
     $config = array();
     $paths = array(
-        __DIR__ . DIRECTORY_SEPARATOR . 'config.php',
-        __DIR__ . DIRECTORY_SEPARATOR . 'config.local.php'
+        dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.php',
+        dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.local.php'
     );
     foreach ($paths as $path) {
         if (!file_exists($path)) continue;
@@ -662,7 +660,7 @@ function mysql_db_snapshot($conn)
 
 function mysql_ensure_schema($conn)
 {
-    $schemaPath = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
+    $schemaPath = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'mysql_schema_51.sql';
     if (!file_exists($schemaPath)) return false;
     $sql = file_get_contents($schemaPath);
     if ($sql === false || trim($sql) === '') return false;
@@ -1438,17 +1436,17 @@ if ($basePath !== '' && ($path === $basePath || strpos($path, $basePath . '/') =
 
 if ($path === '/' || $path === '/index.html') {
     require_page_auth('user');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'index.html');
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'index.html');
     exit;
 }
 if ($path === '/admin.html') {
     require_page_auth('admin');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'admin.html');
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'admin.html');
     exit;
 }
 if ($path === '/search.html') {
     require_page_auth('user');
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'search.html');
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'search.html');
     exit;
 }
 if ($path === '/login.html') {
@@ -1457,7 +1455,7 @@ if ($path === '/login.html') {
         header('Location: ' . app_url('/index.html'));
         exit;
     }
-    readfile(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'login.html');
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'login.html');
     exit;
 }
 
@@ -1501,16 +1499,22 @@ if ($path === '/api/login' && $method === 'POST') {
         }
     }
     foreach ($users as $u) {
-        $storedPassword = strval($u['password']);
-        $passwordMatches = ($storedPassword === $password) || ($storedPassword === '' && $password !== '' && $password === $username);
-        if (strtolower($u['username']) === strtolower($username) && $passwordMatches) {
+        if (strtolower($u['username']) !== strtolower($username)) continue;
+        $role = isset($u['role']) ? strval($u['role']) : 'user';
+        $authenticated = ldap_auth_user($username, $password);
+        if ($authenticated) {
+            // Aggiorna last_login e last_login_ip se le colonne esistono
+            if (isset($conn) && $conn) {
+                $ip = isset($_SERVER['REMOTE_ADDR']) ? @mysqli_real_escape_string($conn, $_SERVER['REMOTE_ADDR']) : '';
+                @mysqli_query($conn, "UPDATE app_users SET last_login=NOW(), last_login_ip='" . $ip . "' WHERE id=" . intval($u['id']));
+            }
             set_auth_cookie($u);
             $redirectTo = app_url('/index.html');
             if ($isJsonRequest) {
                 json_response(array(
                     'id' => intval($u['id']),
                     'username' => $u['username'],
-                    'role' => $u['role'],
+                    'role' => $role,
                     'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
                     'redirectTo' => $redirectTo
                 ), 200);
@@ -1518,24 +1522,7 @@ if ($path === '/api/login' && $method === 'POST') {
             header('Location: ' . $redirectTo, true, 302);
             exit;
         }
-    }
-    // Emergency fallback: always allow built-in defaults.
-    foreach ($defaultUsers as $u) {
-        if (strtolower($u['username']) === strtolower($username) && strval($u['password']) === $password) {
-            set_auth_cookie($u);
-            $redirectTo = app_url('/index.html');
-            if ($isJsonRequest) {
-                json_response(array(
-                    'id' => intval($u['id']),
-                    'username' => $u['username'],
-                    'role' => $u['role'],
-                    'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'),
-                    'redirectTo' => $redirectTo
-                ), 200);
-            }
-            header('Location: ' . $redirectTo, true, 302);
-            exit;
-        }
+        break;
     }
     if ($isJsonRequest) {
         json_response(array('error' => 'Credenziali non valide'), 401);
@@ -1632,13 +1619,13 @@ if ($path === '/api/users' && $method === 'POST') {
     $group_name = normalize_group_name(isset($payload['group_name']) ? $payload['group_name'] : 'ProdOps');
     $personal_target = normalize_personal_target(isset($payload['personal_target']) ? $payload['personal_target'] : 20);
     $group_target = normalize_group_target(isset($payload['group_target']) ? $payload['group_target'] : 20);
-    if ($username === '' || $password === '') json_response(array('error' => 'Username e password obbligatori'), 400);
+    if ($username === '') json_response(array('error' => 'Username obbligatorio'), 400);
     if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
     $db['counters']['user'] = intval($db['counters']['user']) + 1;
-    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => $password, 'role' => $role, 'team' => $team, 'group_name' => $group_name, 'personal_target' => $personal_target, 'group_target' => $group_target);
+    $newUser = array('id' => $db['counters']['user'], 'username' => $username, 'password' => '', 'role' => $role, 'team' => $team, 'group_name' => $group_name, 'personal_target' => $personal_target, 'group_target' => $group_target);
     $db['users'][] = $newUser;
     $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
     save_db($db);
@@ -1670,9 +1657,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
                 if ($u['role'] === 'admin' && $role !== 'admin' && $adminCount <= 1) json_response(array('error' => 'Deve restare almeno un amministratore'), 400);
                 $u['role'] = $role;
             }
-            if ($password !== null && $password !== '') {
-                $u['password'] = $password;
-            }
+            $u['password'] = '';
             $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
             save_db($db);
             json_response(array('ok' => true, 'user' => array('id' => $id, 'username' => $u['username'], 'role' => $u['role'], 'team' => $u['team'], 'group_name' => isset($u['group_name']) ? $u['group_name'] : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20))), 200);

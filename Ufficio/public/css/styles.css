@@ -504,6 +504,7 @@ body.theme-dark .switch-thumb {
 
 /* Pannello date range */
 .add-chart-custom-range { margin-top: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--brand) 4%, transparent); display: flex; flex-direction: column; gap: 10px; }
+.add-chart-custom-range[hidden] { display: none; }
 .add-chart-range-row { display: flex; align-items: center; gap: 10px; }
 .add-chart-range-label { font-size: .85rem; font-weight: 600; width: 28px; flex-shrink: 0; }
 .add-chart-date-input { flex: 1; }
@@ -2825,6 +2826,7 @@ body.theme-dark .admin-catalog .incident-btn:hover { background: rgba(36,160,216
   max-height: 260px;
   min-width: 180px;
 }
+.sd-panel[hidden] { display: none !important; }
 .sd-search {
   flex-shrink: 0;
   margin: 6px;
