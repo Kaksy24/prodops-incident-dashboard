@@ -22,6 +22,7 @@ const themeToggleBtn = document.getElementById('themeToggleBtn');
 const searchModal = document.getElementById('searchModal');
 const searchModalTitle = document.getElementById('searchModalTitle');
 const searchModalBody = document.getElementById('searchModalBody');
+const searchModalDeleteBtn = document.getElementById('searchModalDeleteBtn');
 
 const incidentCategoryMap = {};
 const incidentIdToCategoryMap = {};
@@ -31,6 +32,7 @@ let uiColors = null;
 let searchModalCloseTimer = null;
 let categorySelectHandle = null;
 let incidentSelectHandle = null;
+let activeSearchModalTicketId = '';
 
 const chartPalette = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -253,14 +255,14 @@ function applyTheme(theme) {
   if (themeToggleBtn) {
     themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
     const thumb = themeToggleBtn.querySelector('.switch-thumb');
-    if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+    if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
   }
 }
 
 async function fetchJson(url, options) {
   const res = await fetch(appUrl(url), options);
   if (res.status === 401) { window.location.href = appUrl('/login.html'); throw new Error('Login richiesta'); }
-  if (res.status === 403) { alert('Non hai i permessi per questa operazione.'); throw new Error('Accesso non consentito'); }
+  if (res.status === 403) { showToast('Non hai i permessi necessari per questa operazione. Contatta un amministratore.', 'error', 'Accesso negato'); throw new Error('Accesso non consentito'); }
   const text = (await res.text()).replace(/^﻿+/, '');
   try { return JSON.parse(text); } catch { throw new Error('Risposta JSON non valida'); }
 }
@@ -268,6 +270,7 @@ async function fetchJson(url, options) {
 function openSearchModal(ticket) {
   if (!searchModal) return;
   if (searchModalCloseTimer) { clearTimeout(searchModalCloseTimer); searchModalCloseTimer = null; }
+  activeSearchModalTicketId = String(ticket.ticketId || '');
   const category = incidentIdToCategoryMap[String(ticket.incidentId || '')] || incidentCategoryMap[ticket.incidentName || ''] || '';
   const categoryColor = getLabelColor('categories', category);
   const fabColor = getLabelColor('fabs', ticket.fab || '');
@@ -290,6 +293,11 @@ function openSearchModal(ticket) {
       (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
       (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0">Da: ' + escapeHtml(ticket.ownerUsername) + '</p>' : '');
   }
+  if (searchModalDeleteBtn) {
+    searchModalDeleteBtn.style.display = isAdminUser() ? '' : 'none';
+    searchModalDeleteBtn.disabled = false;
+    searchModalDeleteBtn.dataset.ticketId = activeSearchModalTicketId;
+  }
   searchModal.classList.remove('closing');
   searchModal.classList.add('show');
   searchModal.setAttribute('aria-hidden', 'false');
@@ -301,6 +309,11 @@ function openSearchModal(ticket) {
 function closeSearchModal() {
   if (!searchModal || (!searchModal.classList.contains('show') && !searchModal.classList.contains('active'))) return;
   if (searchModalCloseTimer) clearTimeout(searchModalCloseTimer);
+  activeSearchModalTicketId = '';
+  if (searchModalDeleteBtn) {
+    searchModalDeleteBtn.disabled = false;
+    searchModalDeleteBtn.dataset.ticketId = '';
+  }
   searchModal.classList.remove('active');
   searchModal.classList.add('closing');
   searchModal.setAttribute('aria-hidden', 'true');
@@ -310,6 +323,38 @@ function closeSearchModal() {
     searchModal.classList.remove('show', 'closing');
     searchModalCloseTimer = null;
   }, 260);
+}
+
+function isAdminUser() {
+  return currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor');
+}
+
+async function deleteSearchTicket(ticketId, triggerBtn) {
+  if (!ticketId) return false;
+  if (!(await showConfirm('Il ticket #' + ticketId + ' verrà eliminato definitivamente. L\'operazione non è reversibile.', { title: 'Elimina ticket', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return false;
+  if (triggerBtn) triggerBtn.disabled = true;
+  try {
+    await fetchJson('/api/tickets/' + ticketId, { method: 'DELETE' });
+    const row = ticketSearchResults ? ticketSearchResults.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]') : null;
+    if (row) row.remove();
+    const countEl = ticketSearchResults ? ticketSearchResults.querySelector('.ticket-search-count') : null;
+    if (countEl) {
+      const m = countEl.textContent.match(/(\d+)/);
+      if (m) countEl.textContent = countEl.textContent.replace(/\d+/, String(Math.max(0, parseInt(m[1], 10) - 1)));
+    }
+    closeSearchModal();
+    if (ticketSearchResults && !ticketSearchResults.querySelector('.ticket-row')) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'Nessun ticket trovato con questi filtri.';
+      ticketSearchResults.appendChild(empty);
+    }
+    return true;
+  } catch (err) {
+    showToast('Impossibile eliminare il ticket: ' + (err.message || err), 'error', 'Errore eliminazione');
+    if (triggerBtn) triggerBtn.disabled = false;
+    return false;
+  }
 }
 
 function renderSearchTickets(tickets) {
@@ -362,6 +407,7 @@ function renderSearchTickets(tickets) {
       '<div class="ticket-row-footer">' +
         (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
+        (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
       '</div>';
 
     ul.appendChild(li);
@@ -385,7 +431,7 @@ async function loadCategories() {
 
   if (ticketSearchCategorySelect) {
     while (ticketSearchCategorySelect.options.length > 1) ticketSearchCategorySelect.remove(1);
-    data.forEach((cat) => {
+    data.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'it', { sensitivity: 'base' })).forEach((cat) => {
       const opt = document.createElement('option');
       opt.value = cat.name;
       opt.textContent = cat.name;
@@ -396,13 +442,16 @@ async function loadCategories() {
 
   if (ticketSearchIncidentSelect) {
     while (ticketSearchIncidentSelect.options.length > 1) ticketSearchIncidentSelect.remove(1);
+    const allIncidents = [];
     data.forEach((cat) => {
-      cat.incidents.forEach((inc) => {
-        const opt = document.createElement('option');
-        opt.value = String(inc.id);
-        opt.textContent = inc.name;
-        ticketSearchIncidentSelect.appendChild(opt);
-      });
+      cat.incidents.forEach((inc) => { allIncidents.push(inc); });
+    });
+    allIncidents.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'it', { sensitivity: 'base' }));
+    allIncidents.forEach((inc) => {
+      const opt = document.createElement('option');
+      opt.value = String(inc.id);
+      opt.textContent = inc.name;
+      ticketSearchIncidentSelect.appendChild(opt);
     });
     incidentSelectHandle = makeSearchableSelect(ticketSearchIncidentSelect);
   }
@@ -511,8 +560,31 @@ function applyTicketSearchListeners() {
     if (ticketSearchResults) ticketSearchResults.innerHTML = '';
   });
 
-  ticketSearchResults?.addEventListener('click', (e) => {
+  ticketSearchResults?.addEventListener('click', async (e) => {
     if (e.target.closest('.preset-value-link')) return;
+
+    const deleteBtn = e.target.closest('.ticket-delete-btn');
+    if (deleteBtn) {
+      e.stopPropagation();
+      const ticketId = deleteBtn.dataset.ticketId;
+      if (!(await showConfirm('Il ticket #' + ticketId + ' verrà eliminato definitivamente. L\'operazione non è reversibile.', { title: 'Elimina ticket', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
+      deleteBtn.disabled = true;
+      try {
+        await fetchJson('/api/tickets/' + ticketId, { method: 'DELETE' });
+        const row = deleteBtn.closest('.ticket-row');
+        if (row) row.remove();
+        const countEl = ticketSearchResults.querySelector('.ticket-search-count');
+        if (countEl) {
+          const m = countEl.textContent.match(/(\d+)/);
+          if (m) countEl.textContent = countEl.textContent.replace(/\d+/, String(Math.max(0, parseInt(m[1]) - 1)));
+        }
+      } catch (err) {
+        showToast('Impossibile eliminare il ticket: ' + (err.message || err), 'error', 'Errore eliminazione');
+        deleteBtn.disabled = false;
+      }
+      return;
+    }
+
     const card = e.target.closest('.ticket-row');
     if (!card) return;
     openSearchModal({
@@ -530,6 +602,10 @@ function applyTicketSearchListeners() {
 
   if (searchModal) {
     searchModal.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeSearchModal));
+    searchModalDeleteBtn?.addEventListener('click', async () => {
+      if (!isAdminUser()) return;
+      await deleteSearchTicket(activeSearchModalTicketId || searchModalDeleteBtn.dataset.ticketId || '', searchModalDeleteBtn);
+    });
     let overlayPress = false;
     searchModal.addEventListener('mousedown', (e) => { overlayPress = e.target === searchModal; });
     searchModal.addEventListener('mouseup', (e) => { if (e.target === searchModal && overlayPress) closeSearchModal(); overlayPress = false; });

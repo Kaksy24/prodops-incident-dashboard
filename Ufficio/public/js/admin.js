@@ -136,7 +136,7 @@ function applyTheme(theme) {
   document.body.classList.toggle('theme-dark', theme === 'dark');
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+  if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
 }
 
 function defaultUiColors() {
@@ -428,7 +428,7 @@ function selectAdminColorTarget(chartId, label) {
 function syncAdminColorToggle() {
   if (!uiColorThemeToggleBtn) return;
   const thumb = uiColorThemeToggleBtn.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? 'D' : 'L';
+  if (thumb) thumb.textContent = adminColorEditTheme === 'dark' ? '🌙' : '☀';
   uiColorThemeToggleBtn.setAttribute('aria-pressed', String(adminColorEditTheme === 'dark'));
   updateColorEditor();
 }
@@ -765,7 +765,7 @@ async function saveUiColors() {
   } catch (error) {
     // ignore storage issues
   }
-  alert('Grafici, colori e titoli salvati.');
+  showToast('Grafici, colori e titoli personalizzati salvati con successo.', 'success', 'Impostazioni salvate');
 }
 
 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -866,8 +866,8 @@ async function fetchJson(url, options, attempt = 0) {
     throw new Error('Login richiesta');
   }
   if (res.status === 403) {
-    alert('Accesso admin richiesto.');
-    window.location.href = appUrl('/index.html');
+    showToast('Non hai i permessi necessari per accedere al pannello admin. Sarai reindirizzato alla dashboard.', 'error', 'Accesso non autorizzato');
+    setTimeout(function () { window.location.href = appUrl('/index.html'); }, 2000);
     throw new Error('Accesso admin richiesto');
   }
   if (looksLikeAntiBotPage || !looksLikeJson) {
@@ -967,7 +967,7 @@ function renderUsers() {
         </td>
         <td>
           <select class="user-role-select" aria-label="Ruolo ${username}" data-user-id="${Number(user.id)}" ${roleLocked ? `disabled title="${lockReason}"` : ''}>
-            ${['user', 'admin'].map((item) => `<option value="${item}" ${role === item ? 'selected' : ''}>${item === 'admin' ? 'Amministratore' : 'Operatore'}</option>`).join('')}
+            ${['user', 'admin', 'supervisor'].map((item) => `<option value="${item}" ${role === item ? 'selected' : ''}>${item === 'admin' ? 'Amministratore' : item === 'supervisor' ? 'Supervisor' : 'Operatore'}</option>`).join('')}
           </select>
         </td>
         <td>
@@ -1017,7 +1017,7 @@ function renderUsers() {
         });
         await Promise.all([loadUsers(), loadGroupTargets()]);
       } catch (error) {
-        alert(`Errore salvataggio utente: ${error.message || error}`);
+        showToast('Impossibile salvare le modifiche utente: ' + (error.message || error), 'error', 'Errore salvataggio');
         btn.disabled = false;
         btn.textContent = 'Salva';
       }
@@ -1028,12 +1028,13 @@ function renderUsers() {
     btn.addEventListener('click', async () => {
       const userId = Number(btn.dataset.userId);
       const username = btn.dataset.username || '';
-      if (!userId || !confirm(`Eliminare definitivamente l'utente "${username}"?`)) return;
+      if (!userId) return;
+      if (!(await showConfirm('L\'utente "' + username + '" verrà eliminato definitivamente e non potrà più accedere al sistema.', { title: 'Elimina utente', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
       try {
         await fetchJson(`/api/users/${userId}`, { method: 'DELETE' });
         await Promise.all([loadUsers(), loadGroupTargets()]);
       } catch (error) {
-        alert(`Errore eliminazione utente: ${error.message || error}`);
+        showToast("Impossibile eliminare l'utente: " + (error.message || error), 'error', 'Errore eliminazione');
       }
     });
   });
@@ -1118,7 +1119,7 @@ function renderGroupTargets() {
         });
         await loadGroupTargets();
       } catch (error) {
-        alert(`Errore salvataggio target gruppo: ${error.message || error}`);
+        showToast('Impossibile salvare il target del gruppo: ' + (error.message || error), 'error', 'Errore salvataggio');
         btn.disabled = false;
         btn.textContent = 'Salva';
       }
@@ -1173,7 +1174,7 @@ async function loadPresetOptionRequests() {
           });
           await loadPresetOptionRequests();
         } catch (error) {
-          alert(`Errore revisione opzione: ${error.message || error}`);
+          showToast("Impossibile modificare l'opzione: " + (error.message || error), 'error', 'Errore modifica');
           btn.disabled = false;
         }
       });
@@ -1181,6 +1182,286 @@ async function loadPresetOptionRequests() {
   } catch (error) {
     if (presetRequestsSummary) presetRequestsSummary.textContent = 'Errore caricamento';
     presetRequestsList.innerHTML = `<div class="users-empty muted">Errore caricamento richieste: ${escapeHtml(error.message || error)}</div>`;
+  }
+}
+
+var presetOptionsState = {};
+var presetOptionFormatModes = {};
+var presetOptionFormatStorageKey = 'prodops_preset_option_format_modes_v1';
+
+function loadPresetOptionFormatModes() {
+  try {
+    var raw = localStorage.getItem(presetOptionFormatStorageKey);
+    var parsed = raw ? JSON.parse(raw) : {};
+    presetOptionFormatModes = parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    presetOptionFormatModes = {};
+  }
+}
+
+function savePresetOptionFormatModes() {
+  try {
+    localStorage.setItem(presetOptionFormatStorageKey, JSON.stringify(presetOptionFormatModes));
+  } catch (error) {}
+}
+
+function getPresetOptionFormatMode(fieldKey) {
+  var mode = presetOptionFormatModes[fieldKey];
+  return mode === 'lower' || mode === 'upper' || mode === 'capitalize' ? mode : 'none';
+}
+
+function setPresetOptionFormatMode(fieldKey, mode) {
+  if (mode === 'lower' || mode === 'upper' || mode === 'capitalize') presetOptionFormatModes[fieldKey] = mode;
+  else delete presetOptionFormatModes[fieldKey];
+  savePresetOptionFormatModes();
+}
+
+function getPresetState(fieldKey) {
+  if (!presetOptionsState[fieldKey]) presetOptionsState[fieldKey] = { page: 0, sortDir: 1, pageSize: 10 };
+  return presetOptionsState[fieldKey];
+}
+
+function getPresetSearch() {
+  const el = presetOptionsManager ? presetOptionsManager.querySelector('#presetOptionsSearch') : null;
+  return el ? el.value.toLowerCase().trim() : '';
+}
+
+function capitalizePresetOptionValue(value) {
+  var normalized = String(value || '').toLowerCase();
+  return normalized.replace(/\b([a-zà-öø-ÿ])/g, function(match) { return match.toUpperCase(); });
+}
+
+function formatPresetOptionValue(value, mode) {
+  var text = String(value || '').trim();
+  if (!text) return '';
+  if (mode === 'lower') return text.toLowerCase();
+  if (mode === 'upper') return text.toUpperCase();
+  if (mode === 'capitalize') return capitalizePresetOptionValue(text);
+  return text;
+}
+
+function getPresetFormatLabel(mode) {
+  if (mode === 'none') return 'nessun formato automatico';
+  if (mode === 'lower') return 'tutto minuscolo';
+  if (mode === 'upper') return 'tutto maiuscolo';
+  if (mode === 'capitalize') return 'prima lettera maiuscola';
+  return 'formato selezionato';
+}
+
+async function applyPresetOptionFormat(fieldKey, mode, triggerBtn) {
+  var allOptions = [];
+  var duplicates = [];
+  var nextValuesMap = {};
+  var updates = [];
+
+  (presetOptionsCache || []).forEach(function(field) {
+    if (field.field_key === fieldKey) allOptions = Array.isArray(field.options) ? field.options : [];
+  });
+
+  allOptions.forEach(function(originalValue) {
+    var nextValue = formatPresetOptionValue(originalValue, mode);
+    if (!nextValue) return;
+    if (Object.prototype.hasOwnProperty.call(nextValuesMap, nextValue) && nextValuesMap[nextValue] !== originalValue) {
+      duplicates.push(nextValue);
+      return;
+    }
+    nextValuesMap[nextValue] = originalValue;
+    if (nextValue !== originalValue) {
+      updates.push({ original_value: originalValue, value: nextValue });
+    }
+  });
+
+  if (duplicates.length) {
+    showToast('Operazione annullata: il formato "' + getPresetFormatLabel(mode) + '" creerebbe duplicati nel menu "' + fieldKey + '".', 'warning', 'Duplicati rilevati');
+    return;
+  }
+
+  if (!updates.length) {
+    showToast('Gli elementi del menu "' + fieldKey + '" sono già nel formato "' + getPresetFormatLabel(mode) + '".', 'info', 'Nessuna modifica');
+    return;
+  }
+
+  if (!(await showConfirm('Vuoi applicare il formato "' + getPresetFormatLabel(mode) + '" a tutti gli elementi del menu "' + fieldKey + '"?', { title: 'Formatta lista menu', type: 'warning', confirmText: 'Applica', cancelText: 'Annulla' }))) return;
+
+  if (triggerBtn) triggerBtn.disabled = true;
+  try {
+    for (var i = 0; i < updates.length; i += 1) {
+      await fetchJson('/api/admin/preset-options', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field_key: fieldKey,
+          original_value: updates[i].original_value,
+          value: updates[i].value
+        })
+      });
+    }
+    showToast('Formato applicato a ' + updates.length + ' elementi del menu "' + fieldKey + '".', 'success', 'Lista aggiornata');
+    await loadPresetOptionsManager();
+  } catch (error) {
+    showToast('Impossibile aggiornare la lista: ' + (error.message || error), 'error', 'Errore formattazione');
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
+function getPresetFieldOptions(fieldKey) {
+  var allOptions = [];
+  (presetOptionsCache || []).forEach(function(field) {
+    if (field.field_key === fieldKey) allOptions = Array.isArray(field.options) ? field.options : [];
+  });
+  return allOptions;
+}
+
+function buildPresetFormatPlan(fieldKey, mode) {
+  var allOptions = getPresetFieldOptions(fieldKey);
+  var duplicates = [];
+  var nextValuesMap = {};
+  var updates = [];
+
+  allOptions.forEach(function(originalValue) {
+    var nextValue = formatPresetOptionValue(originalValue, mode);
+    if (!nextValue) return;
+    if (Object.prototype.hasOwnProperty.call(nextValuesMap, nextValue) && nextValuesMap[nextValue] !== originalValue) {
+      duplicates.push(nextValue);
+      return;
+    }
+    nextValuesMap[nextValue] = originalValue;
+    if (nextValue !== originalValue) updates.push({ original_value: originalValue, value: nextValue });
+  });
+
+  return { duplicates: duplicates, updates: updates };
+}
+
+function syncPresetFormatInputs(fieldKey, mode) {
+  if (!presetOptionsManager) return;
+  var card = presetOptionsManager.querySelector('.preset-option-card[data-field-key="' + fieldKey + '"]');
+  if (!card) return;
+  card.querySelectorAll('.preset-option-format-input').forEach(function(input) {
+    input.checked = input.value === mode;
+    if (input.parentNode) input.parentNode.classList.toggle('active', input.checked);
+  });
+}
+
+function formatPresetOptionForField(fieldKey, value) {
+  return formatPresetOptionValue(value, getPresetOptionFormatMode(fieldKey));
+}
+
+function presetOptionValueExists(fieldKey, value, excludedOriginal) {
+  var options = getPresetFieldOptions(fieldKey);
+  for (var i = 0; i < options.length; i += 1) {
+    if (options[i] === value && options[i] !== excludedOriginal) return true;
+  }
+  return false;
+}
+
+async function applyPresetOptionFormatSetting(fieldKey, mode, triggerInput) {
+  var previousMode = getPresetOptionFormatMode(fieldKey);
+  var plan = buildPresetFormatPlan(fieldKey, mode);
+
+  if (plan.duplicates.length) {
+    showToast('Operazione annullata: il formato "' + getPresetFormatLabel(mode) + '" creerebbe duplicati nel menu "' + fieldKey + '".', 'warning', 'Duplicati rilevati');
+    syncPresetFormatInputs(fieldKey, previousMode);
+    return;
+  }
+
+  if (!plan.updates.length) {
+    setPresetOptionFormatMode(fieldKey, mode);
+    showToast(mode === 'none'
+      ? 'Formato automatico disattivato per il menu "' + fieldKey + '".'
+      : 'Formato automatico salvato per il menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Impostazione salvata');
+    syncPresetFormatInputs(fieldKey, mode);
+    return;
+  }
+
+  if (!(await showConfirm('Vuoi applicare il formato "' + getPresetFormatLabel(mode) + '" a tutti gli elementi attuali del menu "' + fieldKey + '" e usarlo anche per i nuovi inserimenti?', { title: 'Formato lista', type: 'warning', confirmText: 'Applica', cancelText: 'Annulla' }))) {
+    syncPresetFormatInputs(fieldKey, previousMode);
+    return;
+  }
+
+  if (triggerInput) triggerInput.disabled = true;
+  try {
+    for (var i = 0; i < plan.updates.length; i += 1) {
+      await fetchJson('/api/admin/preset-options', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field_key: fieldKey,
+          original_value: plan.updates[i].original_value,
+          value: plan.updates[i].value
+        })
+      });
+    }
+    setPresetOptionFormatMode(fieldKey, mode);
+    showToast('Formato applicato a ' + plan.updates.length + ' elementi del menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Lista aggiornata');
+    await loadPresetOptionsManager();
+  } catch (error) {
+    showToast('Impossibile aggiornare la lista: ' + (error.message || error), 'error', 'Errore formattazione');
+    if (triggerInput) triggerInput.disabled = false;
+    syncPresetFormatInputs(fieldKey, previousMode);
+  }
+}
+
+function renderPresetCardTable(fieldKey) {
+  if (!presetOptionsManager) return;
+  const card = presetOptionsManager.querySelector(`.preset-option-card[data-field-key="${fieldKey}"]`);
+  if (!card) return;
+
+  const state = getPresetState(fieldKey);
+  const q = getPresetSearch();
+  let allOptions = [];
+  (presetOptionsCache || []).forEach((f) => { if (f.field_key === fieldKey) allOptions = Array.isArray(f.options) ? f.options : []; });
+
+  const filtered = allOptions.filter((opt) => !q || opt.toLowerCase().indexOf(q) !== -1);
+  const sorted = filtered.slice().sort((a, b) => state.sortDir * a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+  const total = sorted.length;
+  const pageSize = state.pageSize;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (state.page >= totalPages) state.page = totalPages - 1;
+  if (state.page < 0) state.page = 0;
+  const start = state.page * pageSize;
+  const end = Math.min(start + pageSize, total);
+  const paged = sorted.slice(start, end);
+
+  const tbody = card.querySelector('tbody');
+  if (tbody) {
+    tbody.innerHTML = paged.length
+      ? paged.map((option) => `<tr data-field-key="${escapeHtml(fieldKey)}" data-option-value="${escapeHtml(option)}">
+          <td class="preset-option-value-cell">${escapeHtml(option)}</td>
+          <td><div class="preset-option-actions">
+            <button type="button" class="secondary preset-option-edit-btn" data-field-key="${escapeHtml(fieldKey)}" data-option-value="${escapeHtml(option)}">Modifica</button>
+            <button type="button" class="preset-option-delete-btn" data-field-key="${escapeHtml(fieldKey)}" data-option-value="${escapeHtml(option)}">Elimina</button>
+          </div></td>
+        </tr>`).join('')
+      : `<tr><td colspan="2" class="preset-option-empty muted">Nessuna opzione ${q ? 'trovata' : 'approvata'}.</td></tr>`;
+  }
+
+  const sortTh = card.querySelector('.preset-dt-sort-th');
+  if (sortTh) sortTh.innerHTML = `Valore <span class="dt-sort-icon">${state.sortDir === 1 ? '▲' : '▼'}</span>`;
+
+  const countChip = card.querySelector('.preset-option-count');
+  if (countChip) countChip.textContent = `${allOptions.length} elementi`;
+
+  const infoEl = card.querySelector('.dt-info');
+  if (infoEl) infoEl.textContent = total > 0 ? `${start + 1}–${end} di ${total}` : '';
+
+  const pagEl = card.querySelector('.dt-pagination');
+  if (pagEl) {
+    if (totalPages <= 1) {
+      pagEl.innerHTML = '';
+    } else {
+      const maxBtns = 5;
+      const half = Math.floor(maxBtns / 2);
+      let rangeStart = Math.max(0, Math.min(state.page - half, totalPages - maxBtns));
+      const rangeEnd = Math.min(totalPages, rangeStart + maxBtns);
+      let btns = '';
+      if (rangeStart > 0) btns += `<button type="button" class="dt-page-btn" data-page="0">1</button><span class="dt-ellipsis">…</span>`;
+      for (let i = rangeStart; i < rangeEnd; i++) {
+        btns += `<button type="button" class="dt-page-btn${i === state.page ? ' active' : ''}" data-page="${i}">${i + 1}</button>`;
+      }
+      if (rangeEnd < totalPages) btns += `<span class="dt-ellipsis">…</span><button type="button" class="dt-page-btn" data-page="${totalPages - 1}">${totalPages}</button>`;
+      pagEl.innerHTML = `<button type="button" class="dt-prev-btn"${state.page === 0 ? ' disabled' : ''}>‹</button>${btns}<button type="button" class="dt-next-btn"${state.page >= totalPages - 1 ? ' disabled' : ''}>›</button>`;
+    }
   }
 }
 
@@ -1193,122 +1474,169 @@ function renderPresetOptionsManager() {
     presetOptionsManager.innerHTML = '<div class="users-empty muted">Nessun menu approvato presente nel database.</div>';
     return;
   }
-  presetOptionsManager.innerHTML = `<div class="preset-options-grid">${fields.map((field) => {
-    const options = Array.isArray(field.options) ? field.options : [];
-    const rows = options.length ? options.map((option) => `
-      <tr data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">
-        <td class="preset-option-value-cell">${escapeHtml(option)}</td>
-        <td>
-          <div class="preset-option-actions">
-            <button type="button" class="secondary preset-option-edit-btn" data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">Modifica</button>
-            <button type="button" class="preset-option-delete-btn" data-field-key="${escapeHtml(field.field_key)}" data-option-value="${escapeHtml(option)}">Elimina</button>
-          </div>
-        </td>
-      </tr>
-    `).join('') : `<tr><td colspan="2" class="preset-option-empty muted">Nessuna opzione approvata.</td></tr>`;
-    return `
-      <article class="preset-option-card" data-field-key="${escapeHtml(field.field_key)}">
-        <div class="preset-option-card-header">
-          <div>
-            <h4>${escapeHtml(field.field_label || field.field_key)}</h4>
-            <div class="preset-option-key">${escapeHtml(field.field_key)}</div>
-          </div>
-          <div class="admin-summary-chip preset-option-count">${options.length} elementi</div>
-        </div>
-        <div class="preset-option-add-row">
-          <input type="text" class="preset-option-new-input" data-field-key="${escapeHtml(field.field_key)}" placeholder="Nuovo elemento approvato" />
-          <button type="button" class="primary preset-option-add-btn" data-field-key="${escapeHtml(field.field_key)}" data-field-label="${escapeHtml(field.field_label || field.field_key)}">Aggiungi</button>
-        </div>
-        <table class="preset-option-table">
-          <thead>
-            <tr>
-              <th>Valore</th>
-              <th>Azioni</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </article>
-    `;
-  }).join('')}</div>`;
 
-  presetOptionsManager.querySelectorAll('.preset-option-add-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const fieldKey = btn.dataset.fieldKey || '';
-      const fieldLabel = btn.dataset.fieldLabel || fieldKey;
-      const input = presetOptionsManager.querySelector(`.preset-option-new-input[data-field-key="${fieldKey}"]`);
-      const value = (input?.value || '').trim();
-      if (!value) {
-        alert('Inserisci un nuovo elemento da aggiungere.');
-        return;
-      }
-      try {
-        btn.disabled = true;
-        await fetchJson('/api/admin/preset-options', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field_key: fieldKey, field_label: fieldLabel, value })
-        });
-        await loadPresetOptionsManager();
-      } catch (error) {
-        alert(`Errore aggiunta elemento: ${error.message || error}`);
-        btn.disabled = false;
-      }
-    });
-  });
+  const pageSizes = [5, 10, 25];
+  const cardsHtml = fields.map((field, index) => {
+    const fk = escapeHtml(field.field_key);
+    const state = getPresetState(field.field_key);
+    const formatMode = getPresetOptionFormatMode(field.field_key);
+    const radioName = 'preset-format-' + index;
+    return `<article class="preset-option-card" data-field-key="${fk}">
+      <div class="preset-option-card-header">
+        <div><h4>${escapeHtml(field.field_label || field.field_key)}</h4>
+        <div class="preset-option-key">${fk}</div></div>
+        <div class="admin-summary-chip preset-option-count">0 elementi</div>
+      </div>
+      <div class="preset-option-add-row">
+        <input type="text" class="preset-option-new-input" data-field-key="${fk}" placeholder="Nuovo elemento approvato" />
+        <button type="button" class="primary preset-option-add-btn" data-field-key="${fk}" data-field-label="${escapeHtml(field.field_label || field.field_key)}">Aggiungi</button>
+      </div>
+      <div class="preset-option-bulk-format">
+        <span class="preset-option-bulk-label">Formato lista:</span>
+        <div class="preset-option-bulk-actions">
+          <label class="preset-option-format-chip${formatMode === 'none' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="none"${formatMode === 'none' ? ' checked' : ''} />Nessuno</label>
+          <label class="preset-option-format-chip${formatMode === 'lower' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="lower"${formatMode === 'lower' ? ' checked' : ''} />tutto minuscolo</label>
+          <label class="preset-option-format-chip${formatMode === 'upper' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="upper"${formatMode === 'upper' ? ' checked' : ''} />TUTTO MAIUSCOLO</label>
+          <label class="preset-option-format-chip${formatMode === 'capitalize' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="capitalize"${formatMode === 'capitalize' ? ' checked' : ''} />Prima Lettera Maiuscola</label>
+        </div>
+        <p class="preset-option-bulk-help">I nuovi elementi e le modifiche useranno automaticamente il formato selezionato.</p>
+      </div>
+      <table class="preset-option-table">
+        <thead><tr>
+          <th class="preset-dt-sort-th" data-field-key="${fk}">Valore</th>
+          <th>Azioni</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="dt-footer">
+        <div class="dt-footer-left">
+          <label class="dt-page-size-label">Righe: <select class="dt-page-size">${pageSizes.map((s) => `<option value="${s}"${s === state.pageSize ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
+          <span class="dt-info muted"></span>
+        </div>
+        <div class="dt-pagination"></div>
+      </div>
+    </article>`;
+  }).join('');
 
-  presetOptionsManager.querySelectorAll('.preset-option-edit-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const fieldKey = btn.dataset.fieldKey || '';
-      const originalValue = btn.dataset.optionValue || '';
-      const row = btn.closest('tr');
-      if (!row) return;
-      row.innerHTML = `
-        <td><input type="text" class="preset-option-edit-input" value="${escapeHtml(originalValue)}" /></td>
-        <td>
-          <div class="preset-option-actions">
-            <button type="button" class="primary preset-option-save-btn">Salva</button>
-            <button type="button" class="secondary preset-option-cancel-btn">Annulla</button>
-          </div>
-        </td>
-      `;
-      row.querySelector('.preset-option-save-btn')?.addEventListener('click', async () => {
-        const nextValue = (row.querySelector('.preset-option-edit-input')?.value || '').trim();
-        if (!nextValue) {
-          alert('Il valore non puo essere vuoto.');
-          return;
-        }
-        try {
-          await fetchJson('/api/admin/preset-options', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ field_key: fieldKey, original_value: originalValue, value: nextValue })
-          });
-          await loadPresetOptionsManager();
-        } catch (error) {
-          alert(`Errore modifica elemento: ${error.message || error}`);
+  presetOptionsManager.innerHTML = `
+    <div class="preset-options-search-bar"><input type="search" id="presetOptionsSearch" placeholder="Cerca opzione..." autocomplete="off" /></div>
+    <div class="preset-options-grid">${cardsHtml}</div>`;
+
+  fields.forEach((field) => renderPresetCardTable(field.field_key));
+
+  // Search
+  const searchInput = presetOptionsManager.querySelector('#presetOptionsSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.toLowerCase().trim();
+      fields.forEach((field) => {
+        getPresetState(field.field_key).page = 0;
+        renderPresetCardTable(field.field_key);
+        const card = presetOptionsManager.querySelector(`.preset-option-card[data-field-key="${field.field_key}"]`);
+        if (card) {
+          const opts = Array.isArray(field.options) ? field.options : [];
+          card.style.display = (!q || opts.some((o) => o.toLowerCase().indexOf(q) !== -1)) ? '' : 'none';
         }
       });
-      row.querySelector('.preset-option-cancel-btn')?.addEventListener('click', renderPresetOptionsManager);
     });
-  });
+  }
 
-  presetOptionsManager.querySelectorAll('.preset-option-delete-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const fieldKey = btn.dataset.fieldKey || '';
-      const value = btn.dataset.optionValue || '';
-      if (!confirm(`Eliminare "${value}" dal menu "${fieldKey}"?`)) return;
+  // Sort + pagination via event delegation per card
+  presetOptionsManager.querySelectorAll('.preset-option-card').forEach((card) => {
+    const fieldKey = card.dataset.fieldKey || '';
+
+    card.querySelector('.preset-dt-sort-th')?.addEventListener('click', () => {
+      const state = getPresetState(fieldKey);
+      state.sortDir = state.sortDir === 1 ? -1 : 1;
+      state.page = 0;
+      renderPresetCardTable(fieldKey);
+    });
+
+    card.querySelector('.dt-page-size')?.addEventListener('change', function() {
+      const state = getPresetState(fieldKey);
+      state.pageSize = parseInt(this.value, 10) || 10;
+      state.page = 0;
+      renderPresetCardTable(fieldKey);
+    });
+
+    card.querySelector('.dt-pagination')?.addEventListener('click', (e) => {
+      const state = getPresetState(fieldKey);
+      let allOpts = [];
+      (presetOptionsCache || []).forEach((f) => { if (f.field_key === fieldKey) allOpts = Array.isArray(f.options) ? f.options : []; });
+      const totalPages = Math.max(1, Math.ceil(allOpts.length / state.pageSize));
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.classList.contains('dt-prev-btn') && state.page > 0) state.page--;
+      else if (btn.classList.contains('dt-next-btn') && state.page < totalPages - 1) state.page++;
+      else if (btn.classList.contains('dt-page-btn')) state.page = parseInt(btn.dataset.page, 10) || 0;
+      renderPresetCardTable(fieldKey);
+    });
+
+    // Add
+    card.querySelector('.preset-option-add-btn')?.addEventListener('click', async () => {
+      const input = card.querySelector(`.preset-option-new-input[data-field-key="${fieldKey}"]`);
+      const rawValue = (input?.value || '').trim();
+      const fieldLabel = card.querySelector('.preset-option-add-btn')?.dataset.fieldLabel || fieldKey;
+      if (!rawValue) { showToast('Il campo Ã¨ vuoto. Inserisci il valore da aggiungere al menu prima di procedere.', 'warning', 'Campo obbligatorio'); return; }
+      const value = formatPresetOptionForField(fieldKey, rawValue);
+      if (presetOptionValueExists(fieldKey, value, '')) { showToast('Esiste giÃ  un elemento con questo valore nel menu "' + fieldKey + '".', 'warning', 'Duplicato'); return; }
       try {
-        btn.disabled = true;
-        await fetchJson('/api/admin/preset-options', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field_key: fieldKey, value })
-        });
+        input.disabled = true;
+        await fetchJson('/api/admin/preset-options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field_key: fieldKey, field_label: fieldLabel, value }) });
         await loadPresetOptionsManager();
       } catch (error) {
-        alert(`Errore eliminazione elemento: ${error.message || error}`);
-        btn.disabled = false;
+        showToast("Impossibile aggiungere l'elemento: " + (error.message || error), 'error', 'Errore aggiunta');
+        if (input) input.disabled = false;
+      }
+    });
+
+    card.querySelectorAll('.preset-option-format-input').forEach((input) => {
+      input.addEventListener('change', async () => {
+        if (!input.checked) return;
+        syncPresetFormatInputs(fieldKey, input.value || 'none');
+        await applyPresetOptionFormatSetting(fieldKey, input.value || 'none', input);
+      });
+    });
+
+    // Edit/Delete via delegation on tbody
+    card.querySelector('tbody')?.addEventListener('click', async (e) => {
+      const deleteBtn = e.target.closest('.preset-option-delete-btn');
+      if (deleteBtn) {
+        const value = deleteBtn.dataset.optionValue || '';
+        if (!(await showConfirm('L\'opzione "' + value + '" verrà rimossa definitivamente dal menu "' + fieldKey + '".', { title: 'Elimina opzione', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
+        deleteBtn.disabled = true;
+        try {
+          await fetchJson('/api/admin/preset-options', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field_key: fieldKey, value }) });
+          await loadPresetOptionsManager();
+        } catch (error) {
+          showToast("Impossibile eliminare l'elemento: " + (error.message || error), 'error', 'Errore eliminazione');
+          deleteBtn.disabled = false;
+        }
+        return;
+      }
+      const editBtn = e.target.closest('.preset-option-edit-btn');
+      if (editBtn) {
+        const row = editBtn.closest('tr');
+        if (!row) return;
+        const originalValue = editBtn.dataset.optionValue || '';
+        row.innerHTML = `<td><input type="text" class="preset-option-edit-input" value="${escapeHtml(originalValue)}" /></td>
+          <td><div class="preset-option-actions">
+            <button type="button" class="primary preset-option-save-btn">Salva</button>
+            <button type="button" class="secondary preset-option-cancel-btn">Annulla</button>
+          </div></td>`;
+        row.querySelector('.preset-option-cancel-btn')?.addEventListener('click', () => renderPresetCardTable(fieldKey));
+        row.querySelector('.preset-option-save-btn')?.addEventListener('click', async () => {
+          const rawNextValue = (row.querySelector('.preset-option-edit-input')?.value || '').trim();
+          const nextValue = formatPresetOptionForField(fieldKey, rawNextValue);
+          if (!nextValue) { showToast('Il valore modificato non puÃ² essere vuoto. Inserisci un testo valido.', 'warning', 'Valore non valido'); return; }
+          if (presetOptionValueExists(fieldKey, nextValue, originalValue)) { showToast('Esiste giÃ  un elemento con questo valore nel menu "' + fieldKey + '".', 'warning', 'Duplicato'); return; }
+          try {
+            await fetchJson('/api/admin/preset-options', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field_key: fieldKey, original_value: originalValue, value: nextValue }) });
+            await loadPresetOptionsManager();
+          } catch (error) {
+            showToast("Impossibile modificare l'elemento: " + (error.message || error), 'error', 'Errore modifica');
+          }
+        });
       }
     });
   });
@@ -1317,6 +1645,7 @@ function renderPresetOptionsManager() {
 async function loadPresetOptionsManager() {
   if (!presetOptionsManager) return;
   try {
+    loadPresetOptionFormatModes();
     presetOptionsCache = await fetchJson('/api/admin/preset-options');
     renderPresetOptionsManager();
   } catch (error) {
@@ -1433,7 +1762,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
             if (rebuiltToggle) rebuiltToggle.setAttribute('aria-expanded', 'true');
           }
         } catch (error) {
-          alert(`Errore ordinamento incident: ${error.message || error}`);
+          showToast("Impossibile salvare l'ordinamento degli incident: " + (error.message || error), 'error', 'Errore ordinamento');
           await loadAdminMenu();
         }
       });
@@ -1475,7 +1804,7 @@ function bindAdminActions() {
         const current = btn.dataset.name || '';
 
         if (type === 'category') {
-          const next = prompt('Nuovo nome categoria:', current);
+          const next = await showPrompt('Inserisci il nuovo nome per questa categoria.', { title: 'Rinomina categoria', defaultValue: current, placeholder: 'Nome categoria', confirmText: 'Rinomina' });
           if (!next || !next.trim()) return;
           await fetchJson(`/api/categories/${id}`, {
             method: 'PUT',
@@ -1496,7 +1825,7 @@ function bindAdminActions() {
           name_mode: btn.dataset.nameMode || 'default'
         });
       } catch (error) {
-        alert(`Errore modifica: ${error.message || error}`);
+        showToast("Impossibile salvare le modifiche all'incident: " + (error.message || error), 'error', 'Errore modifica');
       }
     });
   });
@@ -1506,7 +1835,7 @@ function bindAdminActions() {
       e.stopPropagation();
       try {
         const categoryId = Number(btn.dataset.id);
-        const name = prompt('Nome nuovo incident:');
+        const name = await showPrompt('Assegna un nome al nuovo incident da aggiungere a questa categoria.', { title: 'Nuovo incident', placeholder: 'Nome incident', confirmText: 'Crea' });
         if (!name || !name.trim()) return;
         await fetchJson('/api/incidents', {
           method: 'POST',
@@ -1515,7 +1844,7 @@ function bindAdminActions() {
         });
         await loadAdminMenu();
       } catch (error) {
-        alert(`Errore creazione incident: ${error.message || error}`);
+        showToast("Impossibile creare l'incident: " + (error.message || error), 'error', 'Errore creazione');
       }
     });
   });
@@ -1528,7 +1857,7 @@ function bindAdminActions() {
         const id = Number(btn.dataset.id);
         const name = btn.dataset.name || '';
         if (type === 'category') {
-          if (!confirm(`Eliminare categoria "${name}" e tutti gli incident collegati?`)) return;
+          if (!(await showConfirm('La categoria "' + name + '" e tutti gli incident collegati verranno eliminati definitivamente.', { title: 'Elimina categoria', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
           const res = await fetch(appUrl(`/api/categories/${id}`), { method: 'DELETE' });
           if (res.status === 409) {
             let count = 0;
@@ -1537,9 +1866,7 @@ function bindAdminActions() {
               const data = JSON.parse(text);
               count = data.ticket_count || 0;
             } catch (ex) {}
-            const wantHide = confirm(
-              `Ci sono ${count} ticket associati a questa categoria.\nSi consiglia di nascondere la categoria o eliminare tutti i ticket associati e poi cancellare la Categoria.\n\nVuoi nasconderla adesso?`
-            );
+            const wantHide = await showConfirm('Ci sono ' + count + ' ticket associati a questa categoria. Si consiglia di nasconderla invece di eliminarla, oppure di eliminare prima tutti i ticket associati.\n\nVuoi nascondere la categoria adesso?', { title: 'Categoria con ticket associati', type: 'warning', confirmText: 'Nascondi categoria', cancelText: 'Annulla' });
             if (wantHide) {
               await fetchJson(`/api/categories/${id}`, {
                 method: 'PUT',
@@ -1560,12 +1887,12 @@ function bindAdminActions() {
             throw new Error(msg);
           }
         } else {
-          if (!confirm(`Eliminare incident "${name}"?`)) return;
+          if (!(await showConfirm('L\'incident "' + name + '" verrà eliminato definitivamente.', { title: 'Elimina incident', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
           await fetchJson(`/api/incidents/${id}`, { method: 'DELETE' });
         }
         await loadAdminMenu();
       } catch (error) {
-        alert(`Errore eliminazione: ${error.message || error}`);
+        showToast('Impossibile eliminare: ' + (error.message || error), 'error', 'Errore eliminazione');
       }
     });
   });
@@ -1601,7 +1928,7 @@ function bindAdminActions() {
         }
         await loadAdminMenu();
       } catch (error) {
-        alert(`Errore aggiornamento visibilita: ${error.message || error}`);
+        showToast('Impossibile aggiornare la visibilità: ' + (error.message || error), 'error', 'Errore aggiornamento');
       }
     });
   });
@@ -1610,7 +1937,7 @@ function bindAdminActions() {
   if (addCategoryBtn) {
     addCategoryBtn.addEventListener('click', async () => {
       try {
-        const name = prompt('Nome nuova categoria:');
+        const name = await showPrompt('Assegna un nome alla nuova categoria di ticket.', { title: 'Nuova categoria', placeholder: 'Nome categoria', confirmText: 'Crea' });
         if (!name || !name.trim()) return;
         await fetchJson('/api/categories', {
           method: 'POST',
@@ -1619,7 +1946,7 @@ function bindAdminActions() {
         });
         await loadAdminMenu();
       } catch (error) {
-        alert(`Errore creazione categoria: ${error.message || error}`);
+        showToast('Impossibile creare la categoria: ' + (error.message || error), 'error', 'Errore creazione');
       }
     });
   }
@@ -1703,7 +2030,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   const team = (newUserTeamSelect?.value || 'A').trim();
   const group_name = normalizeGroupName(newUserGroupInput?.value || 'ProdOps');
   if (!username) {
-    alert('Inserisci username.');
+    showToast('Il campo username è obbligatorio. Inserisci un nome utente valido.', 'warning', 'Campo obbligatorio');
     return;
   }
   const body = { username, role, team, group_name };
@@ -1720,7 +2047,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
     closeUserCreateModal();
     await Promise.all([loadUsers(), loadGroupTargets()]);
   } catch (error) {
-    alert(`Errore creazione utente: ${error.message || error}`);
+    showToast("Impossibile creare l'utente: " + (error.message || error), 'error', 'Errore creazione');
   }
 });
 
@@ -1757,20 +2084,134 @@ function insertAtCursor(textarea, text) {
   textarea.focus();
 }
 
-addPresetTextFieldBtn?.addEventListener('click', () => {
-  const label = prompt('Nome campo testo (es. Entity):');
+addPresetTextFieldBtn?.addEventListener('click', async () => {
+  const label = await showPrompt('Assegna un nome al campo di testo libero da inserire nel ticket precompilato.', { title: 'Campo di testo', placeholder: 'Es. Entity', confirmText: 'Inserisci' });
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[text:${label.trim()}]]`);
 });
 
-addPresetSelectFieldBtn?.addEventListener('click', () => {
-  const label = prompt('Nome menu tendina (es. Motivo):');
+// Mostra un dialog che permette di riutilizzare un menu a tendina gia esistente
+// oppure di crearne uno nuovo. Ritorna una Promise che risolve con l'etichetta scelta (o null).
+function pickPresetDropdownField() {
+  const existing = (Array.isArray(presetOptionsCache) ? presetOptionsCache : [])
+    .map((f) => ({ key: f.field_key, label: f.field_label || f.field_key, count: Array.isArray(f.options) ? f.options.length : 0 }))
+    .filter((f) => f.label)
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'it', { sensitivity: 'base' }));
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'prodops-confirm-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'prodops-confirm-dialog preset-field-picker';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'prodops-confirm-title';
+    titleEl.textContent = 'Inserisci menu a tendina';
+    dialog.appendChild(titleEl);
+
+    let done = false;
+    function close(result) {
+      if (done) return;
+      done = true;
+      overlay.classList.add('prodops-confirm-out');
+      setTimeout(function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 200);
+      resolve(result);
+    }
+
+    if (existing.length) {
+      const hint = document.createElement('div');
+      hint.className = 'prodops-confirm-msg';
+      hint.textContent = 'Riutilizza un menu esistente (mantiene le opzioni gia salvate) oppure creane uno nuovo.';
+      dialog.appendChild(hint);
+
+      const chips = document.createElement('div');
+      chips.className = 'preset-field-picker-chips';
+      existing.forEach((f) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'preset-field-picker-chip';
+        chip.textContent = f.count ? (f.label + ' (' + f.count + ')') : f.label;
+        chip.title = 'Riutilizza il menu "' + f.label + '"';
+        chip.addEventListener('click', function () { close(f.label); });
+        chips.appendChild(chip);
+      });
+      dialog.appendChild(chips);
+
+      const sep = document.createElement('div');
+      sep.className = 'preset-field-picker-or';
+      sep.textContent = 'oppure crea un nuovo menu';
+      dialog.appendChild(sep);
+    } else {
+      const hint = document.createElement('div');
+      hint.className = 'prodops-confirm-msg';
+      hint.textContent = 'Assegna un nome al nuovo menu a tendina (es. Motivo).';
+      dialog.appendChild(hint);
+    }
+
+    const inputRow = document.createElement('div');
+    inputRow.className = 'preset-field-picker-input-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Nome nuovo menu (es. Motivo)';
+    input.className = 'preset-field-picker-input';
+    inputRow.appendChild(input);
+    dialog.appendChild(inputRow);
+
+    const actions = document.createElement('div');
+    actions.className = 'prodops-confirm-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'secondary prodops-confirm-btn';
+    cancelBtn.textContent = 'Annulla';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'primary prodops-confirm-btn';
+    createBtn.textContent = 'Inserisci nuovo';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(createBtn);
+    dialog.appendChild(actions);
+
+    function submitNew() {
+      const val = (input.value || '').trim();
+      if (!val) { input.focus(); return; }
+      const normalized = val.toLowerCase();
+      const existingMatch = existing.find((f) => String(f.label || '').trim().toLowerCase() === normalized);
+      if (existingMatch) {
+        showToast('Questo elemento esiste gia: "' + existingMatch.label + '".', 'warning', 'Elemento duplicato');
+        input.focus();
+        input.select();
+        return;
+      }
+      close(val);
+    }
+    cancelBtn.addEventListener('click', function () { close(null); });
+    createBtn.addEventListener('click', submitNew);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', function onKey(e) {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(null); }
+    });
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(function () {
+      overlay.classList.add('prodops-confirm-in');
+      input.focus();
+    });
+  });
+}
+
+addPresetSelectFieldBtn?.addEventListener('click', async () => {
+  const label = await pickPresetDropdownField();
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[dbselect:${label.trim()}]]`);
 });
 
-addPresetTimestampBtn?.addEventListener('click', () => {
-  const label = prompt('Nome campo orario (es. Orario evento):');
+addPresetTimestampBtn?.addEventListener('click', async () => {
+  const label = await showPrompt("Assegna un nome al campo orario da inserire nel ticket precompilato.", { title: 'Campo orario', placeholder: 'Es. Orario evento', confirmText: 'Inserisci' });
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[timestamp:${label.trim()}]]`);
 });
@@ -1779,7 +2220,7 @@ saveColorSettingsBtn?.addEventListener('click', async () => {
   try {
     await saveUiColors();
   } catch (error) {
-    alert(`Errore salvataggio colori: ${error.message || error}`);
+    showToast('Impossibile salvare le impostazioni colori: ' + (error.message || error), 'error', 'Errore salvataggio');
   }
 });
 

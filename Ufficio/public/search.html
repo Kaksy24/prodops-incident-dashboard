@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cerca Ticket Storici</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.5.0" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.6.13" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.5.0" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.6.13" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="sidebar-actions">
         <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
         <a class="sidebar-link-btn" href="./index.html">Dashboard</a>
@@ -85,14 +85,16 @@
       <div class="datetime-actions-row" style="margin-top:12px">
         <div></div>
         <div class="form-actions inline-actions">
+          <button type="button" id="searchModalDeleteBtn" class="danger" style="display:none">Elimina</button>
           <button type="button" class="secondary close-modal">Chiudi</button>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="./public/js/search.js?v=1.5.0"></script>
-  <div class="app-version-badge">v1.5.0</div>
+  <script src="./public/js/toast.js?v=1.6.13"></script>
+  <script src="./public/js/search.js?v=1.6.13"></script>
+  <div class="app-version-badge">v1.6.13</div>
 </body>
 </html>
 

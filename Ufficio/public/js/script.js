@@ -371,11 +371,31 @@ function getCustomIncidentNameForSubmit() {
   return String(customIncidentNameInput.value || '').trim();
 }
 
+function syncSubmitBtnState() {
+  if (!ticketSubmitBtn || ticketSubmitBusy || ticketForm.dataset.readMode === '1') return;
+  const descEl = document.getElementById('description');
+  const description = (descEl.dataset.presetAutoSync !== 'off' && descEl.dataset.presetMarkupValue)
+    ? descEl.dataset.presetMarkupValue
+    : descEl.value.trim();
+  const presetComplete = !getIncompletePresetFields(presetInlineComposer).length;
+  const valid = !!Number(incidentTypeInput.value || 0)
+    && !!description
+    && presetComplete
+    && !!fabValue.value
+    && !!ticketTimestampInput.value
+    && (!isGenericIncidentId(incidentTypeInput.value) || !!(customIncidentNameInput && customIncidentNameInput.value.trim()));
+  ticketSubmitBtn.disabled = !valid;
+}
+
 if (customIncidentNameInput) {
   customIncidentNameInput.addEventListener('input', function () {
     updateTicketModalHeading(incidentTypeInput.value, customIncidentNameInput.value);
+    syncSubmitBtnState();
   });
 }
+
+document.getElementById('description').addEventListener('input', syncSubmitBtnState);
+if (ticketTimestampInput) ticketTimestampInput.addEventListener('input', syncSubmitBtnState);
 
 function openTicketReadModal(ticket) {
   const item = ticket || {};
@@ -1131,7 +1151,7 @@ function openReportModal() {
   confirmBtn.textContent = 'Genera →';
   confirmBtn.addEventListener('click', function() {
     const dates = getPeriodDates();
-    if (!dates.from || !dates.to) { alert('Seleziona un periodo valido.'); return; }
+    if (!dates.from || !dates.to) { showToast('Seleziona una data di inizio e fine valide prima di generare il report.', 'warning', 'Periodo non valido'); return; }
     closeOverlay();
     const dimLabels = { category: 'Categoria', incident: 'Incident', fab: 'FAB' };
     const cfg = {
@@ -1218,7 +1238,7 @@ function aggregateTicketsByDimension(tickets, dimension, meta) {
 
 async function generatePowerPointReport(cfg) {
   if (typeof window.PptxGenJS !== 'function') {
-    alert('Modulo PowerPoint non disponibile.');
+    showToast('Il modulo PowerPoint non è stato caricato correttamente. Prova a ricaricare la pagina.', 'error', 'Funzione non disponibile');
     return;
   }
   if (generatePptReportBtn) {
@@ -1352,7 +1372,7 @@ async function generatePowerPointReport(cfg) {
     await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
   } catch (err) {
     console.error(err);
-    alert('Impossibile generare il report PowerPoint.');
+    showToast('Si è verificato un errore durante la creazione del file PowerPoint. Verifica i dati selezionati e riprova.', 'error', 'Generazione report fallita');
   } finally {
     if (generatePptReportBtn) {
       generatePptReportBtn.disabled = false;
@@ -1429,7 +1449,7 @@ async function generateCsvReport(cfg) {
 async function exportChart(targetId, format) {
   const payload = getChartExportPayload(targetId);
   if (!payload || !payload.stats.length) {
-    alert('Nessun dato disponibile per l\'export.');
+    showToast('Non ci sono dati per il periodo selezionato. Seleziona un intervallo diverso o un altro FAB.', 'warning', 'Nessun dato disponibile');
     return;
   }
   const fileRoot = sanitizeFileNamePart(payload.title || targetId) || targetId;
@@ -1445,7 +1465,7 @@ async function exportChart(targetId, format) {
   if (format === 'png') {
     const blob = await buildChartPngBlob(payload.title, payload.stats);
     if (!blob) {
-      alert('Impossibile generare il PNG.');
+      showToast('Impossibile creare l\'immagine PNG. Verifica che il browser supporti questa funzione.', 'error', 'Esportazione fallita');
       return;
     }
     triggerDownload(fileRoot + '_' + stamp + '.png', blob, 'image/png');
@@ -1511,8 +1531,7 @@ function setThemeToggleIcon(button, theme) {
   if (!button) return;
   button.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = button.querySelector('.switch-thumb');
-  if (thumb) thumb.textContent = theme === 'dark' ? 'â˜¾' : 'â˜€';
-  if (thumb) thumb.textContent = theme === 'dark' ? 'D' : 'L';
+  if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
 }
 
 function setTicketSubmitState(isBusy) {
@@ -1542,7 +1561,29 @@ function revealModal() {
   lockModalScroll();
   requestAnimationFrame(() => {
     modal.classList.add('active');
+    updateSingleTicketModalHeight();
   });
+}
+
+function updateSingleTicketModalHeight() {
+  if (!modal || !mainTicketPanel || window.matchMedia('(max-width: 640px)').matches) {
+    if (modal) modal.classList.remove('single-ticket-tall');
+    return;
+  }
+  const extraCount = extraTicketModals ? extraTicketModals.querySelectorAll('.extra-ticket-modal').length : 0;
+  if (extraCount > 0 || !modal.classList.contains('show')) {
+    modal.classList.remove('single-ticket-tall');
+    return;
+  }
+  const header = mainTicketPanel.querySelector('.modal-header');
+  const form = mainTicketPanel.querySelector('.ticket-form');
+  if (!form) {
+    modal.classList.remove('single-ticket-tall');
+    return;
+  }
+  const availableHeight = window.innerHeight - 32;
+  const contentHeight = (header ? header.offsetHeight : 0) + form.scrollHeight;
+  modal.classList.toggle('single-ticket-tall', contentHeight > availableHeight - 8);
 }
 
 function positionAddSameIncidentBtn() {
@@ -1569,6 +1610,7 @@ function applyMultiModalLayout() {
   const count = extraTicketModals.querySelectorAll('.extra-ticket-modal').length;
   const totalPanels = 1 + count;
   const cols = Math.min(Math.max(totalPanels, 1), 3);
+  modal.classList.remove('single-ticket-tall');
   modal.classList.toggle('compact-modals', totalPanels >= 4);
   modal.classList.toggle('dense-modals', totalPanels >= 7);
 
@@ -1586,8 +1628,9 @@ function applyMultiModalLayout() {
 
   if (count === 0) {
     mainTicketPanel.style.width = 'min(620px, 100%)';
-    modal.style.gridTemplateColumns = `minmax(620px, 620px)`;
+    modal.style.gridTemplateColumns = 'minmax(620px, 620px)';
     modal.style.alignItems = 'center';
+    requestAnimationFrame(updateSingleTicketModalHeight);
     positionAddSameIncidentBtn();
     return;
   }
@@ -1599,6 +1642,7 @@ function applyMultiModalLayout() {
     panel.style.width = `min(${panelWidth}px, 96vw)`;
   });
   modal.style.alignItems = 'flex-start';
+  requestAnimationFrame(updateSingleTicketModalHeight);
   positionAddSameIncidentBtn();
 }
 
@@ -1623,6 +1667,7 @@ function makeSearchableSelect(select) {
     placeholderText = '';
     for (var i = 0; i < select.options.length; i++) {
       var o = select.options[i];
+      if (o.dataset && o.dataset.separator) continue;
       if (!o.value) { placeholderText = o.textContent; continue; }
       if (o.value === '__propose_new__') { proposeOpt = { value: o.value, text: o.textContent }; continue; }
       allItems.push({ value: o.value, text: o.textContent });
@@ -1666,6 +1711,15 @@ function makeSearchableSelect(select) {
   wrapper.appendChild(trigger);
   wrapper.appendChild(panel);
 
+  function syncOpenSpacing() {
+    if (panel.hidden) {
+      wrapper.style.paddingBottom = '';
+      return;
+    }
+    var panelHeight = panel.offsetHeight || 0;
+    wrapper.style.paddingBottom = panelHeight ? (panelHeight + 6) + 'px' : '';
+  }
+
   function updateTriggerLabel() {
     var val = select.value;
     if (!val) {
@@ -1681,6 +1735,25 @@ function makeSearchableSelect(select) {
 
   function renderList(q) {
     list.innerHTML = '';
+    if (proposeOpt) {
+      var li2 = document.createElement('li');
+      li2.className = 'sd-option sd-propose';
+      li2.dataset.value = proposeOpt.value;
+      li2.textContent = proposeOpt.text;
+      li2.setAttribute('role', 'option');
+      li2.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        select.value = '__propose_new__';
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        closePanel();
+        setTimeout(updateTriggerLabel, 80);
+      });
+      list.appendChild(li2);
+      var sep = document.createElement('li');
+      sep.className = 'sd-separator';
+      sep.setAttribute('aria-hidden', 'true');
+      list.appendChild(sep);
+    }
     var filtered = q ? allItems.filter(function(o) { return o.text.toLowerCase().includes(q); }) : allItems;
     if (!filtered.length) {
       var empty = document.createElement('li');
@@ -1704,21 +1777,6 @@ function makeSearchableSelect(select) {
       });
       list.appendChild(li);
     });
-    if (proposeOpt) {
-      var li2 = document.createElement('li');
-      li2.className = 'sd-option sd-propose';
-      li2.dataset.value = proposeOpt.value;
-      li2.textContent = proposeOpt.text;
-      li2.setAttribute('role', 'option');
-      li2.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        select.value = '__propose_new__';
-        select.dispatchEvent(new Event('input', { bubbles: true }));
-        closePanel();
-        setTimeout(updateTriggerLabel, 80);
-      });
-      list.appendChild(li2);
-    }
   }
 
   function openPanel() {
@@ -1727,12 +1785,18 @@ function makeSearchableSelect(select) {
     wrapper.setAttribute('aria-expanded', 'true');
     search.value = '';
     renderList('');
+    requestAnimationFrame(function() {
+      syncOpenSpacing();
+      updateSingleTicketModalHeight();
+    });
     search.focus();
   }
 
   function closePanel() {
     panel.hidden = true;
     wrapper.setAttribute('aria-expanded', 'false');
+    syncOpenSpacing();
+    updateSingleTicketModalHeight();
   }
 
   trigger.addEventListener('click', function() {
@@ -1742,6 +1806,10 @@ function makeSearchableSelect(select) {
 
   search.addEventListener('input', function() {
     renderList(search.value.trim().toLowerCase());
+    requestAnimationFrame(function() {
+      syncOpenSpacing();
+      updateSingleTicketModalHeight();
+    });
   });
 
   search.addEventListener('keydown', function(e) {
@@ -1784,24 +1852,31 @@ async function loadDbPresetOptions(token, select) {
       const empty = document.createElement('option');
       empty.value = '';
       empty.textContent = filtered.length ? `Seleziona ${token.label || ''}`.trim() : 'Nessun elemento trovato';
+      empty.disabled = true;
+      empty.hidden = true;
+      empty.selected = true;
       select.appendChild(empty);
+      const propose = document.createElement('option');
+      propose.value = '__propose_new__';
+      propose.textContent = '+ Proponi nuovo elemento';
+      select.appendChild(propose);
+      const separator = document.createElement('option');
+      separator.value = '';
+      separator.disabled = true;
+      separator.dataset.separator = '1';
+      separator.textContent = '──────────';
+      select.appendChild(separator);
       filtered.forEach((opt) => {
         const option = document.createElement('option');
         option.value = opt;
         option.textContent = opt;
         select.appendChild(option);
       });
-      const propose = document.createElement('option');
-      propose.value = '__propose_new__';
-      propose.textContent = '+ Proponi nuovo elemento';
-      select.appendChild(propose);
       if (filtered.includes(currentValue)) select.value = currentValue;
     };
 
     renderOptions();
-    if (options.length > 10) {
-      makeSearchableSelect(select);
-    }
+    makeSearchableSelect(select);
   } catch (error) {
     console.error(error);
   }
@@ -1858,15 +1933,36 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       input.type = 'text';
       input.placeholder = token.label || '';
     }
+    input.required = true;
+    input.dataset.presetField = '1';
+    input.dataset.presetLabel = token.label || `Campo ${tokenIndex + 1}`;
     input.style.width = '100%';
     input.addEventListener('input', async () => {
       if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__propose_new__') {
-        const proposedValue = prompt(`Nuovo elemento per "${token.label}":`);
+        const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', confirmText: 'Invia proposta' });
         if (!proposedValue || !proposedValue.trim()) {
           input.value = '';
           return;
         }
         const value = proposedValue.trim();
+        const normalizedValue = value.toLocaleLowerCase('it');
+        const duplicateOption = [...input.querySelectorAll('option')].find((option) => {
+          if (!option || option.value === '__propose_new__' || option.dataset.separator === '1') return false;
+          return String(option.value || '').trim().toLocaleLowerCase('it') === normalizedValue;
+        });
+        if (duplicateOption) {
+          input.value = duplicateOption.value;
+          showToast('Questo elemento esiste gia: "' + duplicateOption.value + '".', 'warning', 'Elemento duplicato');
+          tokenState[tokenIndex].value = input.value || '';
+          const generatedDuplicate = buildDescriptionFromTemplate(template, tokenState, true);
+          descriptionInput.dataset.presetAutoValue = generatedDuplicate;
+          descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
+          if (descriptionInput.dataset.presetAutoSync !== 'off') {
+            descriptionInput.value = generatedDuplicate;
+          }
+          syncSubmitBtnState();
+          return;
+        }
         try {
           const result = await fetchJson('/api/preset-option-requests', {
             method: 'POST',
@@ -1884,10 +1980,10 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           pendingOption.textContent = `${value} (in revisione)`;
           input.insertBefore(pendingOption, input.querySelector('option[value="__propose_new__"]'));
           input.value = value;
-          alert('Nuovo elemento inviato alla revisione admin.');
+          showToast('Il nuovo elemento è stato inviato all\'admin per la revisione. Sarà disponibile dopo l\'approvazione.', 'success', 'Proposta inviata');
         } catch (error) {
           input.value = '';
-          alert(`Errore invio proposta: ${error.message || error}`);
+          showToast('Non è stato possibile inviare la proposta: ' + (error.message || error), 'error', 'Errore invio proposta');
           return;
         }
       }
@@ -1898,6 +1994,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       if (descriptionInput.dataset.presetAutoSync !== 'off') {
         descriptionInput.value = generated;
       }
+      syncSubmitBtnState();
     });
     fieldWrap.appendChild(input);
     composerContainer.appendChild(fieldWrap);
@@ -1913,6 +2010,28 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
   descriptionInput.dataset.presetAutoValue = initialGenerated;
   descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
   descriptionInput.value = initialGenerated;
+  syncSubmitBtnState();
+}
+
+function getIncompletePresetFields(composerContainer) {
+  if (!composerContainer || composerContainer.style.display === 'none') return [];
+  return [...composerContainer.querySelectorAll('[data-preset-field="1"]')].filter((field) => {
+    if (field.disabled || field.type === 'hidden') return false;
+    return !String(field.value || '').trim();
+  });
+}
+
+function focusFirstIncompletePresetField(composerContainer) {
+  const missing = getIncompletePresetFields(composerContainer);
+  if (missing.length) missing[0].focus();
+  return missing;
+}
+
+function buildMissingPresetFieldsMessage(composerContainer, prefix) {
+  const missing = getIncompletePresetFields(composerContainer);
+  if (!missing.length) return '';
+  const labels = missing.map((field) => field.dataset.presetLabel || field.getAttribute('aria-label') || field.name || 'campo');
+  return (prefix ? prefix + ': ' : '') + labels.join(', ');
 }
 
 function createExtraTicketCard(incidentId) {
@@ -2038,6 +2157,11 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
     const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || defaultSeverity || 1);
+    const extraComposer = panel.querySelector('.extra-composer');
+    const missingPresetFields = focusFirstIncompletePresetField(extraComposer);
+    if (missingPresetFields.length) {
+      throw new Error(`Ticket extra ${index + 1}: compila tutti i campi obbligatori del template (${buildMissingPresetFieldsMessage(extraComposer)}).`);
+    }
     if (!extraDesc || !extraFab || !extraDt) {
       const missing = [];
       if (!extraDesc) missing.push('descrizione');
@@ -2086,6 +2210,7 @@ function openModal(incidentId) {
   fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => {
     b.classList.toggle('active', b.textContent === defaultFab);
   });
+  syncSubmitBtnState();
   revealModal();
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
@@ -2144,6 +2269,7 @@ function renderFabButtons() {
       fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       fabValue.value = fab;
+      syncSubmitBtnState();
     });
     fabButtonsWrap.appendChild(btn);
   });
@@ -2161,7 +2287,7 @@ async function fetchJson(url, options, attempt = 0) {
     throw new Error('Login richiesta');
   }
   if (res.status === 403) {
-    alert('Non hai i permessi per questa operazione.');
+    showToast('Non hai i permessi necessari per questa operazione. Contatta un amministratore.', 'error', 'Accesso negato');
     throw new Error('Accesso non consentito');
   }
 
@@ -2918,6 +3044,7 @@ function handleEditTicketButton(btn) {
     b.classList.toggle('active', b.textContent === fabValue.value);
   });
   setTicketModalReadMode(false);
+  syncSubmitBtnState();
   if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
   revealModal();
@@ -3292,7 +3419,7 @@ async function saveUserCharts() {
     if (data.panel_titles && typeof data.panel_titles === 'object') panelTitles = data.panel_titles;
   } catch (e) {
     console.error(e);
-    alert('Impossibile salvare la dashboard personalizzata.');
+    showToast('Impossibile salvare le impostazioni della dashboard. Verifica la connessione e riprova.', 'error', 'Salvataggio fallito');
   }
 }
 
@@ -3359,7 +3486,7 @@ function setupDefaultPanelHideButtons() {
     btn.setAttribute('aria-label', 'Rimuovi dalla dashboard');
     btn.textContent = '×';
     btn.addEventListener('click', async () => {
-      if (!confirm('Rimuovere questo pannello dalla dashboard?')) return;
+      if (!(await showConfirm('Il pannello verrà rimosso dalla dashboard. Potrai ripristinarlo in seguito dalle impostazioni.', { title: 'Rimuovi pannello', type: 'warning', confirmText: 'Rimuovi', cancelText: 'Annulla' }))) return;
       if (!hiddenDefaultPanels.includes(def.id)) hiddenDefaultPanels.push(def.id);
       panelOrder = panelOrder.filter((id) => id !== def.id);
       panel.style.display = 'none';
@@ -3427,7 +3554,7 @@ function renderCustomChartCard(def) {
   del.setAttribute('aria-label', 'Elimina grafico');
   del.textContent = '×';
   del.addEventListener('click', async () => {
-    if (!confirm('Eliminare questo grafico dalla dashboard?')) return;
+    if (!(await showConfirm('Il grafico personalizzato verrà eliminato definitivamente dalla dashboard.', { title: 'Elimina grafico', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
     customCharts = customCharts.filter((c) => c.id !== def.id);
     panelOrder = panelOrder.filter((id) => id !== panel.id);
     panel.remove();
@@ -3621,7 +3748,7 @@ function openAddChartModal() {
   defAddBtn.textContent = 'Ripristina grafico';
   defAddBtn.addEventListener('click', async () => {
     const panelId = defSelect.value;
-    if (!panelId) { alert('Seleziona un grafico dalla lista.'); return; }
+    if (!panelId) { showToast('Seleziona prima un grafico dalla lista a tendina per poterlo ripristinare.', 'warning', 'Nessun grafico selezionato'); return; }
     hiddenDefaultPanels = hiddenDefaultPanels.filter((id) => id !== panelId);
     const el = document.getElementById(panelId);
     if (el) el.style.display = '';
@@ -3635,7 +3762,7 @@ function openAddChartModal() {
   resetAllBtn.style.cssText = 'margin-top:8px;width:100%';
   resetAllBtn.textContent = '↺ Ripristina tutto (posizioni e grafici iniziali)';
   resetAllBtn.addEventListener('click', async () => {
-    if (!confirm('Ripristinare tutti i grafici alle posizioni iniziali?')) return;
+    if (!(await showConfirm('Tutti i grafici torneranno alla disposizione originale e i grafici personalizzati verranno rimossi. L\'operazione non è reversibile.', { title: 'Ripristina dashboard', type: 'warning', confirmText: 'Ripristina', cancelText: 'Annulla' }))) return;
     closeOverlay();
     await resetDashboardLayout();
   });
@@ -3751,7 +3878,7 @@ function openAddChartModal() {
   addRangeBtn.addEventListener('click', () => {
     const s = startInput.value;
     const e = endInput.value;
-    if (!s || !e || s >= e) { alert('Seleziona un intervallo valido (da < a).'); return; }
+    if (!s || !e || s >= e) { showToast('La data di inizio deve essere precedente alla data di fine. Correggi il periodo selezionato e riprova.', 'warning', 'Intervallo non valido'); return; }
     const label = s.slice(0, 7).replace('-', '/') + ' → ' + e.slice(0, 7).replace('-', '/');
     customRanges.push({ label, start: s, end: e });
     renderRangeTags();
@@ -4058,8 +4185,8 @@ function openAddChartModal() {
   confirmBtn.textContent = 'Crea grafico →';
   confirmBtn.addEventListener('click', async () => {
     const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
-    if (!windowsList.length) { alert('Seleziona almeno una finestra temporale.'); return; }
-    if (!selectedDims.size) { alert('Seleziona almeno un tipo di dati da visualizzare.'); return; }
+    if (!windowsList.length) { showToast('Scegli almeno una finestra temporale (es. settimana, mese) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
+    if (!selectedDims.size) { showToast('Scegli almeno un tipo di dato da visualizzare (es. incidenti, downtime) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
 
     // Costruisce l'array dimensions
     const dimensionsArr = [];
@@ -4170,12 +4297,20 @@ ticketForm.addEventListener('submit', async (e) => {
   const customIncidentName = getCustomIncidentNameForSubmit();
   if (!incident_id || !description || !fab || !ticket_time_local) {
     setTicketSubmitState(false);
-    return alert('Compila incident, descrizione, data/ora e FAB');
+    showToast('Compila tutti i campi obbligatori: incident, descrizione, data/ora e FAB.', 'warning', 'Campi obbligatori mancanti');
+    return;
+  }
+  const missingPresetFields = focusFirstIncompletePresetField(presetInlineComposer);
+  if (missingPresetFields.length) {
+    setTicketSubmitState(false);
+    showToast('Compila tutti i campi obbligatori del template: ' + buildMissingPresetFieldsMessage(presetInlineComposer), 'warning', 'Campi template mancanti');
+    return;
   }
   if (isGenericIncidentId(incident_id) && !customIncidentName) {
     setTicketSubmitState(false);
     if (customIncidentNameInput) customIncidentNameInput.focus();
-    return alert('Per i ticket Generic il nome incident e obbligatorio.');
+    showToast("Per i ticket di tipo Generic è obbligatorio specificare il nome dell'incident.", 'warning', 'Nome incident mancante');
+    return;
   }
   const ticket_time = new Date(ticket_time_local).toISOString();
   let createdTicketIds = [];
@@ -4211,7 +4346,7 @@ ticketForm.addEventListener('submit', async (e) => {
     await loadCharts();
   } catch (error) {
     const message = String(error?.message || 'Errore durante il salvataggio ticket');
-    alert(`Inserimento ticket fallito: ${message}`);
+    showToast('Impossibile creare il ticket: ' + message, 'error', 'Creazione ticket fallita');
   } finally {
     setTicketSubmitState(false);
   }
@@ -4537,7 +4672,7 @@ previousShiftsContent?.addEventListener('click', async (e) => {
 if (deleteTicketBtn) {
   deleteTicketBtn.addEventListener('click', async () => {
     if (!editingTicketId) return;
-    const ok = confirm('Confermi eliminazione ticket?');
+    const ok = await showConfirm('Il ticket verrà eliminato definitivamente. L\'operazione non è reversibile.', { title: 'Elimina ticket', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' });
     if (!ok) return;
     await fetchJson(`/api/tickets/${editingTicketId}`, { method: 'DELETE' });
     editingTicketId = null;

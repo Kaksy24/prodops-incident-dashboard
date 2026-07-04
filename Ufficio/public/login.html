@@ -4,28 +4,31 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Incident Hub</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.5.0" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.6.13" />
 </head>
 <body class="login-page">
+  <div class="login-bg-grid" aria-hidden="true"></div>
+  <div class="login-bg-glow login-bg-glow-a" aria-hidden="true"></div>
+  <div class="login-bg-glow login-bg-glow-b" aria-hidden="true"></div>
   <main class="login-shell">
     <section class="login-panel">
       <div class="login-logo-wrap">
-        <img class="brand-logo login-brand-logo" src="./public/assets/prodops-logo.svg?v=1.5.0" alt="PRODOPS Ticket Manager" />
+        <img class="brand-logo login-brand-logo" src="./public/assets/prodops-logo.svg?v=1.6.13" alt="PRODOPS Ticket Manager" />
       </div>
       <form id="loginForm" class="login-form" action="./api/login" method="post">
-        <label for="username">Utente</label>
-        <input id="username" name="username" type="text" autocomplete="username" required />
+        <label for="username">Utente <span class="login-label-note">(login LDAP)</span></label>
+        <input id="username" name="username" type="text" autocomplete="username" placeholder="Inserisci utente" required />
 
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" />
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Inserisci password" />
 
         <p id="loginError" class="login-error" role="alert"></p>
-        <button class="primary" type="submit">Accedi</button>
+        <button class="primary login-submit-btn" type="submit">Accedi</button>
       </form>
     </section>
   </main>
-  <script src="./public/js/login.js?v=1.5.0"></script>
-  <div class="app-version-badge">v1.5.0</div>
+  <script src="./public/js/login.js?v=1.6.13"></script>
+  <div class="app-version-badge">v1.6.13</div>
 </body>
 </html>
 

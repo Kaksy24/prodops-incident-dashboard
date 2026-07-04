@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.5.0" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.6.13" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.5.0" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.6.13" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -69,17 +69,6 @@
           <article class="admin-stat-card"><span>Team attivi</span><strong id="usersTeamStat">0</strong></article>
         </div>
         <section class="panel user-management-panel">
-          <div class="panel panel-subsection">
-            <div class="admin-panel-heading admin-subpanel-heading">
-              <div>
-                <span class="admin-eyebrow">Target gruppi</span>
-                <h3>Obiettivi per gruppo</h3>
-                <p>Imposta un target unico per i membri del gruppo e uno per il totale del gruppo.</p>
-              </div>
-              <div id="groupTargetsSummary" class="admin-summary-chip">Caricamento...</div>
-            </div>
-            <div id="groupTargetsList" class="users-list" aria-live="polite"></div>
-          </div>
           <div class="users-toolbar">
             <label class="users-search-field">
               <span>Cerca utente</span>
@@ -90,6 +79,7 @@
               <select id="userRoleFilter">
                 <option value="">Tutti i ruoli</option>
                 <option value="admin">Admin</option>
+                <option value="supervisor">Supervisor</option>
                 <option value="user">User</option>
               </select>
             </label>
@@ -106,6 +96,17 @@
             </label>
           </div>
           <div id="usersList" class="users-list" aria-live="polite"></div>
+          <div class="panel panel-subsection">
+            <div class="admin-panel-heading admin-subpanel-heading">
+              <div>
+                <span class="admin-eyebrow">Target gruppi</span>
+                <h3>Obiettivi per gruppo</h3>
+                <p>Imposta un target unico per i membri del gruppo e uno per il totale del gruppo.</p>
+              </div>
+              <div id="groupTargetsSummary" class="admin-summary-chip">Caricamento...</div>
+            </div>
+            <div id="groupTargetsList" class="users-list" aria-live="polite"></div>
+          </div>
         </section>
       </section>
 
@@ -216,6 +217,7 @@
           <select id="newUserRole" name="newUserRole">
             <option value="user">user</option>
             <option value="admin">admin</option>
+            <option value="supervisor">supervisor</option>
           </select>
         </div>
         <div>
@@ -249,8 +251,8 @@
       <form id="adminIncidentForm" class="ticket-form">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
           <label for="adminIncidentName" style="margin:0;">Nome incident</label>
-          <label for="adminNameMode" style="display:flex; align-items:center; gap:3px; margin:0; font-size:0.85em; cursor:pointer;">
-            <input type="checkbox" id="adminNameMode" name="adminNameMode" style="margin:0;" />
+          <label for="adminNameMode" style="display:flex; align-items:center; gap:3px; margin:0; font-size:0.85em; cursor:pointer; white-space:nowrap; flex-shrink:0;">
+            <input type="checkbox" id="adminNameMode" name="adminNameMode" style="margin:0; width:auto;" />
             (nome custom)
           </label>
         </div>
@@ -303,7 +305,8 @@
     </div>
   </div>
 
-  <script src="./public/js/admin.js?v=1.5.0"></script>
-  <div class="app-version-badge">v1.5.0</div>
+  <script src="./public/js/toast.js?v=1.6.13"></script>
+  <script src="./public/js/admin.js?v=1.6.13"></script>
+  <div class="app-version-badge">v1.6.13</div>
 </body>
 </html>
