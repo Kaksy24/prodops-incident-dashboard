@@ -1431,6 +1431,10 @@ function year_range_from_mode($year, $mode)
     return array($start, $end);
 }
 
+// Consente ad altri script (es. extensions/export.php) di includere questo file
+// per riusarne le funzioni helper senza eseguire il router delle API.
+if (defined('PRODOPS_LIB_ONLY')) return;
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $basePath = app_base_path();
@@ -2372,6 +2376,112 @@ if ($path === '/api/tickets/search' && $method === 'GET') {
     ), 200);
 }
 
+if ($path === '/api/tickets/lookup' && $method === 'GET') {
+    // Ritorna i ticket filtrati per una dimensione+valore (click su un elemento
+    // di un grafico) o per un intervallo start/end esplicito (click su un punto
+    // di un grafico a linea), nella finestra temporale e ambito indicati.
+    $window = isset($_GET['window']) ? strval($_GET['window']) : 'months';
+    $scope  = isset($_GET['scope'])  ? strval($_GET['scope'])  : 'all';
+    $dimension = isset($_GET['dimension']) ? strval($_GET['dimension']) : '';
+    $value = isset($_GET['value']) ? strval($_GET['value']) : '';
+    $rawStart = isset($_GET['start']) ? strval($_GET['start']) : '';
+    $rawEnd   = isset($_GET['end'])   ? strval($_GET['end'])   : '';
+
+    if ($rawStart !== '' && $rawEnd !== '') {
+        $tsStart = strtotime($rawStart);
+        $tsEnd   = strtotime($rawEnd);
+        if ($tsStart === false || $tsEnd === false || $tsStart >= $tsEnd) json_response(array('error' => 'Range date non valido'), 400);
+        $start = gmdate('c', $tsStart);
+        $end   = gmdate('c', $tsEnd);
+    } elseif ($window === 'day') {
+        $bounds = current_day_bounds();
+        $start = $bounds['start']; $end = $bounds['end'];
+    } elseif ($window === 'month') {
+        $year = intval(gmdate('Y')); $month = intval(gmdate('n'));
+        $start = gmdate('c', gmmktime(0, 0, 0, $month, 1, $year));
+        $end   = gmdate('c', gmmktime(0, 0, 0, $month + 1, 1, $year));
+    } else {
+        $year = intval(gmdate('Y'));
+        list($start, $end) = year_range_from_mode($year, $window);
+    }
+
+    // Filtri per-dimensione opzionali (come i grafici custom)
+    $filterMap = array();
+    foreach (array('category','incident','fab','team','severity') as $fdim) {
+        $key = 'filter_' . $fdim;
+        if (isset($_GET[$key]) && is_array($_GET[$key])) $filterMap[$fdim] = array_map('strval', $_GET[$key]);
+    }
+
+    $userId = intval($user['id']);
+    $userGroup = isset($user['group_name']) && strval($user['group_name']) !== '' ? strval($user['group_name']) : 'ProdOps';
+    $userGroupMap = array();
+    $userNameById = array();
+    foreach ($db['users'] as $u) {
+        $userGroupMap[intval($u['id'])] = isset($u['group_name']) && strval($u['group_name']) !== '' ? strval($u['group_name']) : 'ProdOps';
+        $userNameById[intval($u['id'])] = trim(strval(isset($u['display_name']) && strval($u['display_name']) !== '' ? $u['display_name'] : $u['username']));
+    }
+    $incidentNameById = array();
+    foreach ($db['incidents'] as $inc) $incidentNameById[intval($inc['id'])] = strval($inc['name']);
+
+    $matched = array();
+    foreach ($db['tickets'] as $t) {
+        if (!in_range(isset($t['created_at']) ? $t['created_at'] : '', $start, $end)) continue;
+        $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        if ($scope === 'mine') { if ($ownerId !== $userId) continue; }
+        elseif ($scope === 'group') {
+            if ($ownerId <= 0) continue;
+            $og = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
+            if ($og !== $userGroup) continue;
+        }
+        if ($dimension !== '' && $value !== '') {
+            $match = false;
+            switch ($dimension) {
+                case 'fab': $match = (isset($t['fab']) ? strval($t['fab']) : '') === $value; break;
+                case 'category': $match = custom_ticket_category_name($t, $db['categories'], $db['incidents']) === $value; break;
+                case 'team': $match = normalize_team(isset($t['owner_team']) ? $t['owner_team'] : 'A') === $value; break;
+                case 'severity': $match = custom_ticket_severity_label($t) === $value; break;
+                case 'incident':
+                    $iid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+                    $nm = ($iid > 0 && isset($incidentNameById[$iid])) ? $incidentNameById[$iid] : (isset($t['incident_name']) ? strval($t['incident_name']) : '');
+                    if ($nm === '') $nm = 'N/D';
+                    $match = $nm === $value; break;
+                case 'user':
+                    $nm = isset($userNameById[$ownerId]) ? $userNameById[$ownerId] : ('Utente ' . $ownerId);
+                    $match = $nm === $value; break;
+            }
+            if (!$match) continue;
+        }
+        $matched[] = $t;
+    }
+    $matched = filter_custom_tickets($matched, $filterMap, $db['categories'], $db['incidents']);
+
+    $out = array();
+    foreach ($matched as $t) {
+        $iid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+        $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        $out[] = array(
+            'id' => isset($t['id']) ? intval($t['id']) : 0,
+            'created_at' => isset($t['created_at']) ? $t['created_at'] : '',
+            'incident_id' => $iid,
+            'incident_name' => isset($t['incident_name']) ? $t['incident_name'] : (isset($incidentNameById[$iid]) ? $incidentNameById[$iid] : ''),
+            'category' => custom_ticket_category_name($t, $db['categories'], $db['incidents']),
+            'fab' => isset($t['fab']) ? $t['fab'] : '',
+            'description' => isset($t['description']) ? $t['description'] : '',
+            'severity' => isset($t['severity']) ? intval($t['severity']) : 0,
+            'owner_user_id' => $ownerId,
+            'owner_team' => normalize_team(isset($t['owner_team']) ? $t['owner_team'] : 'A'),
+            'owner_username' => isset($userNameById[$ownerId]) ? $userNameById[$ownerId] : ''
+        );
+    }
+    usort($out, function ($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
+    json_response(array(
+        'dimension' => $dimension,
+        'value' => $value,
+        'count' => count($out),
+        'tickets' => $out
+    ), 200);
+}
+
 if ($path === '/api/stats/fab/current-day' && $method === 'GET') {
     $bounds = current_day_bounds();
     $tickets = array();
@@ -2480,6 +2590,46 @@ if ($path === '/api/stats/personal/current-year' && $method === 'GET') {
     foreach ($db['users'] as $u) {
         $userGroupMap[intval($u['id'])] = isset($u['group_name']) && strval($u['group_name']) !== '' ? strval($u['group_name']) : 'ProdOps';
     }
+
+    // Drill-down: se e' passato ?month=1..12 restituisce i conteggi giorno
+    // per giorno di quel mese (dell'anno corrente) invece dei 12 mesi.
+    $month = isset($_GET['month']) ? intval($_GET['month']) : 0;
+    if ($month >= 1 && $month <= 12) {
+        $daysInMonth = intval(gmdate('t', gmmktime(0, 0, 0, $month, 1, $year)));
+        $dayCounts = array();
+        for ($d = 0; $d < $daysInMonth; $d++) $dayCounts[$d] = 0;
+        foreach ($db['tickets'] as $t) {
+            $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+            if ($view === 'team') {
+                if ($ownerId <= 0) continue;
+                if (!is_supervisor($user)) {
+                    $ownerGroup = isset($userGroupMap[$ownerId]) ? $userGroupMap[$ownerId] : '';
+                    if ($ownerGroup !== $userGroup) continue;
+                }
+            } else {
+                if ($ownerId !== $userId) continue;
+            }
+            $ts = isset($t['created_at']) ? strtotime($t['created_at']) : false;
+            if ($ts === false) continue;
+            if (intval(gmdate('Y', $ts)) !== $year) continue;
+            if (intval(gmdate('n', $ts)) !== $month) continue;
+            $d = intval(gmdate('j', $ts)) - 1;
+            if ($d >= 0 && $d < $daysInMonth) $dayCounts[$d] += 1;
+        }
+        $dstats = array();
+        for ($d = 0; $d < $daysInMonth; $d++) {
+            $dstats[] = array('label' => strval($d + 1), 'total' => $dayCounts[$d]);
+        }
+        json_response(array(
+            'year' => $year,
+            'view' => $view,
+            'month' => $month,
+            'month_label' => $monthLabels[$month - 1],
+            'username' => ($view === 'team' ? $userGroup : strval($user['username'])),
+            'stats' => $dstats
+        ), 200);
+    }
+
     foreach ($db['tickets'] as $t) {
         $ownerId = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
         if ($view === 'team') {

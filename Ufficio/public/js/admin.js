@@ -1173,6 +1173,7 @@ async function loadPresetOptionRequests() {
             body: JSON.stringify({ action })
           });
           await loadPresetOptionRequests();
+          if (action === 'approve') await loadPresetOptionsManager();
         } catch (error) {
           showToast("Impossibile modificare l'opzione: " + (error.message || error), 'error', 'Errore modifica');
           btn.disabled = false;

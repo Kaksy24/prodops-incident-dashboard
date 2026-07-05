@@ -13,6 +13,13 @@ if ($path === '/' || $path === '/index.html' || $path === '/admin.html' || $path
     return true;
 }
 
+// Script PHP standalone sotto /extensions/ (es. export.php). In produzione li
+// esegue Apache direttamente; qui li instradiamo per il dev server integrato.
+if (preg_match('#^/extensions/[A-Za-z0-9_\-]+\.php$#', $path)) {
+    $ext = __DIR__ . str_replace('/', DIRECTORY_SEPARATOR, $path);
+    if (is_file($ext)) { require $ext; return true; }
+}
+
 if ($path !== '/' && is_file($file)) {
     $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
     $mimeMap = array(

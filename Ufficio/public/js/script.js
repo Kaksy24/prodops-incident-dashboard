@@ -1711,13 +1711,29 @@ function makeSearchableSelect(select) {
   wrapper.appendChild(trigger);
   wrapper.appendChild(panel);
 
-  function syncOpenSpacing() {
-    if (panel.hidden) {
-      wrapper.style.paddingBottom = '';
-      return;
+  function getScrollHost() {
+    var el = wrapper.parentNode;
+    while (el && el !== document.body) {
+      if (el.nodeType === 1) {
+        var oy = window.getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return el;
+      }
+      el = el.parentNode;
     }
-    var panelHeight = panel.offsetHeight || 0;
-    wrapper.style.paddingBottom = panelHeight ? (panelHeight + 6) + 'px' : '';
+    return null;
+  }
+
+  // Reserve scroll room on the modal itself (not on the field wrapper), so the
+  // modal grows/scrolls to show the open panel without stretching the preset box.
+  function syncOpenSpacing() {
+    var host = getScrollHost();
+    if (!host) return;
+    host.style.paddingBottom = '';
+    if (panel.hidden) return;
+    var overflow = panel.getBoundingClientRect().bottom - host.getBoundingClientRect().bottom;
+    if (overflow > 0) {
+      host.style.paddingBottom = Math.ceil(overflow + 16) + 'px';
+    }
   }
 
   function updateTriggerLabel() {
@@ -2361,7 +2377,8 @@ function renderColumnChart(target, stats) {
     const h = Math.round((s.total / max) * 180);
     const pct = totalAll > 0 ? Math.round((s.total / totalAll) * 100) : 0;
     const row = document.createElement('div');
-    row.className = 'bar';
+    row.className = 'bar chart-clickable';
+    row.setAttribute('data-chart-label', s.label);
     const color = getBarColor(target.id, s.label);
     row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(s.label)}</span>`;
     barsWrap.appendChild(row);
@@ -2383,7 +2400,8 @@ function renderHorizontalChart(target, stats) {
 
   sortedStats.forEach((item) => {
     const row = document.createElement('div');
-    row.className = 'chart-horizontal-row';
+    row.className = 'chart-horizontal-row chart-clickable';
+    row.setAttribute('data-chart-label', item.label);
     const width = Math.round((item.total / max) * 100);
     const pct = Math.round((item.total / Math.max(sortedStats.reduce((sum, x) => sum + x.total, 0), 1)) * 100);
     const color = getBarColor(target.id, item.label);
@@ -2437,7 +2455,8 @@ function renderPieOrDonutChart(target, stats, isDonut) {
   legend.className = 'chart-pie-legend';
   sortedStats.forEach((item) => {
     const row = document.createElement('div');
-    row.className = 'chart-pie-legend-row';
+    row.className = 'chart-pie-legend-row chart-clickable';
+    row.setAttribute('data-chart-label', item.label);
     const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
     row.innerHTML = `
       <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
@@ -2478,21 +2497,47 @@ function renderLineChart(target, stats) {
     <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" class="chart-line-axis"></line>
     <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" class="chart-line-axis"></line>
     <path d="${path}" class="chart-line-path"></path>
-    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4.5" class="chart-line-point" fill="${getBarColor(target.id, point.item.label)}"></circle>`).join('')}
-    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label">${escapeHtml(point.item.label)}</text>`).join('')}
+    ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4.5" class="chart-line-point chart-clickable" data-chart-label="${escapeHtml(point.item.label)}" fill="${getBarColor(target.id, point.item.label)}"></circle>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label chart-clickable" data-chart-label="${escapeHtml(point.item.label)}">${escapeHtml(point.item.label)}</text>`).join('')}
     ${points.map((point) => `<text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-line-value">${point.item.total}</text>`).join('')}
   `;
   target.appendChild(svg);
 }
 
-function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
+// Arrotonda il massimo dell'asse a valori "tondi" (1/2/2.5/5 x 10^n)
+// in modo che gli step dei tick siano numeri leggibili (100, 200, 500, ...).
+function niceAxisScale(rawMax, minStep) {
+  var targetTicks = 5;
+  var rawStep = rawMax / targetTicks;
+  var mag = Math.pow(10, Math.floor(Math.log(rawStep) / Math.LN10));
+  var norm = rawStep / mag;
+  var niceStep;
+  if (norm <= 1) niceStep = 1;
+  else if (norm <= 2) niceStep = 2;
+  else if (norm <= 5) niceStep = 5;
+  else niceStep = 10;
+  niceStep = niceStep * mag;
+  // Step minimo forzato (es. scaglioni da 250 per il grafico gruppo).
+  if (minStep && niceStep < minStep) niceStep = minStep;
+  var niceMax = Math.ceil(rawMax / niceStep) * niceStep;
+  if (niceMax < niceStep) niceMax = niceStep;
+  var ticks = Math.round(niceMax / niceStep);
+  return { max: niceMax, step: niceStep, ticks: ticks };
+}
+
+function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opts) {
   target.innerHTML = '';
+  const drillMonth = opts && opts.month ? opts.month : null;
   const months = stats.map(function(m) { var d = m.total || 0; return { label: m.label, total: d, monthly: d }; });
   setChartExportState(target, stats);
   const targetAnnualMonthly = targetAnnual > 0 ? (targetAnnual / 12) : 0;
   const peakValue = Math.max(Math.max.apply(null, months.map(function(m) { return m.total; })), targetMonthly || 0, targetAnnualMonthly || 0, 1);
   const configuredAxisMax = getPersonalChartAxisMaxSetting(target && target.id);
-  const maxVal = Math.max(1, configuredAxisMax || 0, Math.ceil(peakValue * 1.15));
+  const rawMax = Math.max(1, configuredAxisMax || 0, peakValue * 1.15);
+  // Ticket gruppo: scaglioni dell'asse di almeno 250.
+  const axisMinStep = (target && target.id === 'personalGroupChart') ? 250 : 0;
+  const axisScale = niceAxisScale(rawMax, axisMinStep);
+  const maxVal = axisScale.max;
   const width = 900;
   const height = 340;
   const padL = 58;
@@ -2525,9 +2570,9 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
   const colMid = isGroup ? '#ec4899' : '#818cf8';
 
   var yTicks = '';
-  var tickCount = 6;
+  var tickCount = axisScale.ticks;
   for (var ti = 0; ti <= tickCount; ti++) {
-    var tv = Math.round((maxVal * ti) / tickCount);
+    var tv = axisScale.step * ti;
     var ty = yOf(tv).toFixed(1);
     yTicks += '<line x1="' + (padL - 4) + '" y1="' + ty + '" x2="' + (width - padR) + '" y2="' + ty + '" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 3"/>';
     yTicks += '<text x="' + (padL - 8) + '" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="personal-chart-label">' + tv + '</text>';
@@ -2558,8 +2603,18 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
     }
   }).join('');
 
-  var labels = points.map(function(p) {
-    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 18) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
+  var labels = points.map(function(p, i) {
+    if (drillMonth) {
+      return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 18) + '" text-anchor="middle" class="personal-chart-label">' + escapeHtml(p.m.label) + '</text>';
+    }
+    // Vista annuale: etichette mese cliccabili per il drill-down giornaliero.
+    return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 18) + '" text-anchor="middle" data-month="' + (i + 1) + '" class="personal-chart-label personal-chart-month-hit">' + escapeHtml(p.m.label) + '</text>';
+  }).join('');
+
+  // Aree cliccabili trasparenti sui punti: aprono la lista ticket del periodo.
+  var colW = n > 1 ? (usableW / (n - 1)) : usableW;
+  var hitRects = points.map(function(p, i) {
+    return '<rect class="personal-point-hit" data-idx="' + i + '" x="' + (p.x - colW / 2).toFixed(1) + '" y="' + padT + '" width="' + colW.toFixed(1) + '" height="' + usableH + '" fill="transparent" style="cursor:pointer"><title>Mostra ticket</title></rect>';
   }).join('');
 
   var targetLines = '';
@@ -2595,17 +2650,170 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly) {
     '<path d="' + areaPath + '" fill="url(#' + gradId + ')" stroke="none"/>' +
     '<path d="' + linePath + '" fill="none" stroke="' + colA + '" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" filter="url(#' + glowId + ')"/>' +
     circles +
-    labels;
+    labels +
+    hitRects;
   target.appendChild(svg);
+
+  // Click su un punto -> lista ticket di quel mese (annuale) o giorno (mensile).
+  var pointHits = svg.querySelectorAll('.personal-point-hit');
+  for (var phi = 0; phi < pointHits.length; phi++) {
+    (function (el) {
+      el.addEventListener('click', function () {
+        openPersonalPeriodTickets(target, parseInt(el.getAttribute('data-idx'), 10));
+      });
+    })(pointHits[phi]);
+  }
+
+  // Overlay HTML per il drill-down mensile (posizionati sul contenitore).
+  target.style.position = 'relative';
+  if (drillMonth) {
+    var backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'personal-chart-back';
+    backBtn.textContent = '← Torna all’anno';
+    backBtn.addEventListener('click', function () { personalChartBackToYear(target.id); });
+    target.appendChild(backBtn);
+
+    if (opts && opts.monthLabel) {
+      var cap = document.createElement('span');
+      cap.className = 'personal-chart-month-caption';
+      cap.textContent = opts.monthLabel + ' — giorno per giorno';
+      target.appendChild(cap);
+    }
+  } else {
+    // Aggancia il click sulle etichette mese per entrare nel dettaglio.
+    var hits = svg.querySelectorAll('.personal-chart-month-hit');
+    for (var hi = 0; hi < hits.length; hi++) {
+      (function (el) {
+        el.addEventListener('click', function () {
+          personalChartDrillToMonth(target.id, parseInt(el.getAttribute('data-month'), 10));
+        });
+      })(hits[hi]);
+    }
+  }
 }
+
+// Stato drill-down dei grafici personali: target.id -> mese (1..12) o null (anno).
+var personalChartMonthView = {};
+
+function personalChartIsGroup(targetId) { return targetId === 'personalGroupChart'; }
+
+async function loadPersonalChartData(target) {
+  if (!target) return;
+  const isGroup = personalChartIsGroup(target.id);
+  const view = isGroup ? 'team' : 'mine';
+  const month = personalChartMonthView[target.id] || null;
+  let url = '/api/stats/personal/current-year?view=' + view;
+  if (month) url += '&month=' + month;
+  const data = await fetchJson(url);
+  const unameEl = isGroup ? personalGroupChartUsername : personalMineChartUsername;
+  if (unameEl && data.username) unameEl.textContent = '— ' + data.username;
+  if (!data.stats) return;
+  if (month) {
+    // Vista giornaliera: nessuna linea target.
+    renderPersonalLineChart(target, data.stats, 0, 0, { month: month, monthLabel: data.month_label });
+  } else {
+    const t = isGroup
+      ? syncPersonalTargetUi(data, personalGroupTargetMonthlyInput, personalGroupTargetAnnualInput, personalGroupTargetMonthlyLabel, personalGroupTargetAnnualLabel, true)
+      : syncPersonalTargetUi(data, personalMineTargetMonthlyInput, personalMineTargetAnnualInput, personalMineTargetMonthlyLabel, personalMineTargetAnnualLabel, false);
+    renderPersonalLineChart(target, data.stats, t.annual, t.monthly);
+  }
+}
+
+function personalChartDrillToMonth(targetId, month) {
+  const target = document.getElementById(targetId);
+  if (!target || !(month >= 1 && month <= 12)) return;
+  personalChartMonthView[targetId] = month;
+  loadPersonalChartData(target).catch(console.error);
+}
+
+function personalChartBackToYear(targetId) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  personalChartMonthView[targetId] = null;
+  loadPersonalChartData(target).catch(console.error);
+}
+
+// ── Drill: click su un elemento del grafico -> pagina "Cerca ticket" ──────────
+function goToSearchWithParams(params) {
+  window.location.href = appUrl('/search.html?' + params.toString());
+}
+
+function handleChartElementClick(el) {
+  const label = el.getAttribute('data-chart-label');
+  if (!label) return;
+  const chart = el.closest('[id]');
+  const cfg = chart && chart._chartFilter;
+  if (!cfg || !cfg.dimension) return;
+  const params = new URLSearchParams();
+  params.set('dimension', cfg.dimension);
+  params.set('value', label);
+  const win = cfg.getWindow ? cfg.getWindow() : cfg.window;
+  if (win) params.set('window', win);
+  if (cfg.start) params.set('start', cfg.start);
+  if (cfg.end) params.set('end', cfg.end);
+  params.set('scope', cfg.scope || 'all');
+  if (cfg.filters) {
+    Object.keys(cfg.filters).forEach(function (k) {
+      (cfg.filters[k] || []).forEach(function (v) { params.append('filter_' + k + '[]', v); });
+    });
+  }
+  goToSearchWithParams(params);
+}
+
+// Click su punto/mese dei grafici personali -> ticket di quel periodo su Cerca.
+function openPersonalPeriodTickets(target, bucketIndex) {
+  const isGroup = personalChartIsGroup(target.id);
+  const scope = isGroup ? 'group' : 'mine';
+  const year = new Date().getFullYear();
+  const month = personalChartMonthView[target.id] || null;
+  let startISO, endISO;
+  if (month) {
+    const day = bucketIndex + 1;
+    startISO = new Date(Date.UTC(year, month - 1, day)).toISOString();
+    endISO = new Date(Date.UTC(year, month - 1, day + 1)).toISOString();
+  } else {
+    const m = bucketIndex + 1;
+    startISO = new Date(Date.UTC(year, m - 1, 1)).toISOString();
+    endISO = new Date(Date.UTC(year, m, 1)).toISOString();
+  }
+  const params = new URLSearchParams();
+  params.set('scope', scope);
+  params.set('start', startISO);
+  params.set('end', endISO);
+  goToSearchWithParams(params);
+}
+
+// Listener delegato sui grafici categoriali (bar/colonne/torta/linea).
+(function setupChartDrill() {
+  const grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.addEventListener('click', function (e) {
+    const el = e.target.closest ? e.target.closest('[data-chart-label]') : null;
+    if (el) handleChartElementClick(el);
+  });
+})();
 
 function renderChart(target, stats) {
   const type = getChartType(target.id);
-  if (type === 'bar') return renderHorizontalChart(target, stats);
-  if (type === 'donut') return renderPieOrDonutChart(target, stats, true);
-  if (type === 'pie') return renderPieOrDonutChart(target, stats, false);
+  // Le serie a linea sono temporali: gli zeri vanno mantenuti.
+  // Per gli altri grafici mostra solo gli elementi con almeno 1 conteggio.
   if (type === 'line') return renderLineChart(target, stats);
-  return renderColumnChart(target, stats);
+  const all = stats || [];
+  const nonZero = all.filter(function (s) { return Number(s.total) > 0; });
+  // Per non far sembrare il grafico vuoto, se ci sono meno di 4 elementi
+  // reintegra elementi a 0 fino ad arrivare a 4 (o esaurire quelli disponibili).
+  const shown = nonZero.slice();
+  if (shown.length < 4) {
+    const zeros = all.filter(function (s) { return Number(s.total) <= 0; });
+    for (let i = 0; i < zeros.length && shown.length < 4; i++) {
+      shown.push(zeros[i]);
+    }
+  }
+  if (type === 'bar') return renderHorizontalChart(target, shown);
+  if (type === 'donut') return renderPieOrDonutChart(target, shown, true);
+  if (type === 'pie') return renderPieOrDonutChart(target, shown, false);
+  return renderColumnChart(target, shown);
 }
 
 function renderVerticalChart(target, stats) {
@@ -2774,6 +2982,62 @@ function createTicketRowElement(t, isAnimated) {
   return li;
 }
 
+// Chiave di identità di un ticket: due ticket sono "identici" se coincidono
+// incident, fab, severity, proprietario e descrizione (owner incluso per non
+// rompere i filtri "Tuoi"/"Team"). Orario e id NON contano.
+function ticketDupKey(t) {
+  return [
+    Number(t.incident_id || 0),
+    String(t.fab || ''),
+    String(t.severity || ''),
+    String(t.owner_user_id || ''),
+    String(t.description || '').trim().toLocaleLowerCase('it')
+  ].join('');
+}
+
+// Raggruppa i ticket identici mantenendo l'ordine di prima comparsa.
+function groupIdenticalTickets(tickets) {
+  var map = {};
+  var order = [];
+  (tickets || []).forEach(function (t) {
+    var k = ticketDupKey(t);
+    if (!map[k]) { map[k] = []; order.push(k); }
+    map[k].push(t);
+  });
+  return order.map(function (k) { return map[k]; });
+}
+
+// Costruisce il nodo di lista per un gruppo di ticket identici: una singola
+// card se il gruppo ha un solo ticket, oppure una pila (come la vista compatta)
+// con un pallino in alto a destra che indica quanti ticket sono stati impilati.
+function buildTicketNode(group, animatedIds) {
+  var first = group[0];
+  var isAnimated = animatedIds ? animatedIds.has(Number(first.id)) : false;
+  var row = createTicketRowElement(first, isAnimated);
+  if (group.length <= 1) return row;
+
+  var stack = document.createElement('li');
+  stack.className = 'ticket-dup-stack';
+  // Ricopia i dataset sul wrapper cosi' filtro/ordinamento/compatta continuano
+  // a funzionare (leggono li.dataset.* dai figli diretti della lista).
+  var keys = ['ticketId', 'incidentId', 'incident', 'description', 'fab', 'createdAt', 'severity', 'category', 'canEdit', 'ownerUserId', 'ownerTeam', 'ownerUsername'];
+  keys.forEach(function (k) { stack.dataset[k] = row.dataset[k] || ''; });
+  stack.appendChild(row);
+
+  var badge = document.createElement('span');
+  badge.className = 'ticket-dup-badge';
+  badge.textContent = String(group.length);
+  stack.appendChild(badge);
+
+  // Card per il popup al passaggio del mouse (riusa l'infrastruttura compatta).
+  stack._tsCards = group.map(function (t) { return createTicketRowElement(t, false); });
+  stack.addEventListener('mouseenter', function () { _tsShowPopup(this); });
+  stack.addEventListener('mouseleave', function () {
+    _tsPopupTimer = setTimeout(_tsHidePopup, 110);
+  });
+  return stack;
+}
+
 // Marca le card la cui descrizione è troncata (line-clamp).
 // Hover sulla card espande il testo in loco senza aprire la modale.
 function decorateClampedDescriptions(root) {
@@ -2805,8 +3069,8 @@ async function loadDayTickets(animatedTicketIds = []) {
       return;
     }
 
-    data.tickets.forEach((t) => {
-      ticketList.appendChild(createTicketRowElement(t, animatedIds.has(Number(t.id))));
+    groupIdenticalTickets(data.tickets).forEach((group) => {
+      ticketList.appendChild(buildTicketNode(group, animatedIds));
     });
 
     ticketList.classList.toggle('ticket-list-scrollable', (data.tickets || []).length > 10);
@@ -3085,7 +3349,7 @@ async function loadPreviousShifts() {
         empty.textContent = 'Nessun ticket registrato.';
         list.appendChild(empty);
       } else {
-        tickets.forEach((t) => list.appendChild(createTicketRowElement(t, false)));
+        groupIdenticalTickets(tickets).forEach((group) => list.appendChild(buildTicketNode(group, null)));
         requestAnimationFrame(() => decorateClampedDescriptions(list));
       }
       block.appendChild(list);
@@ -3133,34 +3397,28 @@ if (editChartModeBtn) {
 
 async function loadCharts() {
   try {
-    const [fabYear, catYear, teamYear, severityYear, userYear, personalMine, personalGroup] = await Promise.all([
+    const [fabYear, catYear, teamYear, severityYear, userYear] = await Promise.all([
       fetchJson(fabYearMode === 'day' ? '/api/stats/fab/current-day' : `/api/stats/fab/current-year?mode=${fabYearMode}`),
       fetchJson(catYearMode === 'day' ? '/api/stats/category/current-day' : `/api/stats/category/current-year?mode=${catYearMode}`),
       fetchJson(teamYearMode === 'day' ? '/api/stats/team/current-day' : `/api/stats/team/current-year?mode=${teamYearMode}`),
       fetchJson(severityYearMode === 'day' ? '/api/stats/severity/current-day' : `/api/stats/severity/current-year?mode=${severityYearMode}`),
-      fetchJson(userYearMode === 'day' ? '/api/stats/user/current-day' : `/api/stats/user/current-year?mode=${userYearMode}`),
-      fetchJson('/api/stats/personal/current-year?view=mine'),
-      fetchJson('/api/stats/personal/current-year?view=team')
+      fetchJson(userYearMode === 'day' ? '/api/stats/user/current-day' : `/api/stats/user/current-year?mode=${userYearMode}`)
     ]);
     renderChart(fabYearChart, fabYear.stats);
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
     renderChart(severityYearChart, severityYear.stats);
     if (userYearChart) renderChart(userYearChart, userYear.stats);
-    if (personalMineChart && personalMine.stats) {
-      const tMine = syncPersonalTargetUi(personalMine, personalMineTargetMonthlyInput, personalMineTargetAnnualInput, personalMineTargetMonthlyLabel, personalMineTargetAnnualLabel, false);
-      renderPersonalLineChart(personalMineChart, personalMine.stats, tMine.annual, tMine.monthly);
-    }
-    if (personalMineChartUsername && personalMine.username) {
-      personalMineChartUsername.textContent = '— ' + personalMine.username;
-    }
-    if (personalGroupChart && personalGroup.stats) {
-      const tGroup = syncPersonalTargetUi(personalGroup, personalGroupTargetMonthlyInput, personalGroupTargetAnnualInput, personalGroupTargetMonthlyLabel, personalGroupTargetAnnualLabel, true);
-      renderPersonalLineChart(personalGroupChart, personalGroup.stats, tGroup.annual, tGroup.monthly);
-    }
-    if (personalGroupChartUsername && personalGroup.username) {
-      personalGroupChartUsername.textContent = '— ' + personalGroup.username;
-    }
+    // Config per il filtro-ticket al click su un elemento del grafico.
+    if (fabYearChart) fabYearChart._chartFilter = { dimension: 'fab', scope: 'all', getWindow: function () { return fabYearMode; } };
+    if (catYearChart) catYearChart._chartFilter = { dimension: 'category', scope: 'all', getWindow: function () { return catYearMode; } };
+    if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; } };
+    if (severityYearChart) severityYearChart._chartFilter = { dimension: 'severity', scope: 'all', getWindow: function () { return severityYearMode; } };
+    if (userYearChart) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; } };
+    // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
+    // di drill-down mensile (annuale di default, o giorno per giorno).
+    if (personalMineChart) await loadPersonalChartData(personalMineChart);
+    if (personalGroupChart) await loadPersonalChartData(personalGroupChart);
   } catch (error) {
     console.error(error);
     [fabYearChart, catYearChart, teamYearChart, severityYearChart, userYearChart, personalMineChart, personalGroupChart].forEach((target) => {
@@ -3653,6 +3911,21 @@ async function loadCustomChartData(def, target, activeWindow) {
     if (!stats.length || stats.every((s) => !Number(s.total))) {
       target.innerHTML = '<p class="muted">Nessun dato per il periodo selezionato.</p>';
       return;
+    }
+    // Config filtro-ticket: supportato solo con una singola dimensione di plot.
+    if (plotDims.length === 1) {
+      const filterObj = {};
+      dims.forEach((d) => { if (d.items && d.items.length) filterObj[d.type] = d.items.slice(); });
+      target._chartFilter = {
+        dimension: plotDims[0].type,
+        scope: def.scope || 'all',
+        window: (typeof w === 'string') ? w : 'custom',
+        start: (w && w.start) || '',
+        end: (w && w.end) || '',
+        filters: filterObj
+      };
+    } else {
+      target._chartFilter = null;
     }
     renderChart(target, stats);
   } catch (e) {

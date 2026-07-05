@@ -8,15 +8,17 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 
 | File locale | Path produzione | Note |
 |------|------|------|
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Version bump pubblico `v1.6.13` |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Modale ticket dinamica anche durante apertura dropdown preset |
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Version bump pubblico `v1.6.13` |
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `?month=1..12` su `/api/stats/personal/current-year` (drill-down giornaliero) + endpoint `GET /api/tickets/lookup` (ticket per dimensione+valore o intervallo, per il click sui grafici) + guard `PRODOPS_LIB_ONLY` per riuso helper da `extensions/export.php` |
+| `Ufficio/extensions/export.php` | `/var/www/html/ictsupport/modules/ticket_manager/extensions/export.php` | NUOVO — export ticket per TinyMCE altro sito: `export.php?format=html|json&start&end` (raggruppati CATEGORIA-FAB, dedup `[N]`, auth via cookie LDAP) |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Version bump pubblico `v1.7.0` |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Modale ticket dinamica con dropdown preset + stili pila ticket duplicati (`.ticket-dup-stack`) + drill-down mensile grafici personali (back button/caption/label cliccabili) + elementi grafico cliccabili (`.chart-clickable`) |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Version bump pubblico `v1.7.0` |
 | `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Blocco duplicati case-insensitive nella creazione menu admin |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Validazione proposta duplicati case-insensitive e crescita modale con dropdown aperto |
-| `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | Elimina ticket in modale e feedback permessi/ordinamenti ricerca |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Grafici: nascondi valori 0 (min 4 colonne) + asse tondo grafici personali; dedup ticket identici in pila con badge; drill-down mensile grafici personali/gruppo (click mese → giorno per giorno + torna all'anno); asse grafico gruppo con scaglioni minimi da 250; click su elemento grafico → apre i ticket filtrati nella pagina Cerca ticket (tutti i grafici, inclusi custom e personali per periodo); validazione duplicati e crescita modale |
+| `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | Elimina ticket in modale e feedback permessi/ordinamenti ricerca; apertura risultati dal click sui grafici (param dimensione/periodo → `/api/tickets/lookup`); filtro Incident dipendente dalla Categoria (attivo solo con categoria scelta, popolato con i soli incident di quella categoria) |
 | `Ufficio/public/js/toast.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/toast.js` | Sistema toast/confirm referenziato dalle pagine pubbliche |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Version bump pubblico `v1.6.13` |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Version bump pubblico `v1.6.13` |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Version bump pubblico `v1.7.0` |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Version bump pubblico `v1.7.0` |
 
 ## Gia deployato
 

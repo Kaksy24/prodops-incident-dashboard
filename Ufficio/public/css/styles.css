@@ -546,6 +546,44 @@ body.theme-dark .switch-thumb {
 .personal-chart-label { font-size: 14px; fill: var(--muted); font-weight: 700; }
 .personal-chart-value { font-size: 15px; fill: #fff; font-weight: 800; }
 .personal-chart-zero { font-size: 13px; fill: var(--muted); font-weight: 600; }
+/* Etichette mese cliccabili (drill-down giornaliero) */
+.personal-chart-month-hit { cursor: pointer; transition: fill .12s ease; }
+.personal-chart-month-hit:hover { fill: var(--brand); text-decoration: underline; }
+/* Overlay del drill-down mensile */
+.personal-chart-back {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.personal-chart-back:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+.personal-chart-month-caption {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 3;
+  font-size: .74rem;
+  font-weight: 800;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Elementi grafico cliccabili (click -> lista ticket filtrati) */
+.chart-clickable { cursor: pointer; }
+.bar.chart-clickable:hover .bar-fill,
+.chart-horizontal-row.chart-clickable:hover .bar-fill { filter: brightness(1.08); }
+.chart-horizontal-row.chart-clickable:hover,
+.chart-pie-legend-row.chart-clickable:hover { background: rgba(120, 160, 210, .12); border-radius: 8px; }
+circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-width: 3; }
 .personal-chart-target-label { font-size: 13px; font-weight: 800; }
 .personal-chart-target-label-monthly { fill: #e53935; }
 .personal-chart-target-label-annual { fill: #0c5f8c; }
@@ -3962,6 +4000,71 @@ body.theme-dark .ticket-stack:not(.single)::after {
 
 body.theme-dark .ticket-stack-popup {
   box-shadow: 0 20px 48px rgba(4, 10, 22, .45), 0 0 0 1px rgba(112, 166, 220, .1);
+}
+
+/* Pila di ticket identici (dedup automatico, sempre attivo) */
+.ticket-dup-stack {
+  position: relative;
+  margin: 0 0 16px;
+  cursor: pointer;
+}
+.previous-shifts-content .ticket-dup-stack { margin: 0; }
+.ticket-dup-stack > .ticket-row {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ticket-dup-stack::before,
+.ticket-dup-stack::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.ticket-dup-stack::before {
+  top: 5px;
+  bottom: -5px;
+  z-index: 1;
+  opacity: .82;
+  box-shadow: 0 2px 6px rgba(20, 44, 74, .07);
+}
+.ticket-dup-stack::after {
+  top: 10px;
+  bottom: -10px;
+  z-index: 0;
+  opacity: .55;
+}
+.ticket-dup-stack:hover > .ticket-row {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(20, 44, 74, .15);
+}
+.ticket-dup-badge {
+  position: absolute;
+  top: -7px;
+  right: 4px;
+  z-index: 5;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: .66rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(12, 95, 140, .3);
+  pointer-events: none;
+}
+body.theme-dark .ticket-dup-stack::before,
+body.theme-dark .ticket-dup-stack::after {
+  border-color: rgba(112, 166, 220, .2);
 }
 
 /* ── TOAST NOTIFICATIONS ─────────────────────────────────────────────────── */

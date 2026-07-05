@@ -31,7 +31,7 @@ let currentUser = null;
 let uiColors = null;
 let searchModalCloseTimer = null;
 let categorySelectHandle = null;
-let incidentSelectHandle = null;
+let categoriesData = [];
 let activeSearchModalTicketId = '';
 
 const chartPalette = [
@@ -440,21 +440,42 @@ async function loadCategories() {
     categorySelectHandle = makeSearchableSelect(ticketSearchCategorySelect);
   }
 
-  if (ticketSearchIncidentSelect) {
-    while (ticketSearchIncidentSelect.options.length > 1) ticketSearchIncidentSelect.remove(1);
-    const allIncidents = [];
-    data.forEach((cat) => {
-      cat.incidents.forEach((inc) => { allIncidents.push(inc); });
+  // Il filtro Incident dipende dalla categoria: si abilita solo quando una
+  // categoria è selezionata e mostra solo gli incident di quella categoria.
+  categoriesData = data;
+  if (ticketSearchCategorySelect) {
+    ticketSearchCategorySelect.addEventListener('change', function () {
+      populateIncidentsForCategory(ticketSearchCategorySelect.value);
     });
-    allIncidents.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'it', { sensitivity: 'base' }));
-    allIncidents.forEach((inc) => {
-      const opt = document.createElement('option');
-      opt.value = String(inc.id);
-      opt.textContent = inc.name;
-      ticketSearchIncidentSelect.appendChild(opt);
-    });
-    incidentSelectHandle = makeSearchableSelect(ticketSearchIncidentSelect);
   }
+  populateIncidentsForCategory(ticketSearchCategorySelect ? ticketSearchCategorySelect.value : '');
+}
+
+// Popola (e abilita/disabilita) il select Incident in base alla categoria scelta.
+function populateIncidentsForCategory(categoryName) {
+  const select = ticketSearchIncidentSelect;
+  if (!select) return;
+  while (select.options.length > 1) select.remove(1);
+  const placeholder = select.options[0];
+  select.value = '';
+
+  if (!categoryName) {
+    if (placeholder) placeholder.textContent = 'Seleziona prima una categoria';
+    select.disabled = true;
+    return;
+  }
+
+  const cat = categoriesData.find((c) => String(c.name) === String(categoryName));
+  const incidents = (cat && Array.isArray(cat.incidents)) ? cat.incidents.slice() : [];
+  incidents.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'it', { sensitivity: 'base' }));
+  incidents.forEach((inc) => {
+    const opt = document.createElement('option');
+    opt.value = String(inc.id);
+    opt.textContent = inc.name;
+    select.appendChild(opt);
+  });
+  if (placeholder) placeholder.textContent = 'Tutti';
+  select.disabled = false;
 }
 
 async function runTicketSearch() {
@@ -538,6 +559,62 @@ async function runTicketSearch() {
   }
 }
 
+function chartDimensionLabelIt(dim) {
+  const map = { fab: 'FAB', category: 'Categoria', team: 'Team', severity: 'Severità', user: 'Utente', incident: 'Incident' };
+  return map[dim] || dim;
+}
+
+// Ricerca proveniente dal click su un grafico della dashboard: usa /api/tickets/lookup
+// con gli stessi parametri (dimensione+valore o intervallo start/end), poi mostra
+// i risultati nella pagina Cerca ticket.
+async function runChartLookup(sp) {
+  const params = new URLSearchParams();
+  ['dimension', 'value', 'window', 'scope', 'start', 'end'].forEach((k) => {
+    const v = sp.get(k);
+    if (v) params.set(k, v);
+  });
+  for (const [k, v] of sp.entries()) {
+    if (k.indexOf('filter_') === 0) params.append(k, v);
+  }
+
+  const dimension = sp.get('dimension') || '';
+  const value = sp.get('value') || '';
+  const start = sp.get('start') || '';
+  const end = sp.get('end') || '';
+
+  // Riflette i filtri nei controlli visibili, dove possibile.
+  if (dimension === 'fab' && ticketSearchFabSelect) ticketSearchFabSelect.value = value;
+  if (dimension === 'category' && ticketSearchCategorySelect) {
+    ticketSearchCategorySelect.value = value;
+    if (categorySelectHandle) categorySelectHandle.update();
+    populateIncidentsForCategory(value);
+  }
+  if ((start || end) && ticketSearchFromInput && ticketSearchToInput) {
+    const toDate = (iso) => { const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); };
+    if (start) ticketSearchFromInput.value = toDate(start);
+    // end e' esclusivo: mostro il giorno precedente come "a"
+    if (end) { const d = new Date(end); d.setUTCDate(d.getUTCDate() - 1); ticketSearchToInput.value = isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); }
+  }
+
+  if (ticketSearchSummary) {
+    const parts = [];
+    if (dimension && value) parts.push(chartDimensionLabelIt(dimension) + ': ' + value);
+    if (start || end) parts.push('periodo ' + (ticketSearchFromInput?.value || '...') + ' → ' + (ticketSearchToInput?.value || '...'));
+    ticketSearchSummary.textContent = 'Dal grafico → ' + (parts.length ? parts.join(' · ') : 'tutti i ticket del periodo');
+  }
+
+  const data = await fetchJson('/api/tickets/lookup?' + params.toString());
+  const results = data.tickets || [];
+  if (ticketSearchResults) {
+    ticketSearchResults.innerHTML = '';
+    const countP = document.createElement('p');
+    countP.className = 'ticket-search-count';
+    countP.textContent = results.length + ' ticket trovati.';
+    ticketSearchResults.appendChild(countP);
+    ticketSearchResults.appendChild(renderSearchTickets(results));
+  }
+}
+
 function applyTicketSearchListeners() {
   ticketSearchForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -554,8 +631,7 @@ function applyTicketSearchListeners() {
     if (ticketSearchFabSelect) ticketSearchFabSelect.value = '';
     if (ticketSearchCategorySelect) ticketSearchCategorySelect.value = '';
     if (categorySelectHandle) categorySelectHandle.update();
-    if (ticketSearchIncidentSelect) ticketSearchIncidentSelect.value = '';
-    if (incidentSelectHandle) incidentSelectHandle.update();
+    populateIncidentsForCategory('');
     if (ticketSearchSummary) ticketSearchSummary.textContent = 'Nessuna ricerca avviata.';
     if (ticketSearchResults) ticketSearchResults.innerHTML = '';
   });
@@ -642,8 +718,14 @@ function applyTicketSearchListeners() {
   if (ticketSearchFromInput) ticketSearchFromInput.value = _yearStart;
   if (ticketSearchToInput) ticketSearchToInput.value = _todayStr;
   applyTicketSearchListeners();
-  const initialQuery = new URLSearchParams(window.location.search).get('query');
-  if (initialQuery && ticketSearchQueryInput) {
+  const sp = new URLSearchParams(window.location.search);
+  const initialQuery = sp.get('query');
+  if (sp.get('dimension') || sp.get('start') || sp.get('end')) {
+    // Arrivo dal click su un grafico della dashboard.
+    try { await runChartLookup(sp); } catch (error) {
+      if (ticketSearchSummary) ticketSearchSummary.textContent = 'Errore ricerca: ' + (error.message || error);
+    }
+  } else if (initialQuery && ticketSearchQueryInput) {
     ticketSearchQueryInput.value = initialQuery;
     await runTicketSearch();
   }
