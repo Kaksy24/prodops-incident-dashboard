@@ -9,7 +9,7 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 | File locale | Path produzione | Note |
 |------|------|------|
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `?month=1..12` su `/api/stats/personal/current-year` (drill-down giornaliero) + endpoint `GET /api/tickets/lookup` (ticket per dimensione+valore o intervallo, per il click sui grafici) + guard `PRODOPS_LIB_ONLY` per riuso helper da `extensions/export.php` |
-| `Ufficio/extensions/export.php` | `/var/www/html/ictsupport/modules/ticket_manager/extensions/export.php` | NUOVO — export ticket per TinyMCE altro sito: `export.php?format=html|json&start&end` (raggruppati CATEGORIA-FAB, dedup `[N]`, auth via cookie LDAP) |
+| `Ufficio/extensions/export.php` | `/var/www/html/ictsupport/modules/ticket_manager/extensions/export.php` | NUOVO — export ticket per TinyMCE altro sito: `export.php?format=html|json&start&end` (raggruppati CATEGORIA-FAB, dedup `[N]`, endpoint pubblico senza autenticazione) |
 | `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Version bump pubblico `v1.7.0` |
 | `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Modale ticket dinamica con dropdown preset + stili pila ticket duplicati (`.ticket-dup-stack`) + drill-down mensile grafici personali (back button/caption/label cliccabili) + elementi grafico cliccabili (`.chart-clickable`) |
 | `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Version bump pubblico `v1.7.0` |

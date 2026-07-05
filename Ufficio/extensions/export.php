@@ -14,7 +14,8 @@
  * Output HTML: un blocco <h3>CATEGORIA-FAB</h3> + <ul><li>…</li></ul> per ogni
  * coppia categoria/fab, con i ticket identici compattati e prefissati con [N].
  *
- * Autenticazione: usa la sessione LDAP esistente (stesso dominio di lavoro).
+ * Endpoint pubblico: NON richiede autenticazione (consumato da un altro
+ * programma interno che non dispone della sessione LDAP di ProdOps).
  */
 
 // Bufferizza l'eventuale BOM/whitespace emesso dai file inclusi, poi lo scarta
@@ -24,17 +25,6 @@ ob_start();
 // Include il backend solo per le sue funzioni helper (niente routing API).
 define('PRODOPS_LIB_ONLY', true);
 require dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'index.php';
-
-while (ob_get_level() > 0) { ob_end_clean(); }
-
-// Autenticazione via cookie di sessione LDAP.
-$authUser = read_auth_user();
-if (!$authUser) {
-    header('HTTP/1.1 401 Unauthorized');
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Autenticazione richiesta';
-    exit;
-}
 
 $format = isset($_GET['format']) ? strtolower(trim(strval($_GET['format']))) : '';
 if ($format !== 'json') $format = 'html';
@@ -96,6 +86,10 @@ foreach ($groups as $g) {
     }
     $html .= '</ul>';
 }
+
+// Scarta tutto l'output bufferato (BOM/whitespace emessi dagli include o da
+// load_db) prima di inviare l'output pulito.
+while (ob_get_level() > 0) { ob_end_clean(); }
 
 if ($format === 'json') {
     header('Content-Type: application/json; charset=utf-8');
