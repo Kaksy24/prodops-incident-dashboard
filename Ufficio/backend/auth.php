@@ -95,7 +95,7 @@ function require_api_auth($role)
 {
     $user = read_auth_user();
     if (!$user) json_response(array('error' => 'Login richiesta'), 401);
-    if ($role === 'admin' && $user['role'] !== 'admin' && $user['role'] !== 'supervisor') json_response(array('error' => 'Accesso admin richiesto'), 403);
+    if ($role === 'admin' && $user['role'] !== 'admin') json_response(array('error' => 'Accesso admin richiesto'), 403);
     return $user;
 }
 

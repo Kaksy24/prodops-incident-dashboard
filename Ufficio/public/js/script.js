@@ -73,11 +73,19 @@ const presetInlineComposer = document.getElementById('presetInlineComposer');
 
 const fabs = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 const themeToggleBtn = document.getElementById('themeToggleBtn');
+const THEMES = [
+  { id: 'cappuccino', label: 'Cappuccino', sidebar: '#321805', brand: '#7c4a24' },
+  { id: 'bordeaux',   label: 'Bordeaux',   sidebar: '#2c0a12', brand: '#860026' },
+  { id: 'verde',      label: 'Verde',      sidebar: '#0c261a', brand: '#1a6e3e' },
+  { id: 'blu',        label: 'Blu',        sidebar: '#172b45', brand: '#0c5f8c' },
+  { id: 'giallo',     label: 'Giallo',     sidebar: '#2a2000', brand: '#b89200' },
+];
 let fabYearMode = 'day';
 let catYearMode = 'day';
 let teamYearMode = 'day';
 let severityYearMode = 'day';
 let userYearMode = 'day';
+const chartCustomRanges = { fabYear: null, catYear: null, teamYear: null, severityYear: null, userYear: null };
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
@@ -93,6 +101,8 @@ const incidentFabDefaultMap = {};
 const chartExportState = {};
 let uiColors = null;
 let editingTicketId = null;
+let _pinTicketId = null;
+let _pinTicketData = null;
 let presetTokenState = [];
 let extraTicketCounter = 0;
 let modalCloseTimer = null;
@@ -178,6 +188,78 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/* ── PIN ticket ─────────────────────────────────────── */
+function formatPinDate(s) {
+  var p = (s || '').split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : s;
+}
+function sanitizePinText(text) {
+  return String(text || '')
+    .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1')
+    .replace(/â€˜/g, '‘')
+    .replace(/â€™/g, '’')
+    .replace(/â€œ/g, '“')
+    .replace(/â€[�]/g, '”')
+    .replace(/â€“/g, '—')
+    .replace(/Ã¨/g, 'è')
+    .replace(/Ã¹/g, 'ù')
+    .replace(/Ã /g, 'à')
+    .replace(/Ã²/g, 'ò')
+    .replace(/Ã¬/g, 'ì');
+}
+function decoratePinnedTickets(pins) {
+  if (!ticketList) return;
+  var pinnedIds = new Set((pins || []).map(function(p) { return Number(p.id); }));
+  ticketList.querySelectorAll('[data-ticket-id]').forEach(function(li) {
+    var tid = Number(li.dataset.ticketId);
+    var isPinned = pinnedIds.has(tid);
+    var row = li.classList.contains('ticket-row') ? li : li.querySelector('.ticket-row');
+    if (!row) return;
+    var existing = row.querySelector('.ticket-pin-badge');
+    if (isPinned && !existing) {
+      var badge = document.createElement('span');
+      badge.className = 'ticket-pin-badge';
+      badge.setAttribute('aria-label', 'Ticket pinnato');
+      badge.setAttribute('title', 'Ticket pinnato');
+      badge.textContent = '📌';
+      var top = row.querySelector('.ticket-row-top');
+      if (top) top.appendChild(badge);
+    } else if (!isPinned && existing) {
+      existing.remove();
+    }
+    li.classList.toggle('ticket-pinned', isPinned);
+  });
+}
+
+function updateImportantTicketsBadge() {
+  var btn = document.getElementById('importantTicketsBtn');
+  if (!btn) return;
+  fetchJson('/api/pinned-tickets').then(function(pins) {
+    var count = (pins || []).length;
+    btn.classList.toggle('has-pins', count > 0);
+    btn.textContent = count > 0 ? '📌 Ticket Importanti (' + count + ')' : '📌 Ticket Importanti';
+    decoratePinnedTickets(pins);
+  }).catch(function() {});
+}
+function updatePinUi(ticketId, ticketData) {
+  _pinTicketId = ticketId || null;
+  _pinTicketData = ticketData || null;
+  var wrap = document.getElementById('ticketPinWrap');
+  var check = document.getElementById('ticketPinCheck');
+  var until = document.getElementById('ticketPinUntil');
+  if (!wrap || !check || !until) return;
+  if (!ticketId) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  check.checked = false;
+  until.value = '';
+  until.style.display = 'none';
+  fetchJson('/api/pinned-tickets').then(function(pins) {
+    var pin = (pins || []).find(function(p) { return Number(p.id) === Number(ticketId); }) || null;
+    check.checked = !!pin;
+    if (pin && pin.pinUntil) { until.value = pin.pinUntil; until.style.display = ''; }
+  }).catch(function() {});
 }
 
 function presetValueSearchUrl(value) {
@@ -438,6 +520,7 @@ function openTicketReadModal(ticket) {
     editFromReadBtn.dataset.createdAt = String(item.createdAt || '');
     editFromReadBtn.dataset.severity = String(item.severity || '');
   }
+  updatePinUi(item.ticketId || null, item);
   revealModal();
   applyMultiModalLayout();
 }
@@ -1520,6 +1603,7 @@ function closeModal() {
   modal.setAttribute('aria-hidden', 'true');
   unlockModalScroll();
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
+  updatePinUi(null, null);
   modalCloseTimer = setTimeout(() => {
     modal.classList.remove('show', 'closing');
     clearExtraTicketCards();
@@ -1840,6 +1924,7 @@ function makeSearchableSelect(select) {
   select.parentNode.insertBefore(wrapper, select);
   updateTriggerLabel();
 
+  select._sdSyncTrigger = function() { syncItems(); updateTriggerLabel(); };
   return { update: updateTriggerLabel };
 }
 
@@ -1852,7 +1937,13 @@ async function loadDbPresetOptions(token, select) {
     const fieldKey = presetFieldKey(token.label);
     const data = await fetchJson(`/api/preset-options?field_key=${encodeURIComponent(fieldKey)}`);
     const optionMap = {};
-    [...(token.options || []), ...(data.options || [])].forEach((option) => {
+    const pendingSet = {};
+    (data.pending || []).forEach((option) => {
+      const value = String(option || '').trim();
+      if (value === '') return;
+      pendingSet[value.toLocaleLowerCase('it')] = true;
+    });
+    [...(token.options || []), ...(data.options || []), ...(data.pending || [])].forEach((option) => {
       const value = String(option || '').trim();
       if (value === '') return;
       const key = value.toLocaleLowerCase('it');
@@ -1885,7 +1976,7 @@ async function loadDbPresetOptions(token, select) {
       filtered.forEach((opt) => {
         const option = document.createElement('option');
         option.value = opt;
-        option.textContent = opt;
+        option.textContent = pendingSet[opt.toLocaleLowerCase('it')] ? `${opt} (in revisione)` : opt;
         select.appendChild(option);
       });
       if (filtered.includes(currentValue)) select.value = currentValue;
@@ -1958,6 +2049,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', confirmText: 'Invia proposta' });
         if (!proposedValue || !proposedValue.trim()) {
           input.value = '';
+          if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           return;
         }
         const value = proposedValue.trim();
@@ -1968,6 +2060,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         });
         if (duplicateOption) {
           input.value = duplicateOption.value;
+          if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Questo elemento esiste gia: "' + duplicateOption.value + '".', 'warning', 'Elemento duplicato');
           tokenState[tokenIndex].value = input.value || '';
           const generatedDuplicate = buildDescriptionFromTemplate(template, tokenState, true);
@@ -1991,14 +2084,17 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
             })
           });
           if (!result || !result.ok) throw new Error(result?.error || 'Richiesta non accettata');
+          const storedValue = (result.request && result.request.value) || (result.value) || value;
           const pendingOption = document.createElement('option');
-          pendingOption.value = value;
-          pendingOption.textContent = `${value} (in revisione)`;
+          pendingOption.value = storedValue;
+          pendingOption.textContent = `${storedValue} (in revisione)`;
           input.insertBefore(pendingOption, input.querySelector('option[value="__propose_new__"]'));
-          input.value = value;
+          input.value = storedValue;
+          if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Il nuovo elemento è stato inviato all\'admin per la revisione. Sarà disponibile dopo l\'approvazione.', 'success', 'Proposta inviata');
         } catch (error) {
           input.value = '';
+          if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Non è stato possibile inviare la proposta: ' + (error.message || error), 'error', 'Errore invio proposta');
           return;
         }
@@ -2220,6 +2316,14 @@ function openModal(incidentId) {
   ticketTimestampInput.value = toDatetimeLocalValue(new Date());
   editingTicketId = null;
   clearExtraTicketCards();
+  _pinTicketId = null;
+  _pinTicketData = null;
+  var _pinWrap = document.getElementById('ticketPinWrap');
+  var _pinChk = document.getElementById('ticketPinCheck');
+  var _pinUnt = document.getElementById('ticketPinUntil');
+  if (_pinWrap) _pinWrap.style.display = '';
+  if (_pinChk) _pinChk.checked = false;
+  if (_pinUnt) { _pinUnt.value = ''; _pinUnt.style.display = 'none'; }
   if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Crea Ticket';
   fabButtonsWrap.querySelectorAll('.fab-btn').forEach((b) => { b.disabled = false; });
   setTicketModalReadMode(false);
@@ -2329,18 +2433,27 @@ async function fetchJson(url, options, attempt = 0) {
 async function loadCurrentUser() {
   const data = await fetchJson('/api/me');
   currentUser = data.user;
-  if (openAdminBtn) openAdminBtn.style.display = (currentUser?.role === 'admin' || currentUser?.role === 'supervisor') ? '' : 'none';
+  if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
   const pill = document.getElementById('userPill');
   const pillName = document.getElementById('userPillName');
   if (pill && pillName && currentUser) {
     pillName.textContent = currentUser.username || '';
     pill.style.display = '';
+    pill.onclick = function() { if (window._openUserSettingsModal) window._openUserSettingsModal(); };
   }
+}
+
+function formatCustomRangeLabel(range) {
+  if (!range || !range.start || !range.end) return '';
+  const fmt = (d) => { const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; };
+  return `${fmt(range.start)} → ${fmt(range.end)}`;
 }
 
 function chartTitleForTarget(target) {
   const baseTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
   const chartKey = normalizeChartKey(target && target.id);
+  const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode };
+  if (modeByKey[chartKey] === 'custom' && chartCustomRanges[chartKey]) return `${baseTitle} (${formatCustomRangeLabel(chartCustomRanges[chartKey])})`;
   if (chartKey === 'fabYear' && fabYearMode === 'day') return `${baseTitle} (24h)`;
   if (chartKey === 'catYear' && catYearMode === 'day') return `${baseTitle} (24h)`;
   return baseTitle;
@@ -3077,6 +3190,7 @@ async function loadDayTickets(animatedTicketIds = []) {
     applyCurrentShiftFilter();
     sortTicketList();
     requestAnimationFrame(() => decorateClampedDescriptions(ticketList));
+    updateImportantTicketsBadge();
   } catch (error) {
     console.error(error);
     updateCurrentShiftCounters([]);
@@ -3311,6 +3425,15 @@ function handleEditTicketButton(btn) {
   syncSubmitBtnState();
   if (deleteTicketBtn) deleteTicketBtn.style.display = 'inline-block';
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = 'none';
+  updatePinUi(Number(btn.dataset.ticketId) || null, {
+    ticketId: Number(btn.dataset.ticketId),
+    incidentId: Number(btn.dataset.incidentId || 0),
+    incidentName: btn.dataset.incident || '',
+    description: btn.dataset.description || '',
+    fab: btn.dataset.fab || '',
+    createdAt: btn.dataset.createdAt || '',
+    severity: Number(btn.dataset.severity || 1),
+  });
   revealModal();
   applyMultiModalLayout();
   positionAddSameIncidentBtn();
@@ -3395,14 +3518,22 @@ if (editChartModeBtn) {
   });
 }());
 
+function buildYearStatsUrl(basePath, mode, customRange) {
+  if (mode === 'custom' && customRange && customRange.start && customRange.end) {
+    return `${basePath}/current-year?start=${encodeURIComponent(customRange.start)}&end=${encodeURIComponent(customRange.end)}`;
+  }
+  if (mode === 'day') return `${basePath}/current-day`;
+  return `${basePath}/current-year?mode=${mode}`;
+}
+
 async function loadCharts() {
   try {
     const [fabYear, catYear, teamYear, severityYear, userYear] = await Promise.all([
-      fetchJson(fabYearMode === 'day' ? '/api/stats/fab/current-day' : `/api/stats/fab/current-year?mode=${fabYearMode}`),
-      fetchJson(catYearMode === 'day' ? '/api/stats/category/current-day' : `/api/stats/category/current-year?mode=${catYearMode}`),
-      fetchJson(teamYearMode === 'day' ? '/api/stats/team/current-day' : `/api/stats/team/current-year?mode=${teamYearMode}`),
-      fetchJson(severityYearMode === 'day' ? '/api/stats/severity/current-day' : `/api/stats/severity/current-year?mode=${severityYearMode}`),
-      fetchJson(userYearMode === 'day' ? '/api/stats/user/current-day' : `/api/stats/user/current-year?mode=${userYearMode}`)
+      fetchJson(buildYearStatsUrl('/api/stats/fab', fabYearMode, chartCustomRanges.fabYear)),
+      fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)),
+      fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)),
+      fetchJson(buildYearStatsUrl('/api/stats/severity', severityYearMode, chartCustomRanges.severityYear)),
+      fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear))
     ]);
     renderChart(fabYearChart, fabYear.stats);
     renderChart(catYearChart, catYear.stats);
@@ -3410,11 +3541,11 @@ async function loadCharts() {
     renderChart(severityYearChart, severityYear.stats);
     if (userYearChart) renderChart(userYearChart, userYear.stats);
     // Config per il filtro-ticket al click su un elemento del grafico.
-    if (fabYearChart) fabYearChart._chartFilter = { dimension: 'fab', scope: 'all', getWindow: function () { return fabYearMode; } };
-    if (catYearChart) catYearChart._chartFilter = { dimension: 'category', scope: 'all', getWindow: function () { return catYearMode; } };
-    if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; } };
-    if (severityYearChart) severityYearChart._chartFilter = { dimension: 'severity', scope: 'all', getWindow: function () { return severityYearMode; } };
-    if (userYearChart) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; } };
+    if (fabYearChart) fabYearChart._chartFilter = { dimension: 'fab', scope: 'all', getWindow: function () { return fabYearMode; }, start: (chartCustomRanges.fabYear || {}).start || '', end: (chartCustomRanges.fabYear || {}).end || '' };
+    if (catYearChart) catYearChart._chartFilter = { dimension: 'category', scope: 'all', getWindow: function () { return catYearMode; }, start: (chartCustomRanges.catYear || {}).start || '', end: (chartCustomRanges.catYear || {}).end || '' };
+    if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; }, start: (chartCustomRanges.teamYear || {}).start || '', end: (chartCustomRanges.teamYear || {}).end || '' };
+    if (severityYearChart) severityYearChart._chartFilter = { dimension: 'severity', scope: 'all', getWindow: function () { return severityYearMode; }, start: (chartCustomRanges.severityYear || {}).start || '', end: (chartCustomRanges.severityYear || {}).end || '' };
+    if (userYearChart) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; }, start: (chartCustomRanges.userYear || {}).start || '', end: (chartCustomRanges.userYear || {}).end || '' };
     // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
     // di drill-down mensile (annuale di default, o giorno per giorno).
     if (personalMineChart) await loadPersonalChartData(personalMineChart);
@@ -3631,14 +3762,20 @@ async function loadUserCharts() {
     hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
+    if (data.chart_custom_ranges && typeof data.chart_custom_ranges === 'object') {
+      Object.keys(chartCustomRanges).forEach((t) => {
+        const r = data.chart_custom_ranges[t];
+        if (r && r.start && r.end) chartCustomRanges[t] = { start: r.start, end: r.end };
+      });
+    }
     if (data.chart_modes && typeof data.chart_modes === 'object') {
       const modes = data.chart_modes;
-      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4'];
-      if (allowed.includes(modes.fabYear)) fabYearMode = modes.fabYear;
-      if (allowed.includes(modes.catYear)) catYearMode = modes.catYear;
-      if (allowed.includes(modes.teamYear)) teamYearMode = modes.teamYear;
-      if (allowed.includes(modes.severityYear)) severityYearMode = modes.severityYear;
-      if (allowed.includes(modes.userYear)) userYearMode = modes.userYear;
+      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4', 'custom'];
+      if (allowed.includes(modes.fabYear) && (modes.fabYear !== 'custom' || chartCustomRanges.fabYear)) fabYearMode = modes.fabYear;
+      if (allowed.includes(modes.catYear) && (modes.catYear !== 'custom' || chartCustomRanges.catYear)) catYearMode = modes.catYear;
+      if (allowed.includes(modes.teamYear) && (modes.teamYear !== 'custom' || chartCustomRanges.teamYear)) teamYearMode = modes.teamYear;
+      if (allowed.includes(modes.severityYear) && (modes.severityYear !== 'custom' || chartCustomRanges.severityYear)) severityYearMode = modes.severityYear;
+      if (allowed.includes(modes.userYear) && (modes.userYear !== 'custom' || chartCustomRanges.userYear)) userYearMode = modes.userYear;
       document.querySelectorAll('.range-btn').forEach((btn) => {
         const t = btn.dataset.target;
         const m = btn.dataset.mode;
@@ -3648,6 +3785,11 @@ async function loadUserCharts() {
             (t === 'userYear' && m === userYearMode);
           btn.classList.toggle('active', active);
         }
+      });
+      document.querySelectorAll('.range-calendar-btn').forEach((btn) => {
+        const t = btn.dataset.target;
+        const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode };
+        btn.classList.toggle('active', modeByKey[t] === 'custom');
       });
     }
   } catch (e) {
@@ -3669,7 +3811,7 @@ async function saveUserCharts() {
     const data = await fetchJson('/api/user-charts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode } })
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode }, chart_custom_ranges: chartCustomRanges })
     });
     if (Array.isArray(data.charts)) customCharts = data.charts;
     if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
@@ -4540,19 +4682,74 @@ if (previousShiftsToggle) {
   });
 }
 
+function setChartMode(target, mode) {
+  if (target === 'fabYear') fabYearMode = mode;
+  if (target === 'catYear') catYearMode = mode;
+  if (target === 'teamYear') teamYearMode = mode;
+  if (target === 'severityYear') severityYearMode = mode;
+  if (target === 'userYear') userYearMode = mode;
+}
+
+function clearChartRangeActiveState(target) {
+  document.querySelectorAll(`.range-btn[data-target="${target}"]`).forEach((x) => x.classList.remove('active'));
+  const calendarBtn = document.querySelector(`.range-calendar-btn[data-target="${target}"]`);
+  if (calendarBtn) calendarBtn.classList.remove('active');
+}
+
 document.querySelectorAll('.range-btn').forEach((btn) => {
   btn.addEventListener('click', async () => {
     const target = btn.dataset.target;
     const mode = btn.dataset.mode;
-    document.querySelectorAll(`.range-btn[data-target="${target}"]`).forEach((x) => x.classList.remove('active'));
+    clearChartRangeActiveState(target);
     btn.classList.add('active');
-    if (target === 'fabYear') fabYearMode = mode;
-    if (target === 'catYear') catYearMode = mode;
-    if (target === 'teamYear') teamYearMode = mode;
-    if (target === 'severityYear') severityYearMode = mode;
-    if (target === 'userYear') userYearMode = mode;
+    setChartMode(target, mode);
     await loadCharts();
     saveUserCharts();
+  });
+});
+
+document.querySelectorAll('.range-calendar-wrap').forEach((wrap) => {
+  const target = wrap.dataset.target;
+  const btn = wrap.querySelector('.range-calendar-btn');
+  const popover = wrap.querySelector('.range-calendar-popover');
+  const startInput = wrap.querySelector('.range-calendar-start');
+  const endInput = wrap.querySelector('.range-calendar-end');
+  const applyBtn = wrap.querySelector('.range-calendar-apply');
+  const today = new Date().toISOString().slice(0, 10);
+  startInput.max = today;
+  endInput.max = today;
+
+  function closePopover() { popover.hidden = true; }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = popover.hidden;
+    document.querySelectorAll('.range-calendar-popover').forEach((p) => { p.hidden = true; });
+    popover.hidden = !willOpen;
+    if (willOpen) {
+      const existing = chartCustomRanges[target];
+      if (existing) { startInput.value = existing.start; endInput.value = existing.end; }
+    }
+  });
+
+  applyBtn.addEventListener('click', async () => {
+    const s = startInput.value;
+    const en = endInput.value;
+    if (!s || !en || s > en) {
+      showToast('Seleziona un intervallo di date valido: la data di inizio deve precedere (o coincidere con) quella di fine.', 'warning', 'Intervallo non valido');
+      return;
+    }
+    chartCustomRanges[target] = { start: s, end: en };
+    clearChartRangeActiveState(target);
+    btn.classList.add('active');
+    setChartMode(target, 'custom');
+    closePopover();
+    await loadCharts();
+    saveUserCharts();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) closePopover();
   });
 });
 
@@ -4609,6 +4806,30 @@ ticketForm.addEventListener('submit', async (e) => {
         createdTickets.push(ticket);
       }
       createdTicketIds = createdTickets.map((ticket) => ticket?.id).filter(Boolean);
+      const _newPinCheck = document.getElementById('ticketPinCheck');
+      const _newPinUntil = document.getElementById('ticketPinUntil');
+      if (_newPinCheck && _newPinCheck.checked && _newPinUntil && _newPinUntil.value && createdTicketIds.length) {
+        const _newTid = createdTicketIds[0];
+        const _newPinVal = _newPinUntil.value;
+        fetchJson('/api/pinned-tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: _newTid,
+            incidentId: incident_id,
+            incidentName: customIncidentName || (incidentIdToNameMap[String(incident_id)] || ''),
+            description: sanitizePinText(description),
+            fab: fab,
+            createdAt: ticket_time,
+            severity: severity,
+            category: '',
+            pinUntil: _newPinVal
+          })
+        }).then(function() {
+          showToast('Ticket pinnato fino al ' + formatPinDate(_newPinVal), 'success', 'PIN salvato');
+          updateImportantTicketsBadge();
+        }).catch(function() {});
+      }
     }
     ticketForm.reset();
     editingTicketId = null;
@@ -4862,9 +5083,237 @@ function setupChartDragDrop() {
   });
 })();
 
-function applyTheme(theme){ document.body.classList.toggle('theme-dark', theme==='dark'); setThemeToggleIcon(themeToggleBtn, theme); }
-const savedTheme = localStorage.getItem('theme') || 'light'; applyTheme(savedTheme);
-if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{const next=document.body.classList.contains('theme-dark')?'light':'dark'; localStorage.setItem('theme',next); applyTheme(next); await refreshColorSensitiveViews();});}
+function applyTheme(paletteId, darkMode) {
+  THEMES.forEach(function(t) { document.body.classList.remove('theme-' + t.id); });
+  document.body.classList.remove('theme-dark');
+  if (paletteId && paletteId !== 'blu') document.body.classList.add('theme-' + paletteId);
+  if (darkMode) document.body.classList.add('theme-dark');
+  setThemeToggleIcon(themeToggleBtn, darkMode ? 'dark' : 'light');
+  document.querySelectorAll('.theme-swatch').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.theme === (paletteId || 'blu'));
+  });
+}
+(function() {
+  var savedPalette = localStorage.getItem('palette');
+  if (!savedPalette) {
+    var old = localStorage.getItem('theme') || '';
+    savedPalette = (old === 'sunset') ? 'cappuccino' : 'blu';
+    if (['dark','forest','purple','midnight'].indexOf(old) >= 0) localStorage.setItem('dark-mode', '1');
+    localStorage.setItem('palette', savedPalette);
+  }
+  var savedDark = localStorage.getItem('dark-mode') === '1';
+  applyTheme(savedPalette, savedDark);
+})();
+if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
+  var isDark = document.body.classList.contains('theme-dark');
+  var newDark = !isDark;
+  localStorage.setItem('dark-mode', newDark ? '1' : '');
+  applyTheme(localStorage.getItem('palette') || 'blu', newDark);
+  await refreshColorSensitiveViews();
+});}
+
+/* --- User settings modal --- */
+(function(){
+  var modal = document.getElementById('userSettingsModal');
+  var swatchesEl = document.getElementById('themeSwatches');
+  var saveBtn = document.getElementById('saveUserSettingsBtn');
+  var cancelBtn = document.getElementById('cancelUserSettingsBtn');
+  var closeBtn = document.getElementById('closeUserSettingsBtn');
+
+  function renderSwatches() {
+    if (!swatchesEl) return;
+    swatchesEl.innerHTML = '';
+    var cur = localStorage.getItem('palette') || 'blu';
+    THEMES.forEach(function(t) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'theme-swatch' + (t.id === cur ? ' active' : '');
+      btn.dataset.theme = t.id;
+      btn.innerHTML =
+        '<div class="theme-swatch-preview" style="background:linear-gradient(135deg,'+t.sidebar+' 35%,'+t.brand+' 100%)"></div>' +
+        '<span class="theme-swatch-name">'+t.label+'</span>';
+      btn.addEventListener('click', function() {
+        localStorage.setItem('palette', t.id);
+        var isDark = localStorage.getItem('dark-mode') === '1';
+        applyTheme(t.id, isDark);
+        document.querySelectorAll('.theme-swatch').forEach(function(el) {
+          el.classList.toggle('active', el.dataset.theme === t.id);
+        });
+        refreshColorSensitiveViews().catch(function(){});
+      });
+      swatchesEl.appendChild(btn);
+    });
+  }
+
+  function openUserSettingsModal() {
+    if (!modal) return;
+    renderSwatches();
+    modal.classList.remove('closing');
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.documentElement.classList.add('modal-open');
+    document.body.classList.add('modal-open');
+    requestAnimationFrame(function() { modal.classList.add('active'); });
+  }
+
+  function closeUserSettingsModal() {
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.classList.add('closing');
+    modal.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
+    setTimeout(function() { modal.classList.remove('show', 'closing'); modal.style.display = ''; }, 260);
+  }
+
+  if (saveBtn) saveBtn.addEventListener('click', closeUserSettingsModal);
+
+  if (cancelBtn) cancelBtn.addEventListener('click', closeUserSettingsModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeUserSettingsModal);
+  if (modal) modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeUserSettingsModal(); });
+
+  window._openUserSettingsModal = openUserSettingsModal;
+})();
+
+/* ── PIN checkbox listeners ─────────────────────────── */
+(function() {
+  var check = document.getElementById('ticketPinCheck');
+  var until = document.getElementById('ticketPinUntil');
+  if (!check || !until) return;
+  until.min = new Date().toISOString().slice(0, 10);
+  check.addEventListener('change', function() {
+    if (this.checked) {
+      until.style.display = '';
+      until.focus();
+    } else {
+      until.style.display = 'none';
+      until.value = '';
+      if (_pinTicketId) {
+        fetchJson('/api/pinned-tickets/' + _pinTicketId, { method: 'DELETE' })
+          .then(function() { updateImportantTicketsBadge(); })
+          .catch(function() {});
+      }
+    }
+  });
+  until.addEventListener('change', function() {
+    if (!_pinTicketId || !this.value) return;
+    var d = _pinTicketData || {};
+    var pinVal = this.value;
+    fetchJson('/api/pinned-tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: _pinTicketId,
+        incidentId: d.incidentId || 0,
+        incidentName: d.incidentName || '',
+        description: sanitizePinText(d.description || ''),
+        fab: d.fab || '',
+        createdAt: d.createdAt || '',
+        severity: d.severity || 1,
+        category: d.category || '',
+        pinUntil: pinVal
+      })
+    }).then(function() {
+      showToast('Ticket pinnato fino al ' + formatPinDate(pinVal), 'success', 'PIN salvato');
+      updateImportantTicketsBadge();
+    }).catch(function() {
+      showToast('Errore salvataggio PIN', 'error', 'Errore');
+    });
+  });
+})();
+
+/* ── Ticket Importanti modal ────────────────────────── */
+(function() {
+  var modal = document.getElementById('importantTicketsModal');
+  var listEl = document.getElementById('importantTicketsList');
+  var closeBtn = document.getElementById('closeImportantTicketsBtn');
+  var openBtn = document.getElementById('importantTicketsBtn');
+
+  function renderImportantTickets() {
+    if (!listEl) return;
+    listEl.innerHTML = '<p class="muted" style="padding:16px;text-align:center">Caricamento…</p>';
+    fetchJson('/api/pinned-tickets').then(function(pins) {
+      updateImportantTicketsBadge();
+      if (!pins || !pins.length) {
+        listEl.innerHTML = '<p class="muted" style="padding:16px;text-align:center">Nessun ticket pinnato.</p>';
+        return;
+      }
+      listEl.innerHTML = '';
+      var today = new Date().toISOString().slice(0, 10);
+      pins.forEach(function(pin) {
+        var daysLeft = Math.round((new Date(pin.pinUntil).getTime() - new Date(today).getTime()) / 86400000);
+        var card = document.createElement('div');
+        card.className = 'important-ticket-card';
+        var expiryHtml = 'fino al ' + formatPinDate(pin.pinUntil) +
+          (daysLeft <= 2 ? ' <span class="itc-expires-soon">(' + daysLeft + ' gg)</span>' : '');
+        card.innerHTML =
+          '<div class="itc-header">' +
+            '<span class="itc-name">' + escapeHtml(pin.incidentName || 'Ticket #' + pin.id) + '</span>' +
+            (pin.fab ? '<span class="itc-fab">' + escapeHtml(pin.fab) + '</span>' : '') +
+            '<span class="itc-expires">' + expiryHtml + '</span>' +
+            '<button class="itc-unpin" title="Rimuovi PIN" data-id="' + Number(pin.id) + '">✕</button>' +
+          '</div>' +
+          (pin.description ? '<div class="itc-desc">' + escapeHtml(sanitizePinText(pin.description)) + '</div>' : '') +
+          (pin.category || pin.createdAt
+            ? '<div class="itc-meta">' +
+                escapeHtml(pin.category || '') +
+                (pin.category && pin.createdAt ? ' · ' : '') +
+                (pin.createdAt ? new Date(pin.createdAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '') +
+              '</div>'
+            : '');
+        card.querySelector('.itc-unpin').addEventListener('click', function() {
+          var tid = Number(this.dataset.id);
+          fetchJson('/api/pinned-tickets/' + tid, { method: 'DELETE' })
+            .then(function() {
+              card.remove();
+              if (!listEl.querySelector('.important-ticket-card')) {
+                listEl.innerHTML = '<p class="muted" style="padding:16px;text-align:center">Nessun ticket pinnato.</p>';
+              }
+              updateImportantTicketsBadge();
+              if (_pinTicketId === tid) {
+                var chk = document.getElementById('ticketPinCheck');
+                var unt = document.getElementById('ticketPinUntil');
+                if (chk) chk.checked = false;
+                if (unt) { unt.style.display = 'none'; unt.value = ''; }
+              }
+            }).catch(function() {
+              showToast('Errore rimozione PIN', 'error', 'Errore');
+            });
+        });
+        listEl.appendChild(card);
+      });
+    }).catch(function() {
+      listEl.innerHTML = '<p class="muted" style="padding:16px;text-align:center">Errore caricamento.</p>';
+    });
+  }
+
+  function openImportantTicketsModal() {
+    if (!modal) return;
+    renderImportantTickets();
+    modal.classList.remove('closing');
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.documentElement.classList.add('modal-open');
+    document.body.classList.add('modal-open');
+    requestAnimationFrame(function() { modal.classList.add('active'); });
+  }
+
+  function closeImportantTicketsModal() {
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.classList.add('closing');
+    modal.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
+    setTimeout(function() { modal.classList.remove('show', 'closing'); }, 260);
+  }
+
+  if (openBtn) openBtn.addEventListener('click', openImportantTicketsModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeImportantTicketsModal);
+  if (modal) modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeImportantTicketsModal(); });
+})();
+
+updateImportantTicketsBadge();
 
 window.addEventListener('storage', (event) => {
   if (event.key === uiColorsSyncKey) {

@@ -126,6 +126,35 @@ function normalize_preset_field_key($value)
     return trim($value, '_');
 }
 
+function normalize_preset_format_mode($mode)
+{
+    $mode = strtolower(trim(strval($mode)));
+    if ($mode === 'lower' || $mode === 'upper' || $mode === 'capitalize') return $mode;
+    return 'none';
+}
+
+function apply_preset_format_mode($value, $mode)
+{
+    $text = trim(strval($value));
+    if ($text === '') return '';
+    $mode = normalize_preset_format_mode($mode);
+    if ($mode === 'lower') return function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+    if ($mode === 'upper') return function_exists('mb_strtoupper') ? mb_strtoupper($text, 'UTF-8') : strtoupper($text);
+    if ($mode === 'capitalize') {
+        $lower = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+        return preg_replace_callback('/(^|[^a-z\x{e0}-\x{f6}\x{f8}-\x{ff}0-9_])([a-z\x{e0}-\x{f6}\x{f8}-\x{ff}])/u', function($m) {
+            return $m[1] . (function_exists('mb_strtoupper') ? mb_strtoupper($m[2], 'UTF-8') : strtoupper($m[2]));
+        }, $lower);
+    }
+    return $text;
+}
+
+function get_preset_format_mode($db, $fieldKey)
+{
+    if (!isset($db['preset_option_formats']) || !is_array($db['preset_option_formats'])) return 'none';
+    return normalize_preset_format_mode(isset($db['preset_option_formats'][$fieldKey]) ? $db['preset_option_formats'][$fieldKey] : 'none');
+}
+
 function normalize_personal_target($value)
 {
     $target = intval($value);
@@ -723,6 +752,7 @@ function mysql_load_db($defaultUsers)
         'user_charts' => array(),
         'preset_options' => array(),
         'preset_option_requests' => array(),
+        'preset_option_formats' => array(),
         'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 0, 'preset_option_request' => 0)
     );
 
@@ -809,15 +839,18 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($ru);
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','group_targets','user_charts')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_charts','pinned_tickets','disabled_users')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
             if (!is_array($parsed)) continue;
             if ($row['setting_key'] === 'ui_colors') $db['ui_colors'] = normalize_ui_colors($parsed);
             if ($row['setting_key'] === 'preset_option_requests') $db['preset_option_requests'] = $parsed;
+            if ($row['setting_key'] === 'preset_option_formats') $db['preset_option_formats'] = $parsed;
             if ($row['setting_key'] === 'group_targets') $db['group_targets'] = $parsed;
             if ($row['setting_key'] === 'user_charts') $db['user_charts'] = $parsed;
+            if ($row['setting_key'] === 'pinned_tickets') $db['pinned_tickets'] = $parsed;
+            if ($row['setting_key'] === 'disabled_users') $db['disabled_users'] = $parsed;
         }
         mysqli_free_result($rs);
     }
@@ -871,10 +904,16 @@ function mysql_save_db($db)
         if (!mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('ui_colors', '$uiJson')")) { $ok = false; }
         $presetRequestsJson = mysql_escape($conn, json_encode(isset($db['preset_option_requests']) && is_array($db['preset_option_requests']) ? $db['preset_option_requests'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_requests', '$presetRequestsJson')")) { $ok = false; }
+        $presetFormatsJson = mysql_escape($conn, json_encode(isset($db['preset_option_formats']) && is_array($db['preset_option_formats']) ? $db['preset_option_formats'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_formats', '$presetFormatsJson')")) { $ok = false; }
         $groupTargetsJson = mysql_escape($conn, json_encode(normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), isset($db['users']) ? $db['users'] : array())));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('group_targets', '$groupTargetsJson')")) { $ok = false; }
         $userChartsJson = mysql_escape($conn, json_encode(isset($db['user_charts']) && is_array($db['user_charts']) ? $db['user_charts'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('user_charts', '$userChartsJson')")) { $ok = false; }
+        $pinnedJson = mysql_escape($conn, json_encode(isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('pinned_tickets', '$pinnedJson')")) { $ok = false; }
+        $disabledJson = mysql_escape($conn, json_encode(isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('disabled_users', '$disabledJson')")) { $ok = false; }
     }
 
     if ($ok && isset($db['preset_options']) && is_array($db['preset_options'])) {
@@ -1016,6 +1055,7 @@ function load_db($defaultUsers)
             'group_targets' => array(),
             'preset_options' => array(),
             'preset_option_requests' => array(),
+            'preset_option_formats' => array(),
             'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 2, 'preset_option_request' => 0)
         );
         file_put_contents(DB_PATH, json_encode($empty, JSON_PRETTY_PRINT));
@@ -1032,6 +1072,7 @@ function load_db($defaultUsers)
     if (!isset($db['tickets']) || !is_array($db['tickets'])) $db['tickets'] = array();
     if (!isset($db['preset_options']) || !is_array($db['preset_options'])) $db['preset_options'] = array();
     if (!isset($db['preset_option_requests']) || !is_array($db['preset_option_requests'])) $db['preset_option_requests'] = array();
+    if (!isset($db['preset_option_formats']) || !is_array($db['preset_option_formats'])) $db['preset_option_formats'] = array();
     if (!isset($db['group_targets']) || !is_array($db['group_targets'])) $db['group_targets'] = array();
     if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
@@ -1087,8 +1128,12 @@ function load_db($defaultUsers)
         if (!isset($db['users'][$ui]['password']) || $db['users'][$ui]['password'] === '') {
             $db['users'][$ui]['password'] = isset($userRow['username']) ? strval($userRow['username']) : '';
         }
-        if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
-        $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
+        if (isset($db['users'][$ui]['role']) && $db['users'][$ui]['role'] === 'supervisor') {
+            $db['users'][$ui]['team'] = '';
+        } else {
+            if (!isset($db['users'][$ui]['team'])) $db['users'][$ui]['team'] = isset($userRow['team']) ? normalize_team($userRow['team']) : 'A';
+            $db['users'][$ui]['team'] = normalize_team($db['users'][$ui]['team']);
+        }
         if (!isset($db['users'][$ui]['group_name']) || $db['users'][$ui]['group_name'] === '') $db['users'][$ui]['group_name'] = 'ProdOps';
         if (!isset($db['users'][$ui]['personal_target'])) $db['users'][$ui]['personal_target'] = 20;
         if (!isset($db['users'][$ui]['group_target'])) $db['users'][$ui]['group_target'] = 20;
@@ -1416,6 +1461,19 @@ function filter_custom_tickets($tickets, $filterMap, $categories, $incidents)
     }));
 }
 
+function custom_range_from_request()
+{
+    $start = isset($_GET['start']) ? trim(strval($_GET['start'])) : '';
+    $end = isset($_GET['end']) ? trim(strval($_GET['end'])) : '';
+    if ($start === '' || $end === '') return null;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) return null;
+    $startTs = strtotime($start . 'T00:00:00+00:00');
+    $endTs = strtotime($end . 'T00:00:00+00:00');
+    if ($startTs === false || $endTs === false || $endTs < $startTs) return null;
+    $endTs += 86400;
+    return array(gmdate('c', $startTs), gmdate('c', $endTs));
+}
+
 function year_range_from_mode($year, $mode)
 {
     $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
@@ -1509,6 +1567,12 @@ if ($path === '/api/login' && $method === 'POST') {
     }
     foreach ($users as $u) {
         if (strtolower($u['username']) !== strtolower($username)) continue;
+        $disabledList = isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array();
+        if (in_array(intval($u['id']), $disabledList)) {
+            if ($isJsonRequest) json_response(array('error' => 'Account disabilitato. Contatta l\'amministratore.'), 403);
+            header('Location: ' . app_url('/login.html?error=disabled'), true, 302);
+            exit;
+        }
         $role = isset($u['role']) ? strval($u['role']) : 'user';
         $authenticated = ldap_auth_user($username, $password);
         if ($authenticated) {
@@ -1550,9 +1614,14 @@ $user = require_api_auth('user');
 if ($path === '/api/me' && $method === 'GET') {
     $me = user_by_id($db['users'], intval($user['id']));
     if (!$me) $me = $user;
-    $me['team'] = normalize_team(isset($me['team']) ? $me['team'] : 'A');
+    if (!isset($me['role']) || $me['role'] !== 'supervisor') {
+        $me['team'] = normalize_team(isset($me['team']) ? $me['team'] : 'A');
+    } else {
+        $me['team'] = '';
+    }
     json_response(array('user' => $me), 200);
 }
+
 
 if ($path === '/api/ui-colors' && $method === 'GET') {
     json_response(array('ui_colors' => normalize_ui_colors(isset($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors())), 200);
@@ -1607,15 +1676,16 @@ if ($path === '/api/admin/db-export' && $method === 'GET') {
 
 if ($path === '/api/users' && $method === 'GET') {
     require_api_auth('admin');
+    $disabledList = isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array();
     $out = array();
     if (supabase_enabled()) {
         $resp = sb_select('app_users', 'id,username,role,team,group_name,personal_target,group_target', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20));
+            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList));
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20));
+    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList));
     json_response($out, 200);
 }
 
@@ -1624,12 +1694,12 @@ if ($path === '/api/users' && $method === 'POST') {
     $username = isset($payload['username']) ? trim(strval($payload['username'])) : '';
     $password = isset($payload['password']) ? trim(strval($payload['password'])) : '';
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : 'user';
-    $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
+    $team = $role === 'supervisor' ? '' : normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $group_name = normalize_group_name(isset($payload['group_name']) ? $payload['group_name'] : 'ProdOps');
     $personal_target = normalize_personal_target(isset($payload['personal_target']) ? $payload['personal_target'] : 20);
     $group_target = normalize_group_target(isset($payload['group_target']) ? $payload['group_target'] : 20);
     if ($username === '') json_response(array('error' => 'Username obbligatorio'), 400);
-    if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
+    if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
@@ -1644,6 +1714,22 @@ if ($path === '/api/users' && $method === 'POST') {
 if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     require_api_auth('admin');
     $id = intval($m[1]);
+    $disableAction = array_key_exists('disabled', $payload) ? (bool)$payload['disabled'] : null;
+    if ($disableAction !== null && count($payload) === 1) {
+        if ($id === intval($user['id']) && $disableAction) json_response(array('error' => 'Non puoi disabilitare il tuo account'), 400);
+        $found = false;
+        foreach ($db['users'] as $u) { if (intval($u['id']) === $id) { $found = true; break; } }
+        if (!$found) json_response(array('error' => 'Utente non trovato'), 404);
+        $disabledList = isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array();
+        if ($disableAction) {
+            if (!in_array($id, $disabledList)) $disabledList[] = $id;
+        } else {
+            $disabledList = array_values(array_filter($disabledList, function($uid) use ($id) { return intval($uid) !== $id; }));
+        }
+        $db['disabled_users'] = $disabledList;
+        save_db($db);
+        json_response(array('ok' => true, 'disabled' => in_array($id, $disabledList)), 200);
+    }
     $team = normalize_team(isset($payload['team']) ? $payload['team'] : 'A');
     $role = isset($payload['role']) ? strtolower(trim(strval($payload['role']))) : null;
     $password = array_key_exists('password', $payload) ? trim(strval($payload['password'])) : null;
@@ -1656,16 +1742,16 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
     }
     foreach ($db['users'] as &$u) {
         if (intval($u['id']) === $id) {
-            $u['team'] = $team;
             if ($group_name !== null) $u['group_name'] = $group_name;
             if ($personal_target !== null) $u['personal_target'] = $personal_target;
             if ($group_target !== null) $u['group_target'] = $group_target;
             if ($role !== null && $role !== '') {
-                if ($role !== 'admin' && $role !== 'user') json_response(array('error' => 'Ruolo non valido'), 400);
+                if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor') json_response(array('error' => 'Ruolo non valido'), 400);
                 if ($id === intval($user['id']) && $role !== $u['role']) json_response(array('error' => 'Non puoi modificare il ruolo del tuo utente'), 400);
                 if ($u['role'] === 'admin' && $role !== 'admin' && $adminCount <= 1) json_response(array('error' => 'Deve restare almeno un amministratore'), 400);
                 $u['role'] = $role;
             }
+            $u['team'] = $u['role'] === 'supervisor' ? '' : $team;
             $u['password'] = '';
             $db['group_targets'] = normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), $db['users']);
             save_db($db);
@@ -1699,12 +1785,67 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
     json_response(array('ok' => true), 200);
 }
 
+if ($path === '/api/pinned-tickets' && $method === 'GET') {
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $today = date('Y-m-d');
+    $active = array();
+    foreach ($pins as $p) {
+        if (isset($p['pinUntil']) && strval($p['pinUntil']) >= $today) $active[] = $p;
+    }
+    if (count($active) !== count($pins)) { $db['pinned_tickets'] = $active; save_db($db); }
+    json_response($active, 200);
+}
+
+if ($path === '/api/pinned-tickets' && $method === 'POST') {
+    $id = isset($payload['id']) ? intval($payload['id']) : 0;
+    $pinUntil = isset($payload['pinUntil']) ? preg_replace('/[^0-9-]/', '', strval($payload['pinUntil'])) : '';
+    if (!$id || !$pinUntil) json_response(array('error' => 'id e pinUntil obbligatori'), 400);
+    $newPin = array(
+        'id' => $id,
+        'incidentId' => isset($payload['incidentId']) ? intval($payload['incidentId']) : 0,
+        'incidentName' => isset($payload['incidentName']) ? strval($payload['incidentName']) : '',
+        'description' => isset($payload['description']) ? strval($payload['description']) : '',
+        'fab' => isset($payload['fab']) ? strval($payload['fab']) : '',
+        'createdAt' => isset($payload['createdAt']) ? strval($payload['createdAt']) : '',
+        'severity' => isset($payload['severity']) ? intval($payload['severity']) : 1,
+        'category' => isset($payload['category']) ? strval($payload['category']) : '',
+        'pinUntil' => $pinUntil
+    );
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $kept = array();
+    foreach ($pins as $p) { if (intval($p['id']) !== $id) $kept[] = $p; }
+    $kept[] = $newPin;
+    $db['pinned_tickets'] = $kept;
+    save_db($db);
+    json_response(array('ok' => true), 200);
+}
+
+if (preg_match('#^/api/pinned-tickets/(\d+)$#', $path, $m) && $method === 'DELETE') {
+    $id = intval($m[1]);
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $kept = array();
+    foreach ($pins as $p) { if (intval($p['id']) !== $id) $kept[] = $p; }
+    $db['pinned_tickets'] = $kept;
+    save_db($db);
+    json_response(array('ok' => true), 200);
+}
+
 if ($path === '/api/preset-options' && $method === 'GET') {
     $fieldKey = normalize_preset_field_key(isset($_GET['field_key']) ? $_GET['field_key'] : '');
     if ($fieldKey === '') json_response(array('error' => 'Campo non valido'), 400);
     $options = isset($db['preset_options'][$fieldKey]) && is_array($db['preset_options'][$fieldKey]) ? $db['preset_options'][$fieldKey] : array();
     natcasesort($options);
-    json_response(array('field_key' => $fieldKey, 'options' => array_values($options)), 200);
+    $pending = array();
+    $now = time();
+    foreach ($db['preset_option_requests'] as $request) {
+        if (!isset($request['status']) || $request['status'] !== 'pending') continue;
+        if (!isset($request['field_key']) || $request['field_key'] !== $fieldKey) continue;
+        $createdAt = isset($request['created_at']) ? strtotime($request['created_at']) : false;
+        if ($createdAt === false || ($now - $createdAt) > 48 * 3600) continue;
+        $pending[] = $request['value'];
+    }
+    natcasesort($pending);
+    json_response(array('field_key' => $fieldKey, 'options' => array_values($options), 'pending' => array_values($pending), 'format_mode' => get_preset_format_mode($db, $fieldKey)), 200);
 }
 
 if ($path === '/api/preset-option-requests' && $method === 'POST') {
@@ -1713,6 +1854,7 @@ if ($path === '/api/preset-option-requests' && $method === 'POST') {
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
     $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
     if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
+    $value = apply_preset_format_mode($value, get_preset_format_mode($db, $fieldKey));
     $approved = isset($db['preset_options'][$fieldKey]) && is_array($db['preset_options'][$fieldKey]) ? $db['preset_options'][$fieldKey] : array();
     foreach ($approved as $option) {
         if (strtolower($option) === strtolower($value)) json_response(array('ok' => true, 'already_approved' => true), 200);
@@ -1797,7 +1939,8 @@ if ($path === '/api/admin/preset-options' && $method === 'GET') {
         $out[] = array(
             'field_key' => $fieldKey,
             'field_label' => $label,
-            'options' => array_values($options)
+            'options' => array_values($options),
+            'format_mode' => get_preset_format_mode($db, $fieldKey)
         );
     }
     usort($out, function($a, $b) {
@@ -1812,6 +1955,7 @@ if ($path === '/api/admin/preset-options' && $method === 'POST') {
     $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : $fieldLabel);
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
     if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
+    $value = apply_preset_format_mode($value, get_preset_format_mode($db, $fieldKey));
     if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) $db['preset_options'][$fieldKey] = array();
     foreach ($db['preset_options'][$fieldKey] as $option) {
         if (strtolower($option) === strtolower($value)) json_response(array('error' => 'Elemento gia presente'), 409);
@@ -1829,6 +1973,7 @@ if ($path === '/api/admin/preset-options' && $method === 'PUT') {
     $originalValue = isset($payload['original_value']) ? trim(strval($payload['original_value'])) : '';
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
     if ($fieldKey === '' || $originalValue === '' || $value === '') json_response(array('error' => 'Campo, valore originale e nuovo valore obbligatori'), 400);
+    $value = apply_preset_format_mode($value, get_preset_format_mode($db, $fieldKey));
     if (!isset($db['preset_options'][$fieldKey]) || !is_array($db['preset_options'][$fieldKey])) json_response(array('error' => 'Menu non trovato'), 404);
     $foundIndex = -1;
     foreach ($db['preset_options'][$fieldKey] as $idx => $option) {
@@ -1864,6 +2009,18 @@ if ($path === '/api/admin/preset-options' && $method === 'DELETE') {
     $db['preset_options'][$fieldKey] = array_values($kept);
     save_db($db);
     json_response(array('ok' => true), 200);
+}
+
+if ($path === '/api/admin/preset-option-format' && $method === 'PUT') {
+    require_api_auth('admin');
+    $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
+    if ($fieldKey === '') json_response(array('error' => 'Campo non valido'), 400);
+    $mode = normalize_preset_format_mode(isset($payload['mode']) ? $payload['mode'] : 'none');
+    if (!isset($db['preset_option_formats']) || !is_array($db['preset_option_formats'])) $db['preset_option_formats'] = array();
+    if ($mode === 'none') unset($db['preset_option_formats'][$fieldKey]);
+    else $db['preset_option_formats'][$fieldKey] = $mode;
+    save_db($db);
+    json_response(array('ok' => true, 'field_key' => $fieldKey, 'mode' => $mode), 200);
 }
 
 if ($path === '/api/categories' && $method === 'GET') {
@@ -2175,6 +2332,7 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
 }
 
 if ($path === '/api/tickets' && $method === 'POST') {
+    if (isset($user['role']) && $user['role'] === 'supervisor') json_response(array('error' => 'Il supervisor non può inserire ticket'), 403);
     $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
     $customIncidentName = isset($payload['incident_name']) ? trim(strval($payload['incident_name'])) : '';
     $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
@@ -2499,7 +2657,9 @@ if ($path === '/api/stats/category/current-day' && $method === 'GET') {
 if ($path === '/api/stats/fab/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    list($start, $end) = year_range_from_mode($year, $mode);
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_fab($tickets, $fabs)), 200);
@@ -2508,7 +2668,9 @@ if ($path === '/api/stats/fab/current-year' && $method === 'GET') {
 if ($path === '/api/stats/category/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    list($start, $end) = year_range_from_mode($year, $mode);
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_category($tickets, $db['categories'], $db['incidents'])), 200);
@@ -2524,7 +2686,9 @@ if ($path === '/api/stats/team/current-day' && $method === 'GET') {
 if ($path === '/api/stats/team/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    list($start, $end) = year_range_from_mode($year, $mode);
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_team($tickets)), 200);
@@ -2540,7 +2704,9 @@ if ($path === '/api/stats/severity/current-day' && $method === 'GET') {
 if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    list($start, $end) = year_range_from_mode($year, $mode);
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_severity($tickets)), 200);
@@ -2549,10 +2715,16 @@ if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
 function summarize_by_user($tickets, $users)
 {
     $nameById = array();
-    foreach ($users as $u) $nameById[intval($u['id'])] = trim(strval(isset($u['display_name']) && strval($u['display_name']) !== '' ? $u['display_name'] : $u['username']));
+    $supervisorIds = array();
+    foreach ($users as $u) {
+        $uid = intval($u['id']);
+        if (isset($u['role']) && $u['role'] === 'supervisor') { $supervisorIds[$uid] = true; continue; }
+        $nameById[$uid] = trim(strval(isset($u['display_name']) && strval($u['display_name']) !== '' ? $u['display_name'] : $u['username']));
+    }
     $counts = array();
     foreach ($tickets as $t) {
         $uid = isset($t['owner_user_id']) ? intval($t['owner_user_id']) : 0;
+        if (isset($supervisorIds[$uid])) continue;
         $name = isset($nameById[$uid]) ? $nameById[$uid] : ('Utente ' . $uid);
         if (!isset($counts[$name])) $counts[$name] = 0;
         $counts[$name]++;
@@ -2573,7 +2745,9 @@ if ($path === '/api/stats/user/current-day' && $method === 'GET') {
 if ($path === '/api/stats/user/current-year' && $method === 'GET') {
     $year = intval(gmdate('Y'));
     $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
-    list($start, $end) = year_range_from_mode($year, $mode);
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_user($tickets, $db['users'])), 200);
@@ -2832,7 +3006,8 @@ if ($path === '/api/user-charts' && $method === 'GET') {
     $panelOrder = isset($userData['panel_order']) && is_array($userData['panel_order']) ? array_values($userData['panel_order']) : array();
     $panelTitles = isset($userData['panel_titles']) && is_array($userData['panel_titles']) ? $userData['panel_titles'] : array();
     $chartModes = isset($userData['chart_modes']) && is_array($userData['chart_modes']) ? $userData['chart_modes'] : array();
-    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles, 'chart_modes' => $chartModes), 200);
+    $chartCustomRanges = isset($userData['chart_custom_ranges']) && is_array($userData['chart_custom_ranges']) ? $userData['chart_custom_ranges'] : array();
+    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles, 'chart_modes' => $chartModes, 'chart_custom_ranges' => $chartCustomRanges), 200);
 }
 
 if ($path === '/api/user-charts' && $method === 'PUT') {
@@ -2920,7 +3095,7 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
         if ($ptitle !== '') $cleanTitles[$pid] = substr($ptitle, 0, 80);
     }
     $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'severityYear', 'userYear');
-    $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4');
+    $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4', 'custom');
     $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : array();
     $cleanModes = array();
     foreach ($allowedChartModeTargets as $t) {
@@ -2928,9 +3103,19 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
             $cleanModes[$t] = strval($incomingModes[$t]);
         }
     }
-    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes);
+    $incomingRanges = isset($payload['chart_custom_ranges']) && is_array($payload['chart_custom_ranges']) ? $payload['chart_custom_ranges'] : array();
+    $cleanRanges = array();
+    foreach ($allowedChartModeTargets as $t) {
+        if (!isset($incomingRanges[$t]) || !is_array($incomingRanges[$t])) continue;
+        $rStart = isset($incomingRanges[$t]['start']) ? strval($incomingRanges[$t]['start']) : '';
+        $rEnd = isset($incomingRanges[$t]['end']) ? strval($incomingRanges[$t]['end']) : '';
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rStart) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rEnd) && strtotime($rStart) && strtotime($rEnd) && strtotime($rStart) <= strtotime($rEnd)) {
+            $cleanRanges[$t] = array('start' => $rStart, 'end' => $rEnd);
+        }
+    }
+    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges);
     save_db($db);
-    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes), 200);
+    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges), 200);
 }
 
 if ($path === '/api/ping' && $method === 'GET') {

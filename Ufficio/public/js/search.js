@@ -251,6 +251,9 @@ async function loadUiColors() {
 }
 
 function applyTheme(theme) {
+  const palette = localStorage.getItem('palette') || 'blu';
+  ['cappuccino','bordeaux','verde','blu','giallo'].forEach(function(p) { document.body.classList.remove('theme-' + p); });
+  if (palette !== 'blu') document.body.classList.add('theme-' + palette);
   document.body.classList.toggle('theme-dark', theme === 'dark');
   if (themeToggleBtn) {
     themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
@@ -689,12 +692,12 @@ function applyTicketSearchListeners() {
 }
 
 (async function init() {
-  const savedTheme = localStorage.getItem('theme') || 'light';
+  const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
   applyTheme(savedTheme);
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', async () => {
       const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
-      localStorage.setItem('theme', next);
+      localStorage.setItem('dark-mode', next === 'dark' ? '1' : '');
       applyTheme(next);
       if (ticketSearchResults && ticketSearchResults.querySelector('.ticket-row')) {
         await runTicketSearch();

@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incident Dashboard</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.7.0" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.8.0" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><div id="userPill" class="user-pill" style="display:none"><span class="user-pill-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span id="userPillName"></span></div><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="userPill" class="user-pill" type="button" style="display:none" title="Impostazioni utente" aria-label="Impostazioni utente"><span class="user-pill-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span id="userPillName"></span></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <nav class="menu" id="menu"></nav>
       <div class="sidebar-actions">
         <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
@@ -25,6 +25,7 @@
       <div class="previous-shifts-row">
         <section class="panel previous-shifts-panel">
         <div class="previous-shifts-header">
+          <button id="importantTicketsBtn" class="important-tickets-btn" type="button">📌 Ticket Importanti</button>
           <button id="previousShiftsToggle" class="section-toggle" type="button" aria-expanded="false">
             <span class="section-toggle-main">
               <span>Ticket turni precedenti</span>
@@ -127,6 +128,14 @@
             <button class="range-btn" data-target="fabYear" data-mode="q3">Q3</button>
             <button class="range-btn" data-target="fabYear" data-mode="q4">Q4</button>
             <button class="range-btn active" data-target="fabYear" data-mode="day">24h</button>
+            <div class="range-calendar-wrap" data-target="fabYear">
+              <button type="button" class="range-calendar-btn" data-target="fabYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <div class="range-calendar-popover" hidden>
+                <label>Da <input type="date" class="range-calendar-start" /></label>
+                <label>A <input type="date" class="range-calendar-end" /></label>
+                <button type="button" class="primary range-calendar-apply">Applica</button>
+              </div>
+            </div>
           </div>
           <div id="fabYearChart" class="chart vertical-chart"></div>
         </section>
@@ -143,6 +152,14 @@
             <button class="range-btn" data-target="catYear" data-mode="q3">Q3</button>
             <button class="range-btn" data-target="catYear" data-mode="q4">Q4</button>
             <button class="range-btn active" data-target="catYear" data-mode="day">24h</button>
+            <div class="range-calendar-wrap" data-target="catYear">
+              <button type="button" class="range-calendar-btn" data-target="catYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <div class="range-calendar-popover" hidden>
+                <label>Da <input type="date" class="range-calendar-start" /></label>
+                <label>A <input type="date" class="range-calendar-end" /></label>
+                <button type="button" class="primary range-calendar-apply">Applica</button>
+              </div>
+            </div>
           </div>
           <div id="catYearChart" class="chart vertical-chart"></div>
         </section>
@@ -159,6 +176,14 @@
             <button class="range-btn" data-target="teamYear" data-mode="q3">Q3</button>
             <button class="range-btn" data-target="teamYear" data-mode="q4">Q4</button>
             <button class="range-btn active" data-target="teamYear" data-mode="day">24h</button>
+            <div class="range-calendar-wrap" data-target="teamYear">
+              <button type="button" class="range-calendar-btn" data-target="teamYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <div class="range-calendar-popover" hidden>
+                <label>Da <input type="date" class="range-calendar-start" /></label>
+                <label>A <input type="date" class="range-calendar-end" /></label>
+                <button type="button" class="primary range-calendar-apply">Applica</button>
+              </div>
+            </div>
           </div>
           <div id="teamYearChart" class="chart vertical-chart"></div>
         </section>
@@ -175,6 +200,14 @@
             <button class="range-btn" data-target="severityYear" data-mode="q3">Q3</button>
             <button class="range-btn" data-target="severityYear" data-mode="q4">Q4</button>
             <button class="range-btn active" data-target="severityYear" data-mode="day">24h</button>
+            <div class="range-calendar-wrap" data-target="severityYear">
+              <button type="button" class="range-calendar-btn" data-target="severityYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <div class="range-calendar-popover" hidden>
+                <label>Da <input type="date" class="range-calendar-start" /></label>
+                <label>A <input type="date" class="range-calendar-end" /></label>
+                <button type="button" class="primary range-calendar-apply">Applica</button>
+              </div>
+            </div>
           </div>
           <div id="severityYearChart" class="chart vertical-chart"></div>
         </section>
@@ -191,6 +224,14 @@
             <button class="range-btn" data-target="userYear" data-mode="q3">Q3</button>
             <button class="range-btn" data-target="userYear" data-mode="q4">Q4</button>
             <button class="range-btn active" data-target="userYear" data-mode="day">24h</button>
+            <div class="range-calendar-wrap" data-target="userYear">
+              <button type="button" class="range-calendar-btn" data-target="userYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <div class="range-calendar-popover" hidden>
+                <label>Da <input type="date" class="range-calendar-start" /></label>
+                <label>A <input type="date" class="range-calendar-end" /></label>
+                <button type="button" class="primary range-calendar-apply">Applica</button>
+              </div>
+            </div>
           </div>
           <div id="userYearChart" class="chart vertical-chart"></div>
         </section>
@@ -209,6 +250,12 @@
     <div class="modal-panel">
       <div class="modal-header">
         <h3 id="ticketModalTitle">Nuovo Ticket</h3>
+        <div id="ticketPinWrap" class="ticket-pin-wrap" style="display:none">
+          <label class="ticket-pin-label">
+            <input type="checkbox" id="ticketPinCheck"> 📌 PIN
+          </label>
+          <input type="date" id="ticketPinUntil" class="ticket-pin-date" style="display:none">
+        </div>
         <button class="close-modal" type="button">x</button>
       </div>
 
@@ -262,9 +309,38 @@
   </div>
 
   <div id="tsPopup" class="ticket-stack-popup" hidden></div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.7.0"></script>
-  <script src="./public/js/toast.js?v=1.7.0"></script>
-  <script src="./public/js/script.js?v=1.7.0"></script>
+
+  <div class="modal" id="importantTicketsModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel important-tickets-panel">
+      <div class="modal-header">
+        <h3>📌 Ticket Importanti</h3>
+        <button type="button" id="closeImportantTicketsBtn" class="close-modal-btn">x</button>
+      </div>
+      <div id="importantTicketsList" class="important-tickets-list"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="userSettingsModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel user-settings-panel">
+      <div class="modal-header">
+        <h3>Impostazioni utente</h3>
+        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">x</button>
+      </div>
+      <div class="user-settings-body">
+        <div class="user-settings-section">
+          <p class="user-settings-label">Tema</p>
+          <div id="themeSwatches" class="theme-swatches"></div>
+        </div>
+      </div>
+      <div class="user-settings-footer">
+        <button type="button" id="saveUserSettingsBtn" class="primary">Salva</button>
+        <button type="button" id="cancelUserSettingsBtn" class="secondary">Annulla</button>
+      </div>
+    </div>
+  </div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.8.0"></script>
+  <script src="./public/js/toast.js?v=1.8.0"></script>
+  <script src="./public/js/script.js?v=1.8.0"></script>
   <div class="app-version-badge">v1.7.0</div>
 </body>
 </html>

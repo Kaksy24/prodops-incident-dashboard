@@ -31,7 +31,6 @@ const groupTargetsSummary = document.getElementById('groupTargetsSummary');
 const newUsernameInput = document.getElementById('newUsername');
 const newUserRoleSelect = document.getElementById('newUserRole');
 const newUserTeamSelect = document.getElementById('newUserTeam');
-const newUserGroupInput = document.getElementById('newUserGroup');
 const adminColorEditorTitle = document.getElementById('adminColorEditorTitle');
 const adminColorEditorMeta = document.getElementById('adminColorEditorMeta');
 const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch');
@@ -133,6 +132,9 @@ function restoreAdminUiState(state) {
 }
 
 function applyTheme(theme) {
+  const palette = localStorage.getItem('palette') || 'blu';
+  ['cappuccino','bordeaux','verde','blu','giallo'].forEach(function(p) { document.body.classList.remove('theme-' + p); });
+  if (palette !== 'blu') document.body.classList.add('theme-' + palette);
   document.body.classList.toggle('theme-dark', theme === 'dark');
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
@@ -768,11 +770,11 @@ async function saveUiColors() {
   showToast('Grafici, colori e titoli personalizzati salvati con successo.', 'success', 'Impostazioni salvate');
 }
 
-const savedTheme = localStorage.getItem('theme') || 'light';
+const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
 applyTheme(savedTheme);
 themeToggleBtn.addEventListener('click', () => {
   const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
-  localStorage.setItem('theme', next);
+  localStorage.setItem('dark-mode', next === 'dark' ? '1' : '');
   applyTheme(next);
 });
 
@@ -835,6 +837,13 @@ function closeUserCreateModal() {
   }, 260);
 }
 
+function syncNewUserTeamField() {
+  if (!newUserTeamSelect) return;
+  const isSupervisor = newUserRoleSelect?.value === 'supervisor';
+  newUserTeamSelect.disabled = isSupervisor;
+  newUserTeamSelect.style.opacity = isSupervisor ? '0.4' : '';
+}
+
 function openUserCreateModal() {
   if (!userCreateModal) return;
   if (userCreateModalCloseTimer) {
@@ -844,6 +853,15 @@ function openUserCreateModal() {
   userCreateForm?.reset();
   if (newUserRoleSelect) newUserRoleSelect.value = 'user';
   if (newUserTeamSelect) newUserTeamSelect.value = 'A';
+  syncNewUserTeamField();
+  const newUserGroupSel = document.getElementById('newUserGroup');
+  const newUserGroupCustom = document.getElementById('newUserGroupCustom');
+  if (newUserGroupSel) {
+    const groups = Array.from(new Set(adminUsersCache.map((u) => normalizeGroupName(u.group_name || 'ProdOps')))).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+    newUserGroupSel.innerHTML = groups.map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('') + '<option value="_new">+ Nuovo gruppo…</option>';
+    newUserGroupSel.value = 'ProdOps';
+    if (newUserGroupCustom) { newUserGroupCustom.style.display = 'none'; newUserGroupCustom.value = ''; }
+  }
   userCreateModal.classList.remove('closing');
   userCreateModal.classList.add('show');
   userCreateModal.setAttribute('aria-hidden', 'false');
@@ -944,24 +962,34 @@ function renderUsers() {
     return;
   }
 
+  const uniqueGroups = Array.from(new Set(adminUsersCache.map((u) => normalizeGroupName(u.group_name || 'ProdOps')))).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+
   const rows = users.map((user) => {
     const isSelf = Number(user.id) === Number(currentAdminUser?.id);
     const role = String(user.role || 'user');
-    const team = String(user.team || 'A');
+    const isSupervisorRow = role === 'supervisor';
+    const team = isSupervisorRow ? '' : String(user.team || 'A');
     const lastAdmin = role === 'admin' && adminCount <= 1;
     const roleLocked = isSelf || lastAdmin;
     const deleteLocked = isSelf || lastAdmin;
     const lockReason = isSelf ? 'Il tuo ruolo non puo essere modificato qui' : 'Deve restare almeno un amministratore';
     const username = escapeHtml(user.username);
     const initial = escapeHtml(String(user.username || '?').charAt(0).toUpperCase());
+    const currentGroup = normalizeGroupName(user.group_name || 'ProdOps');
+    const isDisabled = user.disabled === true;
+    const groupInList = uniqueGroups.includes(currentGroup);
+    const groupOptions = uniqueGroups.map((g) => `<option value="${escapeHtml(g)}" ${currentGroup === g ? 'selected' : ''}>${escapeHtml(g)}</option>`).join('') +
+      (!groupInList ? `<option value="${escapeHtml(currentGroup)}" selected>${escapeHtml(currentGroup)}</option>` : '') +
+      '<option value="_new">+ Nuovo gruppo…</option>';
+    const statusLabel = isDisabled ? '<span class="user-disabled-badge">Disabilitato</span>' : '<span class="user-enabled-badge">Attivo</span>';
     return `
-      <tr class="user-table-row ${isSelf ? 'current-user-row' : ''}" data-user-id="${Number(user.id)}">
+      <tr class="user-table-row ${isSelf ? 'current-user-row' : ''} ${isDisabled ? 'user-disabled-row' : ''}" data-user-id="${Number(user.id)}">
         <td>
           <div class="user-table-identity">
             <span class="user-avatar" aria-hidden="true">${initial}</span>
             <div>
               <div class="user-table-name">${username} ${isSelf ? '<span class="current-user-pill">Tu</span>' : ''}</div>
-              <div class="user-card-meta"><span class="user-status"><i></i> Attivo</span><span class="user-row-id">ID #${Number(user.id)}</span></div>
+              <div class="user-card-meta">${statusLabel}<span class="user-row-id">ID #${Number(user.id)}</span></div>
             </div>
           </div>
         </td>
@@ -971,12 +999,20 @@ function renderUsers() {
           </select>
         </td>
         <td>
-          <select class="user-team-select" aria-label="Team ${username}" data-user-id="${Number(user.id)}">
+          <select class="user-team-select" aria-label="Team ${username}" data-user-id="${Number(user.id)}" ${isSupervisorRow ? 'disabled style="opacity:0.4"' : ''}>
             ${['A', 'B', 'C', 'D', 'E'].map((item) => `<option value="${item}" ${team === item ? 'selected' : ''}>Team ${item}</option>`).join('')}
           </select>
         </td>
-        <td><input class="user-group-input" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}" type="text" value="${escapeHtml(String(user.group_name || 'ProdOps'))}" placeholder="Gruppo" style="width:110px" /></td>
-        <td><span class="user-table-note">${roleLocked ? escapeHtml(lockReason) : 'Modificabile'}</span></td>
+        <td class="user-group-cell">
+          <select class="user-group-select" aria-label="Gruppo ${username}" data-user-id="${Number(user.id)}">${groupOptions}</select>
+          <input class="user-group-custom" aria-label="Nuovo gruppo ${username}" data-user-id="${Number(user.id)}" type="text" placeholder="Nome gruppo" style="display:none" />
+        </td>
+        <td>
+          <label class="user-disable-toggle" title="${isSelf ? 'Non puoi disabilitare il tuo account' : (isDisabled ? 'Clicca per abilitare' : 'Clicca per disabilitare')}">
+            <input type="checkbox" class="user-disable-check" data-user-id="${Number(user.id)}" ${isDisabled ? 'checked' : ''} ${isSelf ? 'disabled' : ''} />
+            <span class="user-disable-label">${isDisabled ? 'Disab.' : 'Attivo'}</span>
+          </label>
+        </td>
         <td>
           <div class="user-actions-cell">
             <button type="button" class="save-user-btn primary" data-user-id="${Number(user.id)}">Salva</button>
@@ -991,7 +1027,7 @@ function renderUsers() {
     <div class="users-table-wrap">
       <table class="users-table">
         <thead>
-          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Protezioni</th><th>Azioni</th></tr>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Stato</th><th>Azioni</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1004,9 +1040,16 @@ function renderUsers() {
       const row = btn.closest('.user-table-row');
       const roleSelect = row?.querySelector('.user-role-select');
       const teamSelect = row?.querySelector('.user-team-select');
-      const groupInput = row?.querySelector('.user-group-input');
+      const groupSelect = row?.querySelector('.user-group-select');
+      const groupCustom = row?.querySelector('.user-group-custom');
       const current = adminUsersCache.find((user) => Number(user.id) === userId);
-      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: normalizeGroupName(groupInput?.value || current?.group_name || 'ProdOps') };
+      let groupName;
+      if (groupSelect && groupSelect.value === '_new') {
+        groupName = normalizeGroupName((groupCustom && groupCustom.value.trim()) || current?.group_name || 'ProdOps');
+      } else {
+        groupName = normalizeGroupName((groupSelect && groupSelect.value) || current?.group_name || 'ProdOps');
+      }
+      const payload = { role: roleSelect?.value || current?.role || 'user', team: teamSelect?.value || 'A', group_name: groupName };
       try {
         btn.disabled = true;
         btn.textContent = 'Salvataggio...';
@@ -1021,6 +1064,62 @@ function renderUsers() {
         btn.disabled = false;
         btn.textContent = 'Salva';
       }
+    });
+  });
+
+  usersList.querySelectorAll('.user-role-select').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const teamSel = sel.closest('.user-table-row')?.querySelector('.user-team-select');
+      if (!teamSel) return;
+      const isSup = sel.value === 'supervisor';
+      teamSel.disabled = isSup;
+      teamSel.style.opacity = isSup ? '0.4' : '';
+    });
+  });
+
+  usersList.querySelectorAll('.user-group-select').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const row = sel.closest('.user-table-row');
+      const customInput = row?.querySelector('.user-group-custom');
+      if (!customInput) return;
+      if (sel.value === '_new') {
+        customInput.style.display = '';
+        customInput.focus();
+      } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+      }
+    });
+  });
+
+  usersList.querySelectorAll('.user-disable-check').forEach((chk) => {
+    chk.addEventListener('change', async () => {
+      const userId = Number(chk.dataset.userId);
+      const label = chk.closest('.user-disable-toggle')?.querySelector('.user-disable-label');
+      const row = chk.closest('.user-table-row');
+      const isDisabling = chk.checked;
+      chk.disabled = true;
+      try {
+        await fetchJson(`/api/users/${userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disabled: isDisabling })
+        });
+        if (label) label.textContent = isDisabling ? 'Disab.' : 'Attivo';
+        if (row) row.classList.toggle('user-disabled-row', isDisabling);
+        const statusEl = row?.querySelector('.user-enabled-badge, .user-disabled-badge');
+        if (statusEl) {
+          statusEl.className = isDisabling ? 'user-disabled-badge' : 'user-enabled-badge';
+          statusEl.textContent = isDisabling ? 'Disabilitato' : 'Attivo';
+        }
+        const cached = adminUsersCache.find((u) => Number(u.id) === userId);
+        if (cached) cached.disabled = isDisabling;
+        showToast(isDisabling ? 'Utente disabilitato' : 'Utente abilitato', 'success', 'Stato aggiornato');
+      } catch (error) {
+        showToast('Impossibile aggiornare lo stato: ' + (error.message || error), 'error', 'Errore');
+        chk.checked = !isDisabling;
+      }
+      chk.disabled = false;
     });
   });
 
@@ -1187,34 +1286,25 @@ async function loadPresetOptionRequests() {
 }
 
 var presetOptionsState = {};
-var presetOptionFormatModes = {};
-var presetOptionFormatStorageKey = 'prodops_preset_option_format_modes_v1';
-
-function loadPresetOptionFormatModes() {
-  try {
-    var raw = localStorage.getItem(presetOptionFormatStorageKey);
-    var parsed = raw ? JSON.parse(raw) : {};
-    presetOptionFormatModes = parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (error) {
-    presetOptionFormatModes = {};
-  }
-}
-
-function savePresetOptionFormatModes() {
-  try {
-    localStorage.setItem(presetOptionFormatStorageKey, JSON.stringify(presetOptionFormatModes));
-  } catch (error) {}
-}
 
 function getPresetOptionFormatMode(fieldKey) {
-  var mode = presetOptionFormatModes[fieldKey];
+  var mode = null;
+  (presetOptionsCache || []).forEach(function(field) {
+    if (field.field_key === fieldKey) mode = field.format_mode;
+  });
   return mode === 'lower' || mode === 'upper' || mode === 'capitalize' ? mode : 'none';
 }
 
-function setPresetOptionFormatMode(fieldKey, mode) {
-  if (mode === 'lower' || mode === 'upper' || mode === 'capitalize') presetOptionFormatModes[fieldKey] = mode;
-  else delete presetOptionFormatModes[fieldKey];
-  savePresetOptionFormatModes();
+async function setPresetOptionFormatMode(fieldKey, mode) {
+  var normalized = (mode === 'lower' || mode === 'upper' || mode === 'capitalize') ? mode : 'none';
+  await fetchJson('/api/admin/preset-option-format', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field_key: fieldKey, mode: normalized })
+  });
+  (presetOptionsCache || []).forEach(function(field) {
+    if (field.field_key === fieldKey) field.format_mode = normalized;
+  });
 }
 
 function getPresetState(fieldKey) {
@@ -1337,10 +1427,8 @@ function syncPresetFormatInputs(fieldKey, mode) {
   if (!presetOptionsManager) return;
   var card = presetOptionsManager.querySelector('.preset-option-card[data-field-key="' + fieldKey + '"]');
   if (!card) return;
-  card.querySelectorAll('.preset-option-format-input').forEach(function(input) {
-    input.checked = input.value === mode;
-    if (input.parentNode) input.parentNode.classList.toggle('active', input.checked);
-  });
+  var select = card.querySelector('.preset-option-format-select');
+  if (select) select.value = mode;
 }
 
 function formatPresetOptionForField(fieldKey, value) {
@@ -1366,11 +1454,19 @@ async function applyPresetOptionFormatSetting(fieldKey, mode, triggerInput) {
   }
 
   if (!plan.updates.length) {
-    setPresetOptionFormatMode(fieldKey, mode);
-    showToast(mode === 'none'
-      ? 'Formato automatico disattivato per il menu "' + fieldKey + '".'
-      : 'Formato automatico salvato per il menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Impostazione salvata');
-    syncPresetFormatInputs(fieldKey, mode);
+    if (triggerInput) triggerInput.disabled = true;
+    try {
+      await setPresetOptionFormatMode(fieldKey, mode);
+      showToast(mode === 'none'
+        ? 'Formato automatico disattivato per il menu "' + fieldKey + '".'
+        : 'Formato automatico salvato per il menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Impostazione salvata');
+      syncPresetFormatInputs(fieldKey, mode);
+    } catch (error) {
+      showToast('Impossibile salvare il formato: ' + (error.message || error), 'error', 'Errore formattazione');
+      syncPresetFormatInputs(fieldKey, previousMode);
+    } finally {
+      if (triggerInput) triggerInput.disabled = false;
+    }
     return;
   }
 
@@ -1392,7 +1488,7 @@ async function applyPresetOptionFormatSetting(fieldKey, mode, triggerInput) {
         })
       });
     }
-    setPresetOptionFormatMode(fieldKey, mode);
+    await setPresetOptionFormatMode(fieldKey, mode);
     showToast('Formato applicato a ' + plan.updates.length + ' elementi del menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Lista aggiornata');
     await loadPresetOptionsManager();
   } catch (error) {
@@ -1481,7 +1577,7 @@ function renderPresetOptionsManager() {
     const fk = escapeHtml(field.field_key);
     const state = getPresetState(field.field_key);
     const formatMode = getPresetOptionFormatMode(field.field_key);
-    const radioName = 'preset-format-' + index;
+    const selectId = 'preset-format-select-' + index;
     return `<article class="preset-option-card" data-field-key="${fk}">
       <div class="preset-option-card-header">
         <div><h4>${escapeHtml(field.field_label || field.field_key)}</h4>
@@ -1493,13 +1589,13 @@ function renderPresetOptionsManager() {
         <button type="button" class="primary preset-option-add-btn" data-field-key="${fk}" data-field-label="${escapeHtml(field.field_label || field.field_key)}">Aggiungi</button>
       </div>
       <div class="preset-option-bulk-format">
-        <span class="preset-option-bulk-label">Formato lista:</span>
-        <div class="preset-option-bulk-actions">
-          <label class="preset-option-format-chip${formatMode === 'none' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="none"${formatMode === 'none' ? ' checked' : ''} />Nessuno</label>
-          <label class="preset-option-format-chip${formatMode === 'lower' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="lower"${formatMode === 'lower' ? ' checked' : ''} />tutto minuscolo</label>
-          <label class="preset-option-format-chip${formatMode === 'upper' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="upper"${formatMode === 'upper' ? ' checked' : ''} />TUTTO MAIUSCOLO</label>
-          <label class="preset-option-format-chip${formatMode === 'capitalize' ? ' active' : ''}"><input class="preset-option-format-input" type="radio" name="${radioName}" value="capitalize"${formatMode === 'capitalize' ? ' checked' : ''} />Prima Lettera Maiuscola</label>
-        </div>
+        <label class="preset-option-bulk-label" for="${selectId}">Formato lista:</label>
+        <select class="preset-option-format-select" id="${selectId}" data-field-key="${fk}">
+          <option value="none"${formatMode === 'none' ? ' selected' : ''}>Nessuno</option>
+          <option value="lower"${formatMode === 'lower' ? ' selected' : ''}>tutto minuscolo</option>
+          <option value="upper"${formatMode === 'upper' ? ' selected' : ''}>TUTTO MAIUSCOLO</option>
+          <option value="capitalize"${formatMode === 'capitalize' ? ' selected' : ''}>Prima Lettera Maiuscola</option>
+        </select>
         <p class="preset-option-bulk-help">I nuovi elementi e le modifiche useranno automaticamente il formato selezionato.</p>
       </div>
       <table class="preset-option-table">
@@ -1591,12 +1687,8 @@ function renderPresetOptionsManager() {
       }
     });
 
-    card.querySelectorAll('.preset-option-format-input').forEach((input) => {
-      input.addEventListener('change', async () => {
-        if (!input.checked) return;
-        syncPresetFormatInputs(fieldKey, input.value || 'none');
-        await applyPresetOptionFormatSetting(fieldKey, input.value || 'none', input);
-      });
+    card.querySelector('.preset-option-format-select')?.addEventListener('change', async function() {
+      await applyPresetOptionFormatSetting(fieldKey, this.value || 'none', this);
     });
 
     // Edit/Delete via delegation on tbody
@@ -1646,7 +1738,6 @@ function renderPresetOptionsManager() {
 async function loadPresetOptionsManager() {
   if (!presetOptionsManager) return;
   try {
-    loadPresetOptionFormatModes();
     presetOptionsCache = await fetchJson('/api/admin/preset-options');
     renderPresetOptionsManager();
   } catch (error) {
@@ -1987,6 +2078,20 @@ adminIncidentModal?.addEventListener('mouseup', (e) => {
   adminOverlayPressStarted = false;
 });
 
+newUserRoleSelect?.addEventListener('change', syncNewUserTeamField);
+
+document.getElementById('newUserGroup')?.addEventListener('change', function() {
+  const customInput = document.getElementById('newUserGroupCustom');
+  if (!customInput) return;
+  if (this.value === '_new') {
+    customInput.style.display = '';
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+    customInput.value = '';
+  }
+});
+
 userCreateModal?.addEventListener('mousedown', (e) => {
   userCreateOverlayPressStarted = e.target === userCreateModal;
 });
@@ -2029,7 +2134,14 @@ userCreateForm?.addEventListener('submit', async (e) => {
   const username = (newUsernameInput?.value || '').trim();
   const role = (newUserRoleSelect?.value || 'user').trim();
   const team = (newUserTeamSelect?.value || 'A').trim();
-  const group_name = normalizeGroupName(newUserGroupInput?.value || 'ProdOps');
+  const newUserGroupSel = document.getElementById('newUserGroup');
+  const newUserGroupCustom = document.getElementById('newUserGroupCustom');
+  let group_name;
+  if (newUserGroupSel && newUserGroupSel.value === '_new') {
+    group_name = normalizeGroupName((newUserGroupCustom && newUserGroupCustom.value.trim()) || 'ProdOps');
+  } else {
+    group_name = normalizeGroupName((newUserGroupSel && newUserGroupSel.value) || 'ProdOps');
+  }
   if (!username) {
     showToast('Il campo username è obbligatorio. Inserisci un nome utente valido.', 'warning', 'Campo obbligatorio');
     return;
@@ -2044,7 +2156,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
     userCreateForm.reset();
     if (newUserRoleSelect) newUserRoleSelect.value = 'user';
     if (newUserTeamSelect) newUserTeamSelect.value = 'A';
-    if (newUserGroupInput) newUserGroupInput.value = 'ProdOps';
+    syncNewUserTeamField();
     closeUserCreateModal();
     await Promise.all([loadUsers(), loadGroupTargets()]);
   } catch (error) {
