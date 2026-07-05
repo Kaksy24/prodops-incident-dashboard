@@ -29,6 +29,8 @@ const incidentIdToCategoryMap = {};
 const incidentIdToNameMap = {};
 let currentUser = null;
 let uiColors = null;
+let currentPaletteId = 'blu';
+let currentDarkMode = false;
 let searchModalCloseTimer = null;
 let categorySelectHandle = null;
 let categoriesData = [];
@@ -192,7 +194,7 @@ function presetValueSearchUrl(value) {
 function renderPresetValueLink(value) {
   const label = String(value || '').trim();
   const safeLabel = escapeHtml(label);
-  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" title="Cerca ticket con ' + safeLabel + '">' +
+  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" target="_blank" rel="noopener noreferrer" title="Cerca ticket con ' + safeLabel + '">' +
     '<mark class="preset-value">' + safeLabel + '</mark></a>';
 }
 
@@ -250,8 +252,10 @@ async function loadUiColors() {
   uiColors = normalizeUiColors(data.ui_colors || data || {});
 }
 
-function applyTheme(theme) {
-  const palette = localStorage.getItem('palette') || 'blu';
+function applyTheme(theme, paletteId) {
+  const palette = paletteId || currentPaletteId || localStorage.getItem('palette') || 'blu';
+  currentPaletteId = palette;
+  currentDarkMode = theme === 'dark';
   ['cappuccino','bordeaux','verde','blu','giallo'].forEach(function(p) { document.body.classList.remove('theme-' + p); });
   if (palette !== 'blu') document.body.classList.add('theme-' + palette);
   document.body.classList.toggle('theme-dark', theme === 'dark');
@@ -260,6 +264,13 @@ function applyTheme(theme) {
     const thumb = themeToggleBtn.querySelector('.switch-thumb');
     if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
   }
+}
+
+async function loadUserPreferences() {
+  const data = await fetchJson('/api/user-charts');
+  currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : (localStorage.getItem('palette') || 'blu');
+  currentDarkMode = !!data.dark_mode;
+  applyTheme(currentDarkMode ? 'dark' : 'light', currentPaletteId);
 }
 
 async function fetchJson(url, options) {
@@ -693,12 +704,20 @@ function applyTicketSearchListeners() {
 
 (async function init() {
   const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
-  applyTheme(savedTheme);
+  applyTheme(savedTheme, localStorage.getItem('palette') || 'blu');
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', async () => {
       const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
       localStorage.setItem('dark-mode', next === 'dark' ? '1' : '');
-      applyTheme(next);
+      currentDarkMode = next === 'dark';
+      applyTheme(next, currentPaletteId);
+      try {
+        await fetchJson('/api/user-charts', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ palette: currentPaletteId, dark_mode: currentDarkMode })
+        });
+      } catch (error) {}
       if (ticketSearchResults && ticketSearchResults.querySelector('.ticket-row')) {
         await runTicketSearch();
       }
@@ -709,6 +728,7 @@ function applyTicketSearchListeners() {
     await fetch(appUrl('/api/logout'), { method: 'POST' });
     window.location.href = appUrl('/login.html');
   });
+  try { await loadUserPreferences(); } catch (error) { console.error(error); }
   await loadUiColors();
   const me = await fetchJson('/api/me');
   currentUser = me.user;

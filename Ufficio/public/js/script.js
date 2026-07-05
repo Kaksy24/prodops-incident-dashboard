@@ -118,6 +118,8 @@ let currentShiftSortKey = 'time';
 let currentShiftSortDir = 'desc';
 let ticketSubmitBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
+let currentPaletteId = 'blu';
+let currentDarkMode = false;
 const chartPalette = [
   '#1f77b4',
   '#ff7f0e',
@@ -269,7 +271,7 @@ function presetValueSearchUrl(value) {
 function renderPresetValueLink(value) {
   const label = String(value || '').trim();
   const safeLabel = escapeHtml(label);
-  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" title="Cerca ticket con ' + safeLabel + '">' +
+  return '<a class="preset-value-link" href="' + escapeHtml(presetValueSearchUrl(label)) + '" target="_blank" rel="noopener noreferrer" title="Cerca ticket con ' + safeLabel + '">' +
     '<mark class="preset-value">' + safeLabel + '</mark></a>';
 }
 
@@ -299,7 +301,7 @@ function defaultChartTypes() {
     personalMineChart: 'column',
     personalGroupChart: 'column',
     teamYear: 'donut',
-    severityYear: 'line'
+    severityYear: 'bar'
   };
 }
 
@@ -312,6 +314,14 @@ function normalizeChartType(value) {
 
 function loadChartTypes() {
   const defaults = defaultChartTypes();
+  if (chartTypes && typeof chartTypes === 'object' && Object.keys(chartTypes).length) {
+    const normalized = { ...defaults };
+    Object.keys(defaults).forEach((key) => {
+      normalized[key] = normalizeChartType(chartTypes?.[key] || defaults[key]);
+    });
+    chartTypes = normalized;
+    return chartTypes;
+  }
   try {
     const raw = localStorage.getItem(chartTypeStorageKey);
     if (!raw) {
@@ -336,6 +346,7 @@ function saveChartTypes() {
   } catch (error) {
     // ignore storage issues
   }
+  saveUserCharts().catch(console.error);
 }
 
 function getChartType(chartId) {
@@ -456,9 +467,7 @@ function getCustomIncidentNameForSubmit() {
 function syncSubmitBtnState() {
   if (!ticketSubmitBtn || ticketSubmitBusy || ticketForm.dataset.readMode === '1') return;
   const descEl = document.getElementById('description');
-  const description = (descEl.dataset.presetAutoSync !== 'off' && descEl.dataset.presetMarkupValue)
-    ? descEl.dataset.presetMarkupValue
-    : descEl.value.trim();
+  const description = descEl.value.trim();
   const presetComplete = !getIncompletePresetFields(presetInlineComposer).length;
   const valid = !!Number(incidentTypeInput.value || 0)
     && !!description
@@ -1932,7 +1941,7 @@ function presetFieldKey(label) {
   return String(label || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
-async function loadDbPresetOptions(token, select) {
+async function loadDbPresetOptions(token, select, initialValue) {
   try {
     const fieldKey = presetFieldKey(token.label);
     const data = await fetchJson(`/api/preset-options?field_key=${encodeURIComponent(fieldKey)}`);
@@ -1951,7 +1960,7 @@ async function loadDbPresetOptions(token, select) {
     });
     const options = Object.keys(optionMap).map((key) => optionMap[key])
       .sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
-    const currentValue = select.value;
+    const currentValue = initialValue || select.value;
     const renderOptions = (filter = '') => {
       const query = String(filter || '').trim().toLocaleLowerCase('it');
       const filtered = query ? options.filter((option) => option.toLocaleLowerCase('it').includes(query)) : options;
@@ -1989,26 +1998,40 @@ async function loadDbPresetOptions(token, select) {
   }
 }
 
-function renderPresetForTargets(template, descriptionInput, composerContainer, incidentId = 0) {
+function renderPresetForTargets(template, descriptionInput, composerContainer, incidentId = 0, savedDescription) {
   const tokens = parsePresetTokens(template);
   if (!tokens.length) {
+    presetTokenState = [];
+    composerContainer.dataset.presetTemplate = '';
     composerContainer.style.display = 'none';
     composerContainer.innerHTML = '';
     descriptionInput.readOnly = false;
     descriptionInput.dataset.presetAutoSync = 'off';
     descriptionInput.dataset.presetAutoValue = '';
     descriptionInput.dataset.presetMarkupValue = '';
+    descriptionInput.dataset.presetGeneratedBase = '';
+    descriptionInput.dataset.presetMarkupBase = '';
+    descriptionInput.dataset.presetManualText = '';
     descriptionInput.placeholder = 'Inserisci descrizione problema...';
     descriptionInput.value = template || '';
     return;
   }
 
-  const tokenState = tokens.map((token) => ({ ...token, value: '' }));
+  const savedValues = extractPresetValuesFromMarkup(template, savedDescription);
+  const tokenState = tokens.map((token) => {
+    const saved = savedValues.find(function(item) { return item.key === token.key; });
+    return { ...token, value: saved ? saved.value : '' };
+  });
+  presetTokenState = tokenState;
+  composerContainer.dataset.presetTemplate = template || '';
   composerContainer.style.display = 'flex';
   composerContainer.innerHTML = '';
   descriptionInput.readOnly = false;
   descriptionInput.dataset.presetAutoSync = 'on';
   descriptionInput.dataset.presetAutoValue = '';
+  descriptionInput.dataset.presetGeneratedBase = '';
+  descriptionInput.dataset.presetMarkupBase = '';
+  descriptionInput.dataset.presetManualText = '';
   descriptionInput.placeholder = 'Puoi scrivere liberamente oppure usare i campi sottostanti.';
 
   tokenState.forEach((token, tokenIndex) => {
@@ -2030,7 +2053,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         option.textContent = opt;
         input.appendChild(option);
       });
-      loadDbPresetOptions(token, input);
+      loadDbPresetOptions(token, input, tokenState[tokenIndex].value || '');
     } else if (token.type === 'timestamp') {
       input = document.createElement('input');
       input.type = 'time';
@@ -2041,10 +2064,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       input.placeholder = token.label || '';
     }
     input.required = true;
+    if (tokenState[tokenIndex].value) input.value = tokenState[tokenIndex].value;
     input.dataset.presetField = '1';
     input.dataset.presetLabel = token.label || `Campo ${tokenIndex + 1}`;
     input.style.width = '100%';
-    input.addEventListener('input', async () => {
+    const syncPresetFieldValue = async () => {
       if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__propose_new__') {
         const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', confirmText: 'Invia proposta' });
         if (!proposedValue || !proposedValue.trim()) {
@@ -2062,13 +2086,9 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           input.value = duplicateOption.value;
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Questo elemento esiste gia: "' + duplicateOption.value + '".', 'warning', 'Elemento duplicato');
+          descriptionInput.value = replacePresetTokenInDescription(descriptionInput.value, tokenState, tokenIndex, input.value || '');
           tokenState[tokenIndex].value = input.value || '';
-          const generatedDuplicate = buildDescriptionFromTemplate(template, tokenState, true);
-          descriptionInput.dataset.presetAutoValue = generatedDuplicate;
-          descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
-          if (descriptionInput.dataset.presetAutoSync !== 'off') {
-            descriptionInput.value = generatedDuplicate;
-          }
+          descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
           syncSubmitBtnState();
           return;
         }
@@ -2099,28 +2119,27 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           return;
         }
       }
+      descriptionInput.value = replacePresetTokenInDescription(descriptionInput.value, tokenState, tokenIndex, input.value || '');
       tokenState[tokenIndex].value = input.value || '';
-      const generated = buildDescriptionFromTemplate(template, tokenState, true);
-      descriptionInput.dataset.presetAutoValue = generated;
-      descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
-      if (descriptionInput.dataset.presetAutoSync !== 'off') {
-        descriptionInput.value = generated;
-      }
+      descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
       syncSubmitBtnState();
-    });
+    };
+    input.addEventListener('input', syncPresetFieldValue);
+    input.addEventListener('change', syncPresetFieldValue);
     fieldWrap.appendChild(input);
     composerContainer.appendChild(fieldWrap);
   });
 
-  descriptionInput.addEventListener('input', () => {
-    const current = descriptionInput.value || '';
-    const generated = descriptionInput.dataset.presetAutoValue || '';
-    if (current !== generated) descriptionInput.dataset.presetAutoSync = 'off';
-  }, { once: true });
+  descriptionInput.oninput = function() {
+    descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
+  };
 
   const initialGenerated = buildDescriptionFromTemplate(template, tokenState, true);
+  const initialMarkupGenerated = buildMarkupDescription(template, tokenState);
+  descriptionInput.dataset.presetGeneratedBase = initialGenerated;
+  descriptionInput.dataset.presetMarkupBase = initialMarkupGenerated;
   descriptionInput.dataset.presetAutoValue = initialGenerated;
-  descriptionInput.dataset.presetMarkupValue = buildMarkupDescription(template, tokenState);
+  descriptionInput.dataset.presetMarkupValue = initialMarkupGenerated;
   descriptionInput.value = initialGenerated;
   syncSubmitBtnState();
 }
@@ -2260,16 +2279,17 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
   for (let index = 0; index < panels.length; index += 1) {
     const panel = panels[index];
     const extraDescEl = panel.querySelector('.extra-description');
+    const extraComposer = panel.querySelector('.extra-composer');
+    const extraTokens = collectPresetStateFromComposer(extraComposer ? extraComposer.dataset.presetTemplate : '', extraComposer);
     const extraDesc = extraDescEl
-      ? ((extraDescEl.dataset.presetAutoSync !== 'off' && extraDescEl.dataset.presetMarkupValue)
-        ? extraDescEl.dataset.presetMarkupValue
+      ? (((extraDescEl.dataset.presetAutoSync !== 'off') && extraTokens.length)
+        ? buildMarkupFromCurrentDescription(extraDescEl.value || '', extraTokens)
         : (extraDescEl.value || '').trim())
       : '';
     const extraFab = panel.querySelector('.extra-fab')?.value || '';
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
     const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || defaultSeverity || 1);
-    const extraComposer = panel.querySelector('.extra-composer');
     const missingPresetFields = focusFirstIncompletePresetField(extraComposer);
     if (missingPresetFields.length) {
       throw new Error(`Ticket extra ${index + 1}: compila tutti i campi obbligatori del template (${buildMissingPresetFieldsMessage(extraComposer)}).`);
@@ -2365,6 +2385,88 @@ function buildMarkupDescription(template, tokens) {
     text = text.replace(token.raw, display);
   });
   return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function getPresetTokenDisplayValue(token) {
+  return token.value ? token.value : `[${token.label || 'campo'}]`;
+}
+
+function getPresetTokenMarkupValue(token) {
+  return token.value ? `ã€ˆ${token.value}ã€‰` : `[${token.label || 'campo'}]`;
+}
+
+function replacePresetTokenInDescription(text, tokens, targetIndex, nextValue) {
+  var source = String(text || '');
+  var searchFrom = 0;
+  var tokenIndex;
+  for (tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    var token = tokens[tokenIndex];
+    var currentDisplay = getPresetTokenDisplayValue(token);
+    var matchIndex = source.indexOf(currentDisplay, searchFrom);
+    if (matchIndex < 0) return source;
+    if (tokenIndex === targetIndex) {
+      var replacement = nextValue ? nextValue : `[${token.label || 'campo'}]`;
+      return source.slice(0, matchIndex) + replacement + source.slice(matchIndex + currentDisplay.length);
+    }
+    searchFrom = matchIndex + currentDisplay.length;
+  }
+  return source;
+}
+
+function buildMarkupFromCurrentDescription(text, tokens) {
+  var source = String(text || '');
+  var searchFrom = 0;
+  var tokenIndex;
+  for (tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    var token = tokens[tokenIndex];
+    var currentDisplay = getPresetTokenDisplayValue(token);
+    var replacement = getPresetTokenMarkupValue(token);
+    var matchIndex = source.indexOf(currentDisplay, searchFrom);
+    if (matchIndex < 0) continue;
+    source = source.slice(0, matchIndex) + replacement + source.slice(matchIndex + currentDisplay.length);
+    searchFrom = matchIndex + replacement.length;
+  }
+  return source.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function collectPresetStateFromComposer(template, composerContainer) {
+  var tokens = parsePresetTokens(template || '');
+  var fields = composerContainer ? composerContainer.querySelectorAll('[data-preset-field="1"]') : [];
+  tokens.forEach(function(token, index) {
+    token.value = fields[index] ? String(fields[index].value || '') : '';
+  });
+  return tokens;
+}
+
+function appendPresetManualText(baseText, manualText) {
+  var base = String(baseText || '').trim();
+  var manual = String(manualText || '').trim();
+  if (!manual) return base;
+  if (!base) return manual;
+  return base + '\n\n' + manual;
+}
+
+function extractPresetValuesFromMarkup(template, savedDescription) {
+  const tokens = parsePresetTokens(template);
+  const source = String(savedDescription || '');
+  if (!tokens.length || !source) return tokens.map(function(token) { return { key: token.key, value: '' }; });
+  const values = [];
+  let searchFrom = 0;
+  tokens.forEach(function(token) {
+    const start = source.indexOf('ã€ˆ', searchFrom);
+    if (start < 0) {
+      values.push({ key: token.key, value: '' });
+      return;
+    }
+    const end = source.indexOf('ã€‰', start + 2);
+    if (end < 0) {
+      values.push({ key: token.key, value: '' });
+      return;
+    }
+    values.push({ key: token.key, value: source.slice(start + 2, end) });
+    searchFrom = end + 2;
+  });
+  return values;
 }
 
 function renderPresetDynamicFields(template) {
@@ -2466,6 +2568,10 @@ function setChartExportState(target, sortedStats) {
   };
 }
 
+function formatChartValueWithPercent(total, pct) {
+  return `${total} (${pct}%)`;
+}
+
 function renderColumnChart(target, stats) {
   const sortedStats = [...stats].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   const max = Math.max(...sortedStats.map((x) => x.total), 1);
@@ -2521,7 +2627,7 @@ function renderHorizontalChart(target, stats) {
     row.innerHTML = `
       <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
       <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div><span class="bar-pct">${pct}%</span></div>
-      <span class="chart-horizontal-value">${item.total}</span>
+      <span class="chart-horizontal-value">${formatChartValueWithPercent(item.total, pct)}</span>
     `;
     wrap.appendChild(row);
   });
@@ -2574,8 +2680,7 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     row.innerHTML = `
       <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
       <span class="chart-pie-label">${escapeHtml(item.label)}</span>
-      ${hideLegendValue ? '' : `<strong class="chart-pie-value">${item.total}</strong>`}
-      <span class="chart-pie-percent">${pct}%</span>
+      ${hideLegendValue ? `<strong class="chart-pie-value">${pct}%</strong>` : `<strong class="chart-pie-value">${formatChartValueWithPercent(item.total, pct)}</strong>`}
     `;
     legend.appendChild(row);
   });
@@ -2909,9 +3014,6 @@ function openPersonalPeriodTickets(target, bucketIndex) {
 
 function renderChart(target, stats) {
   const type = getChartType(target.id);
-  // Le serie a linea sono temporali: gli zeri vanno mantenuti.
-  // Per gli altri grafici mostra solo gli elementi con almeno 1 conteggio.
-  if (type === 'line') return renderLineChart(target, stats);
   const all = stats || [];
   const nonZero = all.filter(function (s) { return Number(s.total) > 0; });
   // Per non far sembrare il grafico vuoto, se ci sono meno di 4 elementi
@@ -2925,7 +3027,6 @@ function renderChart(target, stats) {
   }
   if (type === 'bar') return renderHorizontalChart(target, shown);
   if (type === 'donut') return renderPieOrDonutChart(target, shown, true);
-  if (type === 'pie') return renderPieOrDonutChart(target, shown, false);
   return renderColumnChart(target, shown);
 }
 
@@ -3411,9 +3512,13 @@ function handleEditTicketButton(btn) {
   document.getElementById('description').readOnly = false;
   document.getElementById('description').style.display = '';
   document.getElementById('description').placeholder = 'Inserisci descrizione problema...';
+  const editPresets = incidentIdToPresetMap[String(incidentId)] || [];
   if (presetInlineComposer) {
     presetInlineComposer.style.display = 'none';
     presetInlineComposer.innerHTML = '';
+  }
+  if (editPresets.length && presetInlineComposer) {
+    renderPresetForTargets(editPresets[0] || '', document.getElementById('description'), presetInlineComposer, incidentId, btn.dataset.description || '');
   }
   ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
   fabValue.value = (btn.dataset.fab || '').toUpperCase();
@@ -3673,9 +3778,7 @@ const CUSTOM_SCOPES = [
 const CUSTOM_TYPES = [
   { value: 'column', label: 'Colonne' },
   { value: 'bar', label: 'Barre orizzontali' },
-  { value: 'pie', label: 'Torta' },
-  { value: 'donut', label: 'Ciambella' },
-  { value: 'line', label: 'Linea' }
+  { value: 'donut', label: 'Ciambella' }
 ];
 
 function customLabel(list, value) { const d = list.find((x) => x.value === value); return d ? d.label : value; }
@@ -3762,6 +3865,12 @@ async function loadUserCharts() {
     hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
+    chartSpans = (data.chart_spans && typeof data.chart_spans === 'object') ? data.chart_spans : chartSpans;
+    chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? data.chart_types : chartTypes;
+    currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : currentPaletteId;
+    currentDarkMode = !!data.dark_mode;
+    applyTheme(currentPaletteId, currentDarkMode);
+    applyAllChartSpans();
     if (data.chart_custom_ranges && typeof data.chart_custom_ranges === 'object') {
       Object.keys(chartCustomRanges).forEach((t) => {
         const r = data.chart_custom_ranges[t];
@@ -3804,6 +3913,7 @@ async function loadUserCharts() {
   renderAllCustomCharts();
   if (panelOrder.length) applyPanelOrder();
   applyPanelTitles();
+  applyAllChartSpans();
 }
 
 async function saveUserCharts() {
@@ -3811,12 +3921,16 @@ async function saveUserCharts() {
     const data = await fetchJson('/api/user-charts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode }, chart_custom_ranges: chartCustomRanges })
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode }, chart_custom_ranges: chartCustomRanges, chart_spans: chartSpans, chart_types: chartTypes, palette: currentPaletteId, dark_mode: currentDarkMode })
     });
     if (Array.isArray(data.charts)) customCharts = data.charts;
     if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
     if (Array.isArray(data.panel_order)) panelOrder = data.panel_order;
     if (data.panel_titles && typeof data.panel_titles === 'object') panelTitles = data.panel_titles;
+    if (data.chart_spans && typeof data.chart_spans === 'object') chartSpans = data.chart_spans;
+    if (data.chart_types && typeof data.chart_types === 'object') chartTypes = data.chart_types;
+    if (typeof data.palette === 'string' && data.palette) currentPaletteId = data.palette;
+    currentDarkMode = !!data.dark_mode;
   } catch (e) {
     console.error(e);
     showToast('Impossibile salvare le impostazioni della dashboard. Verifica la connessione e riprova.', 'error', 'Salvataggio fallito');
@@ -4758,8 +4872,9 @@ ticketForm.addEventListener('submit', async (e) => {
   if (!beginTicketSubmitLock()) return;
   const incident_id = Number(incidentTypeInput.value || 0);
   const descEl = document.getElementById('description');
-  const description = (descEl.dataset.presetAutoSync !== 'off' && descEl.dataset.presetMarkupValue)
-    ? descEl.dataset.presetMarkupValue
+  const presetTokens = collectPresetStateFromComposer(presetInlineComposer ? presetInlineComposer.dataset.presetTemplate : '', presetInlineComposer);
+  const description = ((descEl.dataset.presetAutoSync !== 'off') && presetTokens.length)
+    ? buildMarkupFromCurrentDescription(descEl.value || '', presetTokens)
     : descEl.value.trim();
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
@@ -4880,11 +4995,13 @@ function defaultChartSpan(panelId) {
 }
 
 function loadChartSpans() {
+  if (chartSpans && typeof chartSpans === 'object' && Object.keys(chartSpans).length) return;
   try { chartSpans = JSON.parse(localStorage.getItem(chartSpanStorageKey) || '{}'); } catch (e) { chartSpans = {}; }
 }
 
 function saveChartSpans() {
   try { localStorage.setItem(chartSpanStorageKey, JSON.stringify(chartSpans)); } catch (e) {}
+  saveUserCharts().catch(console.error);
 }
 
 function getChartSpan(panelId) {
@@ -4906,6 +5023,10 @@ function applyAllChartSpans() {
 }
 
 function loadChartOrder() {
+  if (Array.isArray(panelOrder) && panelOrder.length) {
+    applyPanelOrder();
+    return;
+  }
   try {
     const order = JSON.parse(localStorage.getItem(chartOrderStorageKey) || 'null');
     if (!Array.isArray(order)) return;
@@ -5077,6 +5198,7 @@ function setupChartDragDrop() {
       }
       await loadCharts();
       await loadUserCharts();
+      renderCharts();
     } catch (error) {
       console.error(error);
     }
@@ -5084,13 +5206,15 @@ function setupChartDragDrop() {
 })();
 
 function applyTheme(paletteId, darkMode) {
+  currentPaletteId = paletteId || 'blu';
+  currentDarkMode = !!darkMode;
   THEMES.forEach(function(t) { document.body.classList.remove('theme-' + t.id); });
   document.body.classList.remove('theme-dark');
-  if (paletteId && paletteId !== 'blu') document.body.classList.add('theme-' + paletteId);
-  if (darkMode) document.body.classList.add('theme-dark');
-  setThemeToggleIcon(themeToggleBtn, darkMode ? 'dark' : 'light');
+  if (currentPaletteId && currentPaletteId !== 'blu') document.body.classList.add('theme-' + currentPaletteId);
+  if (currentDarkMode) document.body.classList.add('theme-dark');
+  setThemeToggleIcon(themeToggleBtn, currentDarkMode ? 'dark' : 'light');
   document.querySelectorAll('.theme-swatch').forEach(function(el) {
-    el.classList.toggle('active', el.dataset.theme === (paletteId || 'blu'));
+    el.classList.toggle('active', el.dataset.theme === currentPaletteId);
   });
 }
 (function() {
@@ -5108,7 +5232,8 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
   var isDark = document.body.classList.contains('theme-dark');
   var newDark = !isDark;
   localStorage.setItem('dark-mode', newDark ? '1' : '');
-  applyTheme(localStorage.getItem('palette') || 'blu', newDark);
+  applyTheme(currentPaletteId || localStorage.getItem('palette') || 'blu', newDark);
+  saveUserCharts().catch(console.error);
   await refreshColorSensitiveViews();
 });}
 
@@ -5123,7 +5248,7 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
   function renderSwatches() {
     if (!swatchesEl) return;
     swatchesEl.innerHTML = '';
-    var cur = localStorage.getItem('palette') || 'blu';
+    var cur = currentPaletteId || localStorage.getItem('palette') || 'blu';
     THEMES.forEach(function(t) {
       var btn = document.createElement('button');
       btn.type = 'button';
@@ -5134,11 +5259,11 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
         '<span class="theme-swatch-name">'+t.label+'</span>';
       btn.addEventListener('click', function() {
         localStorage.setItem('palette', t.id);
-        var isDark = localStorage.getItem('dark-mode') === '1';
-        applyTheme(t.id, isDark);
+        applyTheme(t.id, currentDarkMode);
         document.querySelectorAll('.theme-swatch').forEach(function(el) {
           el.classList.toggle('active', el.dataset.theme === t.id);
         });
+        saveUserCharts().catch(console.error);
         refreshColorSensitiveViews().catch(function(){});
       });
       swatchesEl.appendChild(btn);
@@ -5261,8 +5386,15 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
                 (pin.createdAt ? new Date(pin.createdAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '') +
               '</div>'
             : '');
-        card.querySelector('.itc-unpin').addEventListener('click', function() {
+        card.querySelector('.itc-unpin').addEventListener('click', async function() {
           var tid = Number(this.dataset.id);
+          var confirmed = await showConfirm('Il ticket importante verrà rimosso dall\'elenco dei pinnati. Vuoi continuare?', {
+            title: 'Rimuovi ticket importante',
+            type: 'warning',
+            confirmText: 'Rimuovi',
+            cancelText: 'Annulla'
+          });
+          if (!confirmed) return;
           fetchJson('/api/pinned-tickets/' + tid, { method: 'DELETE' })
             .then(function() {
               card.remove();

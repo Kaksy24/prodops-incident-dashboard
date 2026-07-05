@@ -58,6 +58,8 @@ const presetOptionsManager = document.getElementById('presetOptionsManager');
 const presetOptionsSummary = document.getElementById('presetOptionsSummary');
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const adminTabStorageKey = 'prodops_admin_tab';
+let currentPaletteId = 'blu';
+let currentDarkMode = false;
 
 let dragCategoryId = null;
 let dragIncidentId = null;
@@ -76,6 +78,8 @@ let adminColorSelection = null;
 let adminUsersCache = [];
 let adminGroupTargetsCache = [];
 let presetOptionsCache = [];
+let usersPage = 1;
+const USERS_PAGE_SIZE = 5;
 const adminColorGroups = [
   { group: 'categories', label: 'Categorie', statsKey: 'catYear' },
   { group: 'teams', label: 'Team', statsKey: 'teamYear' },
@@ -132,13 +136,21 @@ function restoreAdminUiState(state) {
 }
 
 function applyTheme(theme) {
-  const palette = localStorage.getItem('palette') || 'blu';
+  const palette = currentPaletteId || localStorage.getItem('palette') || 'blu';
+  currentDarkMode = theme === 'dark';
   ['cappuccino','bordeaux','verde','blu','giallo'].forEach(function(p) { document.body.classList.remove('theme-' + p); });
   if (palette !== 'blu') document.body.classList.add('theme-' + palette);
   document.body.classList.toggle('theme-dark', theme === 'dark');
   themeToggleBtn.setAttribute('aria-pressed', String(theme === 'dark'));
   const thumb = themeToggleBtn.querySelector('.switch-thumb');
   if (thumb) thumb.textContent = theme === 'dark' ? '🌙' : '☀';
+}
+
+async function loadUserPreferences() {
+  const data = await fetchJson('/api/user-charts');
+  currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : (localStorage.getItem('palette') || 'blu');
+  currentDarkMode = !!data.dark_mode;
+  applyTheme(currentDarkMode ? 'dark' : 'light');
 }
 
 function defaultUiColors() {
@@ -296,7 +308,7 @@ function defaultChartTypes() {
     fabYear: 'bar',
     catYear: 'bar',
     teamYear: 'donut',
-    severityYear: 'line'
+    severityYear: 'bar'
   };
 }
 
@@ -581,8 +593,6 @@ function renderAdminChartByType(chart, stats, target) {
   const type = getChartType(chart.key);
   if (type === 'bar') return renderAdminHorizontalChart(target, chart.key, stats);
   if (type === 'donut') return renderAdminPieOrDonutChart(target, chart.key, stats, true);
-  if (type === 'pie') return renderAdminPieOrDonutChart(target, chart.key, stats, false);
-  if (type === 'line') return renderAdminLineChart(target, chart.key, stats);
   return renderAdminColumnChart(target, chart.key, stats);
 }
 
@@ -776,6 +786,11 @@ themeToggleBtn.addEventListener('click', () => {
   const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
   localStorage.setItem('dark-mode', next === 'dark' ? '1' : '');
   applyTheme(next);
+  fetchJson('/api/user-charts', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ palette: currentPaletteId, dark_mode: next === 'dark' })
+  }).catch(function() {});
 });
 
 backToDashboardBtn.addEventListener('click', () => { window.location.href = appUrl('/index.html'); });
@@ -962,9 +977,15 @@ function renderUsers() {
     return;
   }
 
+  const totalPages = Math.max(1, Math.ceil(users.length / USERS_PAGE_SIZE));
+  if (usersPage > totalPages) usersPage = totalPages;
+  if (usersPage < 1) usersPage = 1;
+  const pageStart = (usersPage - 1) * USERS_PAGE_SIZE;
+  const pageUsers = users.slice(pageStart, pageStart + USERS_PAGE_SIZE);
+
   const uniqueGroups = Array.from(new Set(adminUsersCache.map((u) => normalizeGroupName(u.group_name || 'ProdOps')))).sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
 
-  const rows = users.map((user) => {
+  const rows = pageUsers.map((user) => {
     const isSelf = Number(user.id) === Number(currentAdminUser?.id);
     const role = String(user.role || 'user');
     const isSupervisorRow = role === 'supervisor';
@@ -1023,6 +1044,11 @@ function renderUsers() {
     `;
   }).join('');
 
+  const pageButtons = [];
+  for (let page = 1; page <= totalPages; page += 1) {
+    pageButtons.push(`<button type="button" class="${page === usersPage ? 'active' : ''}" data-page="${page}">${page}</button>`);
+  }
+
   usersList.innerHTML = `
     <div class="users-table-wrap">
       <table class="users-table">
@@ -1032,7 +1058,34 @@ function renderUsers() {
         <tbody>${rows}</tbody>
       </table>
     </div>
+    <div class="users-dt-footer">
+      <div class="dt-info">Pagina ${usersPage} di ${totalPages} · ${pageStart + 1}-${Math.min(pageStart + USERS_PAGE_SIZE, users.length)} di ${users.length}</div>
+      <div class="dt-pagination">
+        <button type="button" class="users-page-prev" ${usersPage <= 1 ? 'disabled' : ''}>‹</button>
+        ${pageButtons.join('')}
+        <button type="button" class="users-page-next" ${usersPage >= totalPages ? 'disabled' : ''}>›</button>
+      </div>
+    </div>
   `;
+
+  usersList.querySelector('.users-page-prev')?.addEventListener('click', () => {
+    if (usersPage <= 1) return;
+    usersPage -= 1;
+    renderUsers();
+  });
+  usersList.querySelector('.users-page-next')?.addEventListener('click', () => {
+    if (usersPage >= totalPages) return;
+    usersPage += 1;
+    renderUsers();
+  });
+  usersList.querySelectorAll('.dt-pagination [data-page]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nextPage = Number(btn.dataset.page || 1);
+      if (!nextPage || nextPage === usersPage) return;
+      usersPage = nextPage;
+      renderUsers();
+    });
+  });
 
   usersList.querySelectorAll('.save-user-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -2059,8 +2112,14 @@ adminTabButtons.forEach((button) => {
 });
 
 [userSearchInput, userRoleFilter, userTeamFilter].forEach((control) => {
-  control?.addEventListener('input', renderUsers);
-  control?.addEventListener('change', renderUsers);
+  control?.addEventListener('input', () => {
+    usersPage = 1;
+    renderUsers();
+  });
+  control?.addEventListener('change', () => {
+    usersPage = 1;
+    renderUsers();
+  });
 });
 
 openUserCreateModalBtn?.addEventListener('click', openUserCreateModal);
@@ -2173,6 +2232,7 @@ userCreateForm?.addEventListener('submit', async (e) => {
   }
   setAdminTab(savedAdminTab);
   await loadCurrentAdmin();
+  await loadUserPreferences();
   loadChartTypes();
   syncAdminColorToggle();
   await Promise.allSettled([

@@ -8,6 +8,28 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 
 | File locale | Path produzione | Note |
 |------|------|------|
+| _Nessuno_ |  |  |
+
+## Gia deployato
+
+Deploy confermato in data `2026-07-06` per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Preferenze utente salvate lato server in `user_charts`; merge sicuro nel `PUT /api/user-charts` senza azzerare preferenze non presenti nella richiesta |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Dashboard allineata alle preferenze server-side; badge ticket pinnati; link preset in nuova scheda; fix composer preset dinamici; conferma rimozione PIN; ritorno al logo dashboard in Cerca ticket; rimozione dei tipi grafico `Torta` e `Linea`; affinamenti layout/overflow/scroll dei pannelli grafico e della legenda/ciambella |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili ticket pinnati; footer/paginazione utenti admin; layout responsive dei grafici a ciambella; vincoli di overflow dei pannelli grafico con scroll interno e dimensionamento della ciambella legato al pannello |
+| `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | Ricerca allineata alle preferenze server-side; link descrizioni ticket in nuova scheda |
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Admin allineato alle preferenze server-side; data table utenti paginata da 5 righe; rimozione dei tipi grafico `Torta` e `Linea` dalle preview |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | **version bump v1.9.0** su CSS/JS e badge versione |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | **version bump v1.9.0** su CSS/JS, asset logo e badge versione |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | **version bump v1.9.0** su CSS/JS, asset logo e badge versione; logo Ticket Manager riporta alla Dashboard |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | **version bump v1.9.0** su CSS/JS, asset logo e badge versione |
+
+Deploy confermato in data `2026-07-05` per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
 | `Ufficio/backend/auth.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/auth.php` | Supervisor rimosso da `require_api_auth('admin')`: le API admin restituiscono ora 403 per il ruolo supervisor |
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Supervisor non può inserire ticket (403 su `POST /api/tickets`); escluso da `summarize_by_user` (grafici e stats utenti); `POST /api/users` e `PUT /api/users/:id` accettano ora il ruolo `supervisor` e forzano `team=''`; `load_db` non normalizza il team dei supervisor; `GET /api/me` restituisce `team=''` per supervisor |
 | `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | `#userPill` convertito da `div` a `button`; aggiunto modal `#userSettingsModal` con selezione tema (5 swatches: Cappuccino, Bordeaux, Verde, Blu, Giallo); checkbox PIN (📌 PIN) + datepicker in `#ticketModal .modal-header`; bottone `#importantTicketsBtn` in `.previous-shifts-header`; modale `#importantTicketsModal` con lista ticket pinnati; **version bump v1.8.0** su tutti i tag script/link |
@@ -15,18 +37,10 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 | `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | **version bump v1.8.0** |
 | `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | **version bump v1.8.0** |
 | `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Sostituiti i 4 vecchi temi con 5 palette luce + dark adattivo; stili PIN (`.ticket-pin-wrap`, `.ticket-pin-label`, `.ticket-pin-date`); stili bottone Ticket Importanti (`.important-tickets-btn`); stili modale e card (`.important-tickets-panel`, `.important-ticket-card`, `.itc-*`); badge 📌 sulle card pinnate (`.ticket-pin-badge`, `.ticket-row.ticket-pinned`) |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | `applyTheme` ora applica anche la palette (`localStorage.palette`) oltre al dark mode; toggle usa chiave `dark-mode` invece di `theme` |
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | `applyTheme` ora applica anche la palette (`localStorage.palette`) oltre al dark mode; toggle usa chiave `dark-mode` invece di `theme`; `renderUsers`: colonna gruppo ora `<select>` con lista gruppi esistenti + opzione "Nuovo gruppo…" + input custom; colonna "Protezioni" → "Stato" con `user-disable-check` toggle (chiama `PUT /api/users/:id {disabled}` in tempo reale); `openUserCreateModal` popola il select gruppo da `adminUsersCache`; submit crea utente legge gruppo dal select |
 | `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | `THEMES` rinnovato con 5 palette luce; `applyTheme(paletteId, darkMode)` separa palette da dark mode; toggle commuta solo dark/light; settings mostra 5 swatches; storage: `palette` + `dark-mode`; PIN ticket globale via API (`/api/pinned-tickets`): `updatePinUi`, checkbox IIFE usa `fetchJson DELETE/POST`, modale Ticket Importanti con render API-based, unpin via API, badge contatore; `sanitizePinText` fix mojibake descrizioni; PIN visibile anche in fase creazione ticket; `updatePinUi` confronto id con `Number()` (fix type mismatch string vs number che impediva di vedere la spunta su ticket già pinnati da altri utenti); `decoratePinnedTickets` + badge 📌 su card pinnate nel turno corrente |
 | `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | `applyTheme` allineato: applica palette + dark mode; toggle usa chiave `dark-mode` |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | `renderUsers`: colonna gruppo ora `<select>` con lista gruppi esistenti + opzione "Nuovo gruppo…" + input custom; colonna "Protezioni" → "Stato" con `user-disable-check` toggle (chiama `PUT /api/users/:id {disabled}` in tempo reale); `openUserCreateModal` popola il select gruppo da `adminUsersCache`; submit crea utente legge gruppo dal select |
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `load_db`/`mysql_save_db` gestiscono `pinned_tickets` e `disabled_users` in `app_settings`; login blocca utenti disabilitati (403); `GET /api/users` include campo `disabled`; `PUT /api/users/:id` accetta payload `{disabled}` per aggiornare lista `disabled_users`; nuovi endpoint `GET/POST /api/pinned-tickets` e `DELETE /api/pinned-tickets/:id` |
-
-## Gia deployato
-
-Deploy confermato in data `2026-07-05` per i seguenti file:
-
-| File locale | Path produzione | Note |
-|------|------|------|
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `?month=1..12` su `/api/stats/personal/current-year` (drill-down giornaliero) + endpoint `GET /api/tickets/lookup` (ticket per dimensione+valore o intervallo, per il click sui grafici) + guard `PRODOPS_LIB_ONLY` per riuso helper da `extensions/export.php` + `GET /api/preset-options` ora restituisce anche `pending` (proposte non ancora approvate ma create da meno di 48h, cosi da poterle usare subito nel menu a tendina) + formato automatico per menu preset persistito lato server (nuovo setting `preset_option_formats` in `app_settings`, nessuna migrazione di schema richiesta) applicato a ogni inserimento/modifica (proposta utente, aggiunta/modifica admin) tramite nuovo endpoint `PUT /api/admin/preset-option-format` + endpoint `current-year` di fab/categoria/team/severity/utenti ora accettano `?start=YYYY-MM-DD&end=YYYY-MM-DD` come alternativa a `mode` (periodo personalizzato) + `GET`/`PUT /api/user-charts` salvano anche `chart_custom_ranges` (persistenza del range scelto per ciascun grafico) |
 | `Ufficio/extensions/export.php` | `/var/www/html/ictsupport/modules/ticket_manager/extensions/export.php` | Export ticket per TinyMCE altro sito: senza `submit` mostra un form che chiede start/end/formato (csv/json/html); dopo submit accetta `?submit=1&format=html|json|csv&start&end` (raggruppati CATEGORIA-FAB, dedup `[N]`, endpoint pubblico senza autenticazione) |
 | `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Version bump pubblico `v1.7.0` |

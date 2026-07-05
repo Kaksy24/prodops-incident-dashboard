@@ -588,6 +588,7 @@ function proxy_remote_api_request($path, $method, $payload)
 
 function mysql_enabled()
 {
+    if (!function_exists('mysqli_connect')) return false;
     $cfg = runtime_config_values();
     $host = env_first(array('MYSQL_HOST', 'MYSQLHOST'));
     if ($host === false && isset($cfg['MYSQL_HOST'])) $host = $cfg['MYSQL_HOST'];
@@ -1041,11 +1042,30 @@ function mysql_insert_ticket_direct($incidentId, $incidentName, $desc, $fab, $cr
     return $newId;
 }
 
-function load_db($defaultUsers)
+function set_active_storage_backend($source)
 {
-    $mysqlDb = mysql_load_db($defaultUsers);
-    if (is_array($mysqlDb)) return $mysqlDb;
+    $GLOBALS['_prodops_active_storage_backend'] = $source;
+}
 
+function get_active_storage_backend()
+{
+    return isset($GLOBALS['_prodops_active_storage_backend']) ? $GLOBALS['_prodops_active_storage_backend'] : null;
+}
+
+function db_richness_score($db)
+{
+    if (!is_array($db)) return -1;
+    $ticketCount = isset($db['tickets']) && is_array($db['tickets']) ? count($db['tickets']) : 0;
+    $userCount = isset($db['users']) && is_array($db['users']) ? count($db['users']) : 0;
+    $incidentCount = isset($db['incidents']) && is_array($db['incidents']) ? count($db['incidents']) : 0;
+    $categoryCount = isset($db['categories']) && is_array($db['categories']) ? count($db['categories']) : 0;
+    $pinnedCount = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? count($db['pinned_tickets']) : 0;
+    $requestCount = isset($db['preset_option_requests']) && is_array($db['preset_option_requests']) ? count($db['preset_option_requests']) : 0;
+    return ($ticketCount * 1000000) + ($userCount * 10000) + ($incidentCount * 100) + $categoryCount + ($pinnedCount * 10) + $requestCount;
+}
+
+function load_json_db($defaultUsers)
+{
     if (!file_exists(DB_PATH)) {
         $empty = array(
             'categories' => array(),
@@ -1157,6 +1177,29 @@ function load_db($defaultUsers)
     return $db;
 }
 
+function load_db($defaultUsers)
+{
+    $jsonDb = load_json_db($defaultUsers);
+    $mysqlDb = mysql_load_db($defaultUsers);
+
+    if (is_local_dev_host()) {
+        $selected = 'json';
+        if (is_array($mysqlDb) && db_richness_score($mysqlDb) > db_richness_score($jsonDb)) {
+            $selected = 'mysql';
+        }
+        set_active_storage_backend($selected);
+        return $selected === 'mysql' ? $mysqlDb : $jsonDb;
+    }
+
+    if (is_array($mysqlDb)) {
+        set_active_storage_backend('mysql');
+        return $mysqlDb;
+    }
+
+    set_active_storage_backend('json');
+    return $jsonDb;
+}
+
 function touch_sync_ts()
 {
     @file_put_contents(SYNC_TS_PATH, sprintf('%.6f', microtime(true)));
@@ -1164,7 +1207,13 @@ function touch_sync_ts()
 
 function save_db($db)
 {
-    if (mysql_enabled()) {
+    $activeStorage = get_active_storage_backend();
+    if ($activeStorage === 'mysql') {
+        if (mysql_save_db($db)) { touch_sync_ts(); return true; }
+        return false;
+    }
+
+    if ($activeStorage !== 'json' && mysql_enabled()) {
         if (mysql_save_db($db)) { touch_sync_ts(); return true; }
     }
 
@@ -3007,13 +3056,19 @@ if ($path === '/api/user-charts' && $method === 'GET') {
     $panelTitles = isset($userData['panel_titles']) && is_array($userData['panel_titles']) ? $userData['panel_titles'] : array();
     $chartModes = isset($userData['chart_modes']) && is_array($userData['chart_modes']) ? $userData['chart_modes'] : array();
     $chartCustomRanges = isset($userData['chart_custom_ranges']) && is_array($userData['chart_custom_ranges']) ? $userData['chart_custom_ranges'] : array();
-    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles, 'chart_modes' => $chartModes, 'chart_custom_ranges' => $chartCustomRanges), 200);
+    $chartSpans = isset($userData['chart_spans']) && is_array($userData['chart_spans']) ? $userData['chart_spans'] : array();
+    $chartTypes = isset($userData['chart_types']) && is_array($userData['chart_types']) ? $userData['chart_types'] : array();
+    $palette = isset($userData['palette']) ? strval($userData['palette']) : 'blu';
+    $darkMode = !empty($userData['dark_mode']);
+    json_response(array('charts' => $charts, 'hidden_panels' => $hiddenPanels, 'panel_order' => $panelOrder, 'panel_titles' => $panelTitles, 'chart_modes' => $chartModes, 'chart_custom_ranges' => $chartCustomRanges, 'chart_spans' => $chartSpans, 'chart_types' => $chartTypes, 'palette' => $palette, 'dark_mode' => $darkMode), 200);
 }
 
 if ($path === '/api/user-charts' && $method === 'PUT') {
     if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
-    $incoming = isset($payload['charts']) && is_array($payload['charts']) ? $payload['charts'] : array();
-    $incomingHidden = isset($payload['hidden_panels']) && is_array($payload['hidden_panels']) ? $payload['hidden_panels'] : array();
+    $userKey = strval(intval($user['id']));
+    $existingUserData = isset($db['user_charts'][$userKey]) && is_array($db['user_charts'][$userKey]) ? $db['user_charts'][$userKey] : array();
+    $incoming = isset($payload['charts']) && is_array($payload['charts']) ? $payload['charts'] : (isset($existingUserData['charts']) && is_array($existingUserData['charts']) ? $existingUserData['charts'] : array());
+    $incomingHidden = isset($payload['hidden_panels']) && is_array($payload['hidden_panels']) ? $payload['hidden_panels'] : (isset($existingUserData['hidden_panels']) && is_array($existingUserData['hidden_panels']) ? $existingUserData['hidden_panels'] : array());
     $allowedDimensions = array('fab', 'category', 'incident', 'team', 'severity');
     $allowedWindows = array('day', 'month', 'months', 'q1', 'q2', 'q3', 'q4');
     $allowedScopes = array('all', 'mine', 'group');
@@ -3078,14 +3133,14 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
         $pid = strval($pid);
         if (in_array($pid, $allowedDefaultPanels, true)) $cleanHidden[] = $pid;
     }
-    $incomingOrder = isset($payload['panel_order']) && is_array($payload['panel_order']) ? $payload['panel_order'] : array();
+    $incomingOrder = isset($payload['panel_order']) && is_array($payload['panel_order']) ? $payload['panel_order'] : (isset($existingUserData['panel_order']) && is_array($existingUserData['panel_order']) ? $existingUserData['panel_order'] : array());
     $cleanOrder = array();
     foreach ($incomingOrder as $pid) {
         $pid = preg_replace('/[^A-Za-z0-9_-]/', '', strval($pid));
         if ($pid !== '') $cleanOrder[] = $pid;
     }
     $cleanOrder = array_slice(array_unique($cleanOrder), 0, 48);
-    $incomingTitles = isset($payload['panel_titles']) && is_array($payload['panel_titles']) ? $payload['panel_titles'] : array();
+    $incomingTitles = isset($payload['panel_titles']) && is_array($payload['panel_titles']) ? $payload['panel_titles'] : (isset($existingUserData['panel_titles']) && is_array($existingUserData['panel_titles']) ? $existingUserData['panel_titles'] : array());
     $allowedTitlePanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelSeverity','chartPanelUser');
     $cleanTitles = array();
     foreach ($incomingTitles as $pid => $ptitle) {
@@ -3096,14 +3151,19 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     }
     $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'severityYear', 'userYear');
     $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4', 'custom');
-    $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : array();
+    $allowedPaletteValues = array('cappuccino', 'bordeaux', 'verde', 'blu', 'giallo');
+    $allowedChartSpanPanels = array('chartPanelPersonal', 'chartPanelPersonalMine', 'chartPanelPersonalGroup', 'chartPanelFab', 'chartPanelCat', 'chartPanelTeam', 'chartPanelSeverity', 'chartPanelUser');
+    $allowedChartSpanValues = array(3, 6, 9, 12);
+    $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'severityYear');
+    $allowedChartTypeValues = array('column', 'bar', 'donut');
+    $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : (isset($existingUserData['chart_modes']) && is_array($existingUserData['chart_modes']) ? $existingUserData['chart_modes'] : array());
     $cleanModes = array();
     foreach ($allowedChartModeTargets as $t) {
         if (isset($incomingModes[$t]) && in_array(strval($incomingModes[$t]), $allowedChartModeValues, true)) {
             $cleanModes[$t] = strval($incomingModes[$t]);
         }
     }
-    $incomingRanges = isset($payload['chart_custom_ranges']) && is_array($payload['chart_custom_ranges']) ? $payload['chart_custom_ranges'] : array();
+    $incomingRanges = isset($payload['chart_custom_ranges']) && is_array($payload['chart_custom_ranges']) ? $payload['chart_custom_ranges'] : (isset($existingUserData['chart_custom_ranges']) && is_array($existingUserData['chart_custom_ranges']) ? $existingUserData['chart_custom_ranges'] : array());
     $cleanRanges = array();
     foreach ($allowedChartModeTargets as $t) {
         if (!isset($incomingRanges[$t]) || !is_array($incomingRanges[$t])) continue;
@@ -3113,9 +3173,26 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
             $cleanRanges[$t] = array('start' => $rStart, 'end' => $rEnd);
         }
     }
-    $db['user_charts'][strval(intval($user['id']))] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges);
+    $incomingSpans = isset($payload['chart_spans']) && is_array($payload['chart_spans']) ? $payload['chart_spans'] : (isset($existingUserData['chart_spans']) && is_array($existingUserData['chart_spans']) ? $existingUserData['chart_spans'] : array());
+    $cleanSpans = array();
+    foreach ($allowedChartSpanPanels as $panelId) {
+        if (!isset($incomingSpans[$panelId])) continue;
+        $spanValue = intval($incomingSpans[$panelId]);
+        if (in_array($spanValue, $allowedChartSpanValues, true)) $cleanSpans[$panelId] = $spanValue;
+    }
+    $incomingTypes = isset($payload['chart_types']) && is_array($payload['chart_types']) ? $payload['chart_types'] : (isset($existingUserData['chart_types']) && is_array($existingUserData['chart_types']) ? $existingUserData['chart_types'] : array());
+    $cleanTypes = array();
+    foreach ($allowedChartTypeTargets as $chartKey) {
+        if (!isset($incomingTypes[$chartKey])) continue;
+        $typeValue = strval($incomingTypes[$chartKey]);
+        if (in_array($typeValue, $allowedChartTypeValues, true)) $cleanTypes[$chartKey] = $typeValue;
+    }
+    $palette = isset($payload['palette']) ? strtolower(trim(strval($payload['palette']))) : (isset($existingUserData['palette']) ? strtolower(trim(strval($existingUserData['palette']))) : 'blu');
+    if (!in_array($palette, $allowedPaletteValues, true)) $palette = 'blu';
+    $darkMode = isset($payload['dark_mode']) ? !empty($payload['dark_mode']) : !empty($existingUserData['dark_mode']);
+    $db['user_charts'][$userKey] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges, 'chart_spans' => $cleanSpans, 'chart_types' => $cleanTypes, 'palette' => $palette, 'dark_mode' => $darkMode);
     save_db($db);
-    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges), 200);
+    json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges, 'chart_spans' => $cleanSpans, 'chart_types' => $cleanTypes, 'palette' => $palette, 'dark_mode' => $darkMode), 200);
 }
 
 if ($path === '/api/ping' && $method === 'GET') {
