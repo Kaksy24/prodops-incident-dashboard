@@ -138,6 +138,7 @@ body.modal-open {
   overflow: hidden;
   overscroll-behavior: none;
 }
+html.theme-sync-pending body { visibility: hidden; }
 body { margin: 0; font-family: "Segoe UI", "Inter", sans-serif; color: var(--text); background: radial-gradient(circle at 95% 5%, var(--bg-accent) 0%, transparent 35%), var(--bg); }
 .app-layout { min-height: 100vh; display: grid; grid-template-columns: 310px 1fr; }
 .sidebar { min-width: 0; color: #eef6ff; background: linear-gradient(170deg, var(--side-1), var(--side-2)); border-right: 1px solid #2c3f58; }
@@ -287,13 +288,13 @@ body.theme-dark .switch-thumb {
 .previous-shifts-header { display: flex; align-items: center; gap: 10px; }
 .previous-shifts-header .section-toggle { flex: 1; min-width: 0; }
 .user-pill { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 9px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.01em; box-shadow: 0 2px 8px rgba(0,0,0,.15); white-space: nowrap; flex-shrink: 0; }
-.sidebar-top .user-pill { position: relative; flex: 1; min-width: 0; justify-content: center; gap: 10px; margin: 0; padding: 12px 18px; min-height: 64px; max-width: 230px; font-size: 1.1rem; background: rgba(255,255,255,0.10); box-shadow: none; color: #eef6ff; }
-.sidebar-top .user-pill .user-pill-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; }
-.sidebar-top .user-pill .user-pill-icon svg { width: 18px; height: 18px; }
-.user-pill-info { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; min-width: 0; padding: 0 12px 0 40px; }
-.sidebar-top #userPillName { width: 100%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-pill-sep { width: 60%; height: 1px; background: rgba(255,255,255,0.25); margin: 2px 0; }
-.user-pill-meta { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; font-weight: 400; opacity: 0.75; white-space: nowrap; }
+.sidebar-top .user-pill { display: grid; grid-template-columns: clamp(26px, 4.8vw, 30px) minmax(0, 1fr); align-items: center; justify-content: start; flex: 1 1 auto; min-width: 0; width: 100%; gap: clamp(8px, 1.2vw, 12px); margin: 0; padding: clamp(10px, 1.6vw, 12px) clamp(12px, 2vw, 18px); min-height: clamp(56px, 9vw, 72px); max-width: none; font-size: clamp(.9rem, 2vw, 1.05rem); background: rgba(255,255,255,0.10); box-shadow: none; color: #eef6ff; white-space: normal; text-align: left; }
+.sidebar-top .user-pill .user-pill-icon { position: static; width: clamp(26px, 4.8vw, 30px); height: clamp(26px, 4.8vw, 30px); }
+.sidebar-top .user-pill .user-pill-icon svg { width: clamp(15px, 3vw, 18px); height: clamp(15px, 3vw, 18px); }
+.user-pill-info { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; min-width: 0; padding: 0; }
+.sidebar-top #userPillName { width: 100%; text-align: left; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.05; }
+.user-pill-sep { width: 100%; max-width: 120px; height: 1px; background: rgba(255,255,255,0.25); margin: 0; }
+.user-pill-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: clamp(.62rem, 1.25vw, .7rem); font-weight: 400; opacity: 0.75; white-space: normal; line-height: 1.1; }
 .user-pill-dot { opacity: 0.6; }
 .user-pill-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(255,255,255,0.22); border-radius: 50%; flex-shrink: 0; }
 .user-pill-emoji { font-size: 18px; line-height: 1; display: block; pointer-events: none; user-select: none; }
@@ -403,8 +404,7 @@ body.theme-dark .switch-thumb {
 .chart-span-6 { grid-column: span 6; min-width: 0; }
 .chart-span-9 { grid-column: span 9; min-width: 0; }
 .chart-span-12 { grid-column: span 12; min-width: 0; }
-.chart-drag-handle { display: none; cursor: grab; color: var(--muted); padding: 0 8px 0 0; font-size: 1.1rem; line-height: 1; flex-shrink: 0; user-select: none; align-items: center; }
-.chart-drag-handle:active { cursor: grabbing; }
+.chart-drag-handle { display: none; }
 .chart-dragging { opacity: 0.35; box-shadow: 0 0 0 2px var(--brand); }
 .chart-drag-over { outline: 2px dashed var(--brand); outline-offset: 3px; }
 .chart-controls-row {
@@ -418,7 +418,27 @@ body.theme-dark .switch-thumb {
 .chart-resize-controls { display: flex; gap: 4px; flex-shrink: 0; }
 .chart-resize-btn { padding: 2px 7px; font-size: .75rem; border: 1px solid var(--border); border-radius: 5px; background: var(--input-bg); color: var(--muted); cursor: pointer; line-height: 1.4; }
 .chart-resize-btn:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
-.charts-edit-mode .chart-drag-handle { display: inline-flex; }
+.charts-grid.charts-edit-mode > .panel.chart-editable-card {
+  cursor: grab;
+  animation: chart-edit-wiggle 2.15s ease-in-out infinite;
+  animation-delay: var(--chart-wiggle-delay, 0s);
+  transform-origin: 50% 50%;
+}
+.charts-grid.charts-edit-mode > .panel.chart-editable-card:active,
+.charts-grid.charts-edit-mode > .panel.chart-editable-card.chart-dragging {
+  cursor: grabbing;
+  animation: none;
+}
+.charts-grid.charts-edit-mode > .panel.chart-editable-card .chart,
+.charts-grid.charts-edit-mode > .panel.chart-editable-card .personal-chart {
+  cursor: grab;
+}
+@keyframes chart-edit-wiggle {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  20% { transform: rotate(-0.7deg) translateY(-1px); }
+  50% { transform: rotate(0.55deg) translateY(0); }
+  80% { transform: rotate(-0.35deg) translateY(1px); }
+}
 
 /* --- Card "Aggiungi grafico" --- */
 .add-chart-card {
@@ -489,7 +509,7 @@ body.theme-dark .switch-thumb {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--panel);
-  color: var(--muted);
+  color: var(--text);
   cursor: pointer;
   transition: background .14s, color .14s, border-color .14s;
 }
@@ -517,10 +537,31 @@ body.theme-dark .switch-thumb {
 
 /* Cursore "clicca per rinominare" sui titoli in edit mode */
 .charts-edit-mode .panel-heading-row h3 { cursor: text; }
+.charts-edit-mode .panel-heading-row h3.chart-title-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.charts-edit-mode .panel-heading-row h3.chart-title-editable::after {
+  content: '✎';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--brand);
+  font-size: .8rem;
+  line-height: 1;
+  flex: 0 0 auto;
+  opacity: .92;
+}
 
 /* --- Modale aggiungi grafico --- */
 .add-chart-modal-panel {
-  width: 520px;
+  width: 620px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -536,6 +577,101 @@ body.theme-dark .switch-thumb {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.add-chart-wizard-progress {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.add-chart-progress-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 800;
+}
+.add-chart-progress-dot.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+.add-chart-progress-dot.done {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  color: var(--brand);
+}
+.add-chart-wizard-host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.add-chart-wizard-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.add-chart-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 148px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .14s, background .14s, box-shadow .14s, transform .14s;
+}
+.add-chart-choice-card strong {
+  font-size: 1rem;
+}
+.add-chart-choice-card span {
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.45;
+}
+.add-chart-choice-card:hover,
+.add-chart-choice-card.active {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 7%, var(--panel));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--brand) 14%, transparent);
+  transform: translateY(-1px);
+}
+.add-chart-step-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.add-chart-review {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand) 4%, var(--panel));
+}
+.add-chart-review-row {
+  display: grid;
+  gap: 4px;
+}
+.add-chart-review-row strong {
+  font-size: .78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.add-chart-review-row span {
+  font-size: .9rem;
+  color: var(--text);
+  line-height: 1.45;
 }
 .add-chart-field { margin-bottom: 14px; }
 .add-chart-label { display: block; font-size: .82rem; font-weight: 700; color: var(--text); margin-bottom: 7px; }
@@ -868,11 +1004,12 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
 .current-shift-filter-search input {
   margin: 0;
   width: 100%;
+  min-height: 40px;
 }
 .current-shift-header-row {
   flex-wrap: nowrap;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .current-shift-header-row .panel-heading-title {
   flex-shrink: 0;
@@ -886,28 +1023,60 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
 .sort-select-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+}
+.sort-filter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.sort-filter-block label {
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.sort-filter-inline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
 }
 .sort-select-row select {
   min-width: 110px;
-  flex: 1;
   margin: 0;
+  min-height: 40px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel);
+}
+.sort-filter-block-order .sort-filter-inline select {
+  flex: 1 1 auto;
+  padding-right: 34px;
 }
 .sort-dir-btn {
-  flex-shrink: 0;
-  padding: 0 9px;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 30px;
+  padding: 0;
   font-size: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0 7px 7px 0;
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
   line-height: 1;
 }
 .sort-dir-btn:hover {
-  background: var(--brand);
-  color: #fff;
-  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, var(--panel));
+  color: var(--brand);
 }
 /* FAB + Severity affiancati nella modale */
 .fab-severity-row {
@@ -2742,15 +2911,13 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
 @media (min-width: 901px) and (max-width: 1400px) {
   .app-layout { grid-template-columns: 244px 1fr; }
   .charts-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .charts-grid > .panel.chart-span-3,
-  .charts-grid > .panel.chart-span-6,
-  .charts-grid > .panel.chart-span-9,
-  .charts-grid > .panel.chart-span-12,
-  .charts-grid > .add-chart-card {
-    grid-column: auto / span 1;
-  }
+  .charts-grid > .add-chart-card.chart-span-3 { grid-column: span 1; }
+  .charts-grid > .panel.chart-span-6 { grid-column: span 2; }
+  .charts-grid > .panel.chart-span-9 { grid-column: span 3; }
+  .charts-grid > .panel.chart-span-12 { grid-column: span 4; }
 }
 /* La toolbar del turno corrente va a capo invece di sovrapporsi
    (vale anche su mobile) */
@@ -4301,22 +4468,9 @@ body.theme-dark .app-version-badge {
 
 /* ── Compact Visual ─────────────────────────────────────── */
 
-.compact-toggle-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  font-size: .78rem;
-  font-weight: 700;
-  color: var(--muted);
-  cursor: pointer;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.compact-toggle-label input[type="checkbox"] {
-  width: auto;
-  margin: 0;
+.compact-mode-select {
+  flex: 0 0 auto;
+  min-width: 142px;
   cursor: pointer;
 }
 

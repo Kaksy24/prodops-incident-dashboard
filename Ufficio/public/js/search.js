@@ -45,6 +45,10 @@ let categorySelectHandle = null;
 let categoriesData = [];
 let activeSearchModalTicketId = '';
 
+function releaseThemeSyncPending() {
+  document.documentElement.classList.remove('theme-sync-pending');
+}
+
 const chartPalette = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
   '#17becf', '#bcbd22', '#8c564b', '#e377c2', '#7f7f7f'
@@ -279,6 +283,8 @@ async function loadUserPreferences() {
   const data = await fetchJson('/api/user-charts');
   currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : (localStorage.getItem('palette') || 'blu');
   currentDarkMode = !!data.dark_mode;
+  localStorage.setItem('palette', currentPaletteId || 'blu');
+  localStorage.setItem('dark-mode', currentDarkMode ? '1' : '');
   applyTheme(currentDarkMode ? 'dark' : 'light', currentPaletteId);
 }
 
@@ -712,8 +718,6 @@ function applyTicketSearchListeners() {
 }
 
 (async function init() {
-  const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
-  applyTheme(savedTheme, localStorage.getItem('palette') || 'blu');
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', async () => {
       const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
@@ -737,7 +741,15 @@ function applyTicketSearchListeners() {
     await fetch(appUrl('/api/logout'), { method: 'POST' });
     window.location.href = appUrl('/login.html');
   });
-  try { await loadUserPreferences(); } catch (error) { console.error(error); }
+  try {
+    await loadUserPreferences();
+  } catch (error) {
+    console.error(error);
+    const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
+    applyTheme(savedTheme, localStorage.getItem('palette') || 'blu');
+  } finally {
+    releaseThemeSyncPending();
+  }
   await loadUiColors();
   const me = await fetchJson('/api/me');
   currentUser = me.user;

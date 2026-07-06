@@ -29,7 +29,7 @@ const logoutBtn = document.getElementById('logoutBtn');
 const deleteTicketBtn = document.getElementById('deleteTicketBtn');
 const editFromReadBtn = document.getElementById('editFromReadBtn');
 const tsPopup = document.getElementById('tsPopup');
-const compactVisualToggle = document.getElementById('compactVisualToggle');
+const compactModeSelect = document.getElementById('compactModeSelect');
 const previousShiftsToggle = document.getElementById('previousShiftsToggle');
 const previousShiftsContent = document.getElementById('previousShiftsContent');
 const currentShiftTotalCount = document.getElementById('currentShiftTotalCount');
@@ -120,6 +120,9 @@ let ticketSubmitBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 let currentPaletteId = 'blu';
 let currentDarkMode = false;
+function releaseThemeSyncPending() {
+  document.documentElement.classList.remove('theme-sync-pending');
+}
 const chartPalette = [
   '#1f77b4',
   '#ff7f0e',
@@ -3330,7 +3333,7 @@ async function loadDayTickets(animatedTicketIds = []) {
 }
 
 function applyCurrentShiftFilter() {
-  if (_compactActive && _compactFlatRows.length) _compactRestoreFlat();
+  if (_compactMode && _compactFlatRows.length) _compactRestoreFlat();
   if (!ticketList || !currentShiftFilter) return;
   const query = currentShiftFilter.value.trim().toLocaleLowerCase('it');
   const userId = Number(currentUser && currentUser.id ? currentUser.id : 0);
@@ -3359,7 +3362,7 @@ function applyCurrentShiftFilter() {
     const hasFilter = Boolean(query) || currentShiftOwnerFilter !== 'all';
     currentShiftFilterEmpty.hidden = !(hasFilter && ticketCount > 0 && visibleTicketCount === 0);
   }
-  if (_compactActive) _compactBuild();
+  if (_compactMode) _compactBuild();
   else requestAnimationFrame(() => decorateClampedDescriptions(ticketList));
 }
 
@@ -3369,7 +3372,7 @@ function updateSortDirBtn() {
 }
 
 function sortTicketList() {
-  if (_compactActive && _compactFlatRows.length) _compactRestoreFlat();
+  if (_compactMode && _compactFlatRows.length) _compactRestoreFlat();
   if (!ticketList) return;
   var items = Array.from(ticketList.children).filter(function(li) { return li.dataset.ticketId; });
   var key = currentShiftSortKey;
@@ -3388,7 +3391,7 @@ function sortTicketList() {
     return cmp * dir;
   });
   items.forEach(function(li) { ticketList.appendChild(li); });
-  if (_compactActive) _compactBuild();
+  if (_compactMode) _compactBuild();
 }
 
 if (currentShiftFilter) {
@@ -3718,11 +3721,28 @@ function applyPanelTitles() {
   });
 }
 
+function refreshChartEditAffordances() {
+  var grid = document.getElementById('chartsGrid');
+  if (!grid) return;
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function(panel, index) {
+    if (panel.id === 'addChartCard') return;
+    panel.setAttribute('draggable', chartsEditMode ? 'true' : 'false');
+    panel.querySelectorAll('.panel-heading-row, .chart, .personal-chart, .chart-controls-row, .toggle-row').forEach(function(surface) {
+      surface.setAttribute('draggable', chartsEditMode ? 'true' : 'false');
+    });
+    panel.classList.toggle('chart-editable-card', chartsEditMode);
+    panel.style.setProperty('--chart-wiggle-delay', String((index % 6) * 0.12) + 's');
+    var h3 = panel.querySelector('.panel-heading-row h3');
+    if (h3) h3.classList.toggle('chart-title-editable', chartsEditMode);
+  });
+}
+
 function toggleChartsEditMode() {
   chartsEditMode = !chartsEditMode;
   var grid = document.getElementById('chartsGrid');
   var btn = document.getElementById('editChartModeBtn');
   if (grid) grid.classList.toggle('charts-edit-mode', chartsEditMode);
+  refreshChartEditAffordances();
   if (btn) {
     btn.classList.toggle('active', chartsEditMode);
     btn.querySelector('span') && (btn.querySelector('span').textContent = chartsEditMode ? 'Fine modifica' : 'Modifica grafici');
@@ -3899,6 +3919,10 @@ async function loadUserCharts() {
     chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? data.chart_types : chartTypes;
     currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : currentPaletteId;
     currentDarkMode = !!data.dark_mode;
+    try {
+      localStorage.setItem('palette', currentPaletteId || 'blu');
+      localStorage.setItem('dark-mode', currentDarkMode ? '1' : '');
+    } catch (error) {}
     applyTheme(currentPaletteId, currentDarkMode);
     applyAllChartSpans();
     if (data.chart_custom_ranges && typeof data.chart_custom_ranges === 'object') {
@@ -4051,6 +4075,10 @@ function renderAllCustomCharts() {
   keepAddChartCardLast(grid);
   applyAllChartSpans();
   setupChartResizeControls();
+  grid.querySelectorAll(':scope > .panel[id]').forEach(function(panel) {
+    attachChartDragHandle(panel);
+  });
+  refreshChartEditAffordances();
 }
 
 function syncPanelOrderFromGrid() {
@@ -4271,7 +4299,15 @@ function openAddChartModal() {
 
   const desc = document.createElement('p');
   desc.className = 'report-modal-desc';
-  desc.textContent = 'Quali informazioni vorresti visualizzare?';
+
+  const progress = document.createElement('div');
+  progress.className = 'add-chart-wizard-progress';
+
+  const modalBody = document.createElement('div');
+  modalBody.className = 'add-chart-modal-body';
+
+  const stepHost = document.createElement('div');
+  stepHost.className = 'add-chart-wizard-host';
 
   // --- Dropdown grafici default ---
   const defSection = document.createElement('div');
@@ -4330,14 +4366,6 @@ function openAddChartModal() {
   defWrap.appendChild(defAddBtn);
   defSection.appendChild(defWrap);
   defSection.appendChild(resetAllBtn);
-
-  // --- Divisore ---
-  const divider = document.createElement('div');
-  divider.className = 'add-chart-divider';
-  const dividerLabel = document.createElement('span');
-  dividerLabel.className = 'add-chart-divider-label';
-  dividerLabel.textContent = 'Oppure crea un grafico personalizzato';
-  divider.appendChild(dividerLabel);
 
   // 1) Finestre temporali (chip multi-select + range personalizzato)
   const winField = document.createElement('div');
@@ -4738,11 +4766,60 @@ function openAddChartModal() {
   cancelBtn.className = 'secondary';
   cancelBtn.textContent = 'Annulla';
   cancelBtn.addEventListener('click', closeOverlay);
-  const confirmBtn = document.createElement('button');
-  confirmBtn.type = 'button';
-  confirmBtn.className = 'primary';
-  confirmBtn.textContent = 'Crea grafico →';
-  confirmBtn.addEventListener('click', async () => {
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'secondary';
+  backBtn.textContent = '← Indietro';
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'primary';
+
+  const choiceStep = document.createElement('div');
+  choiceStep.className = 'add-chart-wizard-choice';
+  const choiceCreate = document.createElement('button');
+  choiceCreate.type = 'button';
+  choiceCreate.className = 'add-chart-choice-card';
+  choiceCreate.innerHTML = '<strong>Crea un grafico personalizzato</strong><span>Configura dati, periodo, ambito e tipo di visualizzazione passo dopo passo.</span>';
+  const choiceRestore = document.createElement('button');
+  choiceRestore.type = 'button';
+  choiceRestore.className = 'add-chart-choice-card';
+  choiceRestore.innerHTML = '<strong>Ripristina i grafici</strong><span>Riporta in dashboard un grafico nascosto oppure resetta l\'intero layout iniziale.</span>';
+  choiceStep.appendChild(choiceCreate);
+  choiceStep.appendChild(choiceRestore);
+
+  const reviewField = document.createElement('div');
+  reviewField.className = 'add-chart-review';
+
+  function renderReview() {
+    const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
+    const dimensionsArr = [];
+    selectedDims.forEach((itemSet, dimType) => {
+      const items = itemSet && itemSet.size > 0 ? Array.from(itemSet) : null;
+      dimensionsArr.push({ type: dimType, items });
+    });
+    const filterModes = effectiveCustomFilterModes(dimensionsArr, selectedDimFilters);
+    const summary = [
+      { label: 'Finestre', value: windowsList.length ? windowsList.map(windowLabel).join(', ') : 'Nessuna selezionata' },
+      { label: 'Dati', value: dimensionsArr.length ? dimensionsArr.map(function(d) {
+        const base = customLabel(CUSTOM_DIMENSIONS, d.type);
+        if (!d.items || !d.items.length) return base;
+        return base + ': ' + d.items.slice(0, 3).join(', ') + (d.items.length > 3 ? '…' : '');
+      }).join(' | ') : 'Nessun dato selezionato' },
+      { label: 'Ambito', value: customLabel(CUSTOM_SCOPES, scopeSelect.value) },
+      { label: 'Tipo', value: customLabel(CUSTOM_TYPES, typeSelect.value) },
+      { label: 'Titolo', value: titleInput.value.trim() || 'Automatico' },
+      { label: 'Filtri attivi', value: Object.keys(filterModes).filter(function(key) { return filterModes[key]; }).join(', ') || 'Nessuno' }
+    ];
+    reviewField.innerHTML = '';
+    summary.forEach(function(item) {
+      const row = document.createElement('div');
+      row.className = 'add-chart-review-row';
+      row.innerHTML = '<strong>' + escapeHtml(item.label) + '</strong><span>' + escapeHtml(item.value) + '</span>';
+      reviewField.appendChild(row);
+    });
+  }
+
+  async function finalizeCreate() {
     const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
     if (!windowsList.length) { showToast('Scegli almeno una finestra temporale (es. settimana, mese) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
     if (!selectedDims.size) { showToast('Scegli almeno un tipo di dato da visualizzare (es. incidenti, downtime) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
@@ -4757,7 +4834,7 @@ function openAddChartModal() {
     const scope = scopeSelect.value;
     const type = typeSelect.value;
     const baseTitle = titleInput.value.trim();
-    confirmBtn.disabled = true;
+    nextBtn.disabled = true;
 
     const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const filterModes = effectiveCustomFilterModes(dimensionsArr, selectedDimFilters);
@@ -4777,26 +4854,152 @@ function openAddChartModal() {
     renderAllCustomCharts();
     syncPanelOrderFromGrid();
     await saveUserCharts();
-  });
-  actions.appendChild(cancelBtn);
-  actions.appendChild(confirmBtn);
+  }
 
-  const modalBody = document.createElement('div');
-  modalBody.className = 'add-chart-modal-body';
+  const createSteps = [
+    { title: 'Finestre temporali', desc: 'Scegli quali periodi rendere selezionabili nel grafico.', content: winField },
+    { title: 'Dati da visualizzare', desc: 'Seleziona le dimensioni che vuoi mostrare e gli eventuali filtri.', content: dataField },
+    { title: 'Aspetto del grafico', desc: 'Definisci ambito e tipo di visualizzazione del grafico.', content: (function() {
+      const wrap = document.createElement('div');
+      wrap.className = 'add-chart-step-stack';
+      wrap.appendChild(scopeField);
+      wrap.appendChild(typeField);
+      return wrap;
+    }()) },
+    { title: 'Titolo e riepilogo', desc: 'Controlla il riepilogo finale e conferma la creazione.', content: (function() {
+      const wrap = document.createElement('div');
+      wrap.className = 'add-chart-step-stack';
+      wrap.appendChild(titleField);
+      wrap.appendChild(reviewField);
+      return wrap;
+    }()) }
+  ];
+
+  let selectedFlow = '';
+  let currentCreateStep = 0;
+
+  function setChoice(active) {
+    selectedFlow = active;
+    currentCreateStep = 0;
+    choiceCreate.classList.toggle('active', active === 'create');
+    choiceRestore.classList.toggle('active', active === 'restore');
+    renderWizard();
+  }
+
+  choiceCreate.addEventListener('click', function() { setChoice('create'); });
+  choiceRestore.addEventListener('click', function() { setChoice('restore'); });
+
+  function validateCurrentStep() {
+    if (selectedFlow !== 'create') return true;
+    if (currentCreateStep === 0) {
+      const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
+      if (!windowsList.length) {
+        showToast('Scegli almeno una finestra temporale prima di andare avanti.', 'warning', 'Selezione incompleta');
+        return false;
+      }
+    }
+    if (currentCreateStep === 1 && !selectedDims.size) {
+      showToast('Scegli almeno un tipo di dato da visualizzare prima di andare avanti.', 'warning', 'Selezione incompleta');
+      return false;
+    }
+    return true;
+  }
+
+  function renderProgress(total, index) {
+    progress.innerHTML = '';
+    if (!total) { progress.hidden = true; return; }
+    progress.hidden = false;
+    for (var i = 0; i < total; i += 1) {
+      var dot = document.createElement('span');
+      dot.className = 'add-chart-progress-dot';
+      if (i === index) dot.classList.add('active');
+      if (i < index) dot.classList.add('done');
+      dot.textContent = String(i + 1);
+      progress.appendChild(dot);
+    }
+  }
+
+  function renderWizard() {
+    stepHost.innerHTML = '';
+    backBtn.hidden = false;
+    nextBtn.hidden = false;
+    nextBtn.disabled = false;
+
+    if (!selectedFlow) {
+      title.textContent = 'Aggiungi grafico';
+      desc.textContent = 'Scegli se creare un nuovo grafico oppure ripristinare la dashboard esistente.';
+      renderProgress(0, 0);
+      stepHost.appendChild(choiceStep);
+      backBtn.hidden = true;
+      nextBtn.textContent = 'Avanti →';
+      nextBtn.disabled = true;
+      return;
+    }
+
+    if (selectedFlow === 'restore') {
+      title.textContent = 'Ripristina grafici';
+      desc.textContent = 'Seleziona un grafico nascosto da riportare in dashboard oppure ripristina l\'intera configurazione iniziale.';
+      renderProgress(1, 0);
+      stepHost.appendChild(defSection);
+      backBtn.textContent = '← Indietro';
+      nextBtn.hidden = true;
+      return;
+    }
+
+    var step = createSteps[currentCreateStep];
+    title.textContent = 'Crea grafico personalizzato';
+    desc.textContent = step.desc;
+    renderProgress(createSteps.length, currentCreateStep);
+    if (currentCreateStep === createSteps.length - 1) renderReview();
+    stepHost.appendChild(step.content);
+    backBtn.textContent = currentCreateStep === 0 ? '← Scelta iniziale' : '← Indietro';
+    nextBtn.textContent = currentCreateStep === createSteps.length - 1 ? 'Crea grafico' : 'Avanti →';
+  }
+
+  backBtn.addEventListener('click', function() {
+    if (!selectedFlow) return;
+    if (selectedFlow === 'restore') {
+      selectedFlow = '';
+      renderWizard();
+      return;
+    }
+    if (currentCreateStep === 0) {
+      selectedFlow = '';
+      renderWizard();
+      return;
+    }
+    currentCreateStep -= 1;
+    renderWizard();
+  });
+
+  nextBtn.addEventListener('click', async function() {
+    if (!selectedFlow) return;
+    if (selectedFlow === 'create') {
+      if (!validateCurrentStep()) return;
+      if (currentCreateStep === createSteps.length - 1) {
+        await finalizeCreate();
+        return;
+      }
+      currentCreateStep += 1;
+      renderWizard();
+      return;
+    }
+  });
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(backBtn);
+  actions.appendChild(nextBtn);
+
   modalBody.appendChild(desc);
-  modalBody.appendChild(defSection);
-  modalBody.appendChild(divider);
-  modalBody.appendChild(winField);
-  modalBody.appendChild(dataField);
-  modalBody.appendChild(scopeField);
-  modalBody.appendChild(typeField);
-  modalBody.appendChild(titleField);
+  modalBody.appendChild(progress);
+  modalBody.appendChild(stepHost);
 
   panel.appendChild(header);
   panel.appendChild(modalBody);
   panel.appendChild(actions);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
+  renderWizard();
 }
 
 document.getElementById('addChartCard')?.addEventListener('click', openAddChartModal);
@@ -5106,7 +5309,6 @@ function setupChartResizeControls() {
         if (newSpan === current) return;
         chartSpans[panel.id] = newSpan;
         applyChartSpan(panel, newSpan);
-        renderCharts();
         saveChartSpans();
       });
       controls.appendChild(btn);
@@ -5117,29 +5319,39 @@ function setupChartResizeControls() {
 
 function attachChartDragHandle(panel) {
   const grid = document.getElementById('chartsGrid');
-  if (!grid || !panel) return;
-  const header = panel.querySelector('.panel-heading-row');
-  if (!header || header.querySelector('.chart-drag-handle')) return;
-  const handle = document.createElement('span');
-  handle.className = 'chart-drag-handle';
-  handle.setAttribute('draggable', 'true');
-  handle.setAttribute('title', 'Trascina per spostare');
-  handle.textContent = '⠇';
-  header.prepend(handle);
+  if (!grid || !panel || panel.dataset.dragInit === '1') return;
+  panel.dataset.dragInit = '1';
 
-  handle.addEventListener('dragstart', function (e) {
+  function onDragStart(e) {
+    if (!chartsEditMode) {
+      e.preventDefault();
+      return;
+    }
+    var blocked = e.target.closest && e.target.closest('button, input, select, textarea, label, a, .chart-controls-row, .toggle-row, .range-calendar-wrap, .chart-title-edit-input');
+    if (blocked) {
+      e.preventDefault();
+      return;
+    }
     dragSrcPanel = panel;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', panel.id);
     try { e.dataTransfer.setDragImage(panel, 20, 20); } catch (err) {}
     setTimeout(function () { panel.classList.add('chart-dragging'); }, 0);
-  });
+  }
 
-  handle.addEventListener('dragend', function () {
+  function onDragEnd() {
     if (dragSrcPanel) dragSrcPanel.classList.remove('chart-dragging');
     grid.querySelectorAll('.chart-drag-over').forEach(function (el) { el.classList.remove('chart-drag-over'); });
     dragSrcPanel = null;
-  });
+  }
+
+  [panel]
+    .concat(Array.from(panel.querySelectorAll('.panel-heading-row, .chart, .personal-chart, .chart-controls-row, .toggle-row')))
+    .forEach(function(surface) {
+      surface.setAttribute('draggable', 'true');
+      surface.addEventListener('dragstart', onDragStart);
+      surface.addEventListener('dragend', onDragEnd);
+    });
 }
 
 function setupChartDragDrop() {
@@ -5150,6 +5362,7 @@ function setupChartDragDrop() {
   grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
     attachChartDragHandle(panel);
   });
+  refreshChartEditAffordances();
 
   grid.addEventListener('dragover', function (e) {
     e.preventDefault();
@@ -5213,6 +5426,20 @@ function setupChartDragDrop() {
     input.readOnly = true;
   });
   try { await loadCurrentUser(); } catch (error) { console.error(error); }
+  try { await loadUserCharts(); } catch (error) {
+    console.error(error);
+    var savedPalette = localStorage.getItem('palette');
+    if (!savedPalette) {
+      var old = localStorage.getItem('theme') || '';
+      savedPalette = (old === 'sunset') ? 'cappuccino' : 'blu';
+      if (['dark','forest','purple','midnight'].indexOf(old) >= 0) localStorage.setItem('dark-mode', '1');
+      localStorage.setItem('palette', savedPalette);
+    }
+    var savedDark = localStorage.getItem('dark-mode') === '1';
+    applyTheme(savedPalette, savedDark);
+  } finally {
+    releaseThemeSyncPending();
+  }
   try { await loadCategories(); } catch (error) { console.error(error); }
   try { await loadUiColors(); } catch (error) { console.error(error); uiColors = normalizeUiColors({}); }
   renderFabButtons();
@@ -5228,8 +5455,6 @@ function setupChartDragDrop() {
         await loadPreviousShifts();
       }
       await loadCharts();
-      await loadUserCharts();
-      renderCharts();
     } catch (error) {
       console.error(error);
     }
@@ -5248,17 +5473,6 @@ function applyTheme(paletteId, darkMode) {
     el.classList.toggle('active', el.dataset.theme === currentPaletteId);
   });
 }
-(function() {
-  var savedPalette = localStorage.getItem('palette');
-  if (!savedPalette) {
-    var old = localStorage.getItem('theme') || '';
-    savedPalette = (old === 'sunset') ? 'cappuccino' : 'blu';
-    if (['dark','forest','purple','midnight'].indexOf(old) >= 0) localStorage.setItem('dark-mode', '1');
-    localStorage.setItem('palette', savedPalette);
-  }
-  var savedDark = localStorage.getItem('dark-mode') === '1';
-  applyTheme(savedPalette, savedDark);
-})();
 if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
   var isDark = document.body.classList.contains('theme-dark');
   var newDark = !isDark;
@@ -5744,7 +5958,7 @@ window.addEventListener('resize', () => {
 });
 
 // ── Compact Visual ────────────────────────────────────────────────
-var _compactActive = false;
+var _compactMode = '';
 var _compactFlatRows = [];
 var _tsPopupTimer = null;
 
@@ -5753,6 +5967,18 @@ function _compactRestoreFlat() {
   if (!_compactFlatRows.length) return;
   ticketList.innerHTML = '';
   _compactFlatRows.forEach(function(r) { ticketList.appendChild(r); });
+}
+
+function _compactKeyForRow(row) {
+  if (_compactMode === 'incident') return String(row.dataset.incident || '').trim();
+  if (_compactMode === 'fab') return String(row.dataset.fab || '').trim();
+  return String(row.dataset.category || '').trim();
+}
+
+function _compactLabelForMode() {
+  if (_compactMode === 'incident') return 'incident';
+  if (_compactMode === 'fab') return 'FAB';
+  return 'categoria';
 }
 
 function _compactBuild() {
@@ -5766,9 +5992,9 @@ function _compactBuild() {
   var groups = {};
   var order = [];
   visRows.forEach(function(row) {
-    var cat = row.dataset.category || '';
-    if (!groups[cat]) { groups[cat] = []; order.push(cat); }
-    groups[cat].push(row);
+    var groupKey = _compactKeyForRow(row) || '—';
+    if (!groups[groupKey]) { groups[groupKey] = []; order.push(groupKey); }
+    groups[groupKey].push(row);
   });
 
   ticketList.innerHTML = '';
@@ -5783,12 +6009,13 @@ function _compactBuild() {
     return;
   }
 
-  order.forEach(function(cat) {
-    var cards = groups[cat];
+  order.forEach(function(groupKey) {
+    var cards = groups[groupKey];
     var stack = document.createElement('li');
     stack.className = 'ticket-stack' + (cards.length === 1 ? ' single' : '');
-    stack.dataset.stackCat = cat;
+    stack.dataset.stackKey = groupKey;
     stack._tsCards = cards;
+    stack.title = 'Compattato per ' + _compactLabelForMode() + ': ' + groupKey;
 
     var front = cards[0].cloneNode(true);
     stack.appendChild(front);
@@ -5860,10 +6087,10 @@ if (tsPopup) {
   });
 }
 
-if (compactVisualToggle) {
-  compactVisualToggle.addEventListener('change', function() {
-    _compactActive = this.checked;
-    if (_compactActive) {
+if (compactModeSelect) {
+  compactModeSelect.addEventListener('change', function() {
+    _compactMode = String(this.value || '');
+    if (_compactMode) {
       _compactBuild();
     } else {
       _compactRestoreFlat();

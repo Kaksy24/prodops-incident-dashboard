@@ -6,3 +6,7 @@ node_modules/
 Ufficio/avvia.exe
 .claude/
 Ufficio/data/sync_ts
+# Artefatti di deploy manuale (zip + staging)
+deploy_ticket_manager_*.zip
+deploy_ticket_manager_*.zippa
+.deploy_staging_ticket_manager/

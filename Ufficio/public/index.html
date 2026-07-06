@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incident Dashboard</title>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.9.1" />
+  <script>document.documentElement.classList.add('theme-sync-pending');</script>
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.9.12" />
 </head>
 <body>
   <div class="app-layout">
@@ -53,17 +54,25 @@
               </div>
               <div class="current-shift-sort-group">
                 <div class="sort-select-row">
-                  <select id="currentShiftSort" aria-label="Ordina per">
-                    <option value="time">Orario</option>
-                    <option value="category">Categoria</option>
-                    <option value="incident">Incident</option>
-                    <option value="fab">FAB</option>
-                  </select>
-                  <button type="button" id="currentShiftSortDir" class="sort-dir-btn" title="Inverti ordine" aria-label="Inverti ordine">↓</button>
-                  <label class="compact-toggle-label" title="Raggruppa i ticket per categoria in pile 3D">
-                    <input type="checkbox" id="compactVisualToggle" />
-                    <span>Compatta</span>
-                  </label>
+                  <div class="sort-filter-block">
+                    <select id="compactModeSelect" class="compact-mode-select" aria-label="Compatta ticket" title="Scegli come compattare i ticket">
+                      <option value="">Non compattare</option>
+                      <option value="category">Per categoria</option>
+                      <option value="incident">Per incident</option>
+                      <option value="fab">Per FAB</option>
+                    </select>
+                  </div>
+                  <div class="sort-filter-block sort-filter-block-order">
+                    <div class="sort-filter-inline">
+                      <select id="currentShiftSort" aria-label="Ordina per">
+                        <option value="time">Orario</option>
+                        <option value="category">Categoria</option>
+                        <option value="incident">Incident</option>
+                        <option value="fab">FAB</option>
+                      </select>
+                      <button type="button" id="currentShiftSortDir" class="sort-dir-btn" title="Inverti ordine" aria-label="Inverti ordine">↓</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -340,10 +349,7 @@
   </div>
   <script src="./public/js/vendor/pptxgen.bundle.js?v=1.9.1"></script>
   <script src="./public/js/toast.js?v=1.9.1"></script>
-  <script src="./public/js/script.js?v=1.9.1"></script>
-  <div class="app-version-badge">v1.9.1</div>
+  <script src="./public/js/script.js?v=1.9.12"></script>
+  <div class="app-version-badge">v1.9.12</div>
 </body>
 </html>
-
-
-

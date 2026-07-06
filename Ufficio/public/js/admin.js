@@ -61,6 +61,10 @@ const adminTabStorageKey = 'prodops_admin_tab';
 let currentPaletteId = 'blu';
 let currentDarkMode = false;
 
+function releaseThemeSyncPending() {
+  document.documentElement.classList.remove('theme-sync-pending');
+}
+
 let dragCategoryId = null;
 let dragIncidentId = null;
 let dragIncidentCategoryId = null;
@@ -150,6 +154,8 @@ async function loadUserPreferences() {
   const data = await fetchJson('/api/user-charts');
   currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : (localStorage.getItem('palette') || 'blu');
   currentDarkMode = !!data.dark_mode;
+  localStorage.setItem('palette', currentPaletteId || 'blu');
+  localStorage.setItem('dark-mode', currentDarkMode ? '1' : '');
   applyTheme(currentDarkMode ? 'dark' : 'light');
 }
 
@@ -780,8 +786,6 @@ async function saveUiColors() {
   showToast('Grafici, colori e titoli personalizzati salvati con successo.', 'success', 'Impostazioni salvate');
 }
 
-const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
-applyTheme(savedTheme);
 themeToggleBtn.addEventListener('click', () => {
   const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
   localStorage.setItem('dark-mode', next === 'dark' ? '1' : '');
@@ -2247,8 +2251,15 @@ userCreateForm?.addEventListener('submit', async (e) => {
       setAdminTab('catalog');
     }
   }
-
-  await loadUserPreferences();
+  try {
+    await loadUserPreferences();
+  } catch (error) {
+    console.error(error);
+    const savedTheme = localStorage.getItem('dark-mode') === '1' ? 'dark' : 'light';
+    applyTheme(savedTheme);
+  } finally {
+    releaseThemeSyncPending();
+  }
   loadChartTypes();
   syncAdminColorToggle();
   await Promise.allSettled([
