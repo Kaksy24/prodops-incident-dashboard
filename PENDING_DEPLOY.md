@@ -12,6 +12,21 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 
 ## Gia deployato
 
+Deploy confermato in data `2026-07-06` (ruolo moderatore + avatar sincronizzati + dashboard responsive) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/backend/auth.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/auth.php` | Nuovo ruolo `moderator`: `require_api_auth('moderator')` (admin+moderator) e `require_page_auth` consente al moderatore l'accesso a admin.html |
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Nuovi endpoint avatar `PUT /api/me/avatar` e `GET /api/user-avatars` (preferenza avatar persistita per utente, campo `avatar` creato on-demand, nessuna migrazione DB); endpoint catalogo/incident e revisione preset aperti al ruolo `moderator`; `POST/PUT /api/users` accettano ruolo `moderator` |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Pill utente ristrutturata (nome / separatore / team · ruolo, wrap avatar); **version bump v1.9.1** |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Opzione ruolo `moderator` nei select filtro/creazione utente; **version bump v1.9.1** |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | **version bump v1.9.1** (per cache-busting CSS/JS aggiornati) |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | **version bump v1.9.1** (per cache-busting CSS/JS aggiornati) |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Dashboard responsive: ≥1400px griglia a 12 colonne con larghezze fisse (pulsanti di ridimensionamento span 3/6/9/12 funzionanti); <1400px griglia auto-fit fluida (i grafici non si schiacciano né si tagliano, sidebar più stretta); pannelli grafico ad altezza flessibile (crescono col contenuto, niente tagli) con donut basati sulla larghezza (cqi); toolbar turno corrente che va a capo; stili pill/avatar picker/badge avatar nei ticket |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Avatar utente: picker 20 emoji sulla pill, badge avatar accanto allo username nei ticket, preferenza letta/salvata lato server con cache locale; pill con team/ruolo; drill-down grafici apre la ricerca filtrata in nuova scheda; pulsante Admin visibile anche al moderatore |
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Per il ruolo `moderator`: nasconde i tab `Utenti` e `Grafici/colori`, mostra solo Categorie/Incident e Revisione; opzione `moderator` nelle select ruolo |
+| `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | Badge avatar accanto allo username nei risultati e nella modale; idratazione avatar dal server |
+
 Deploy confermato in data `2026-07-06` per i seguenti file:
 
 | File locale | Path produzione | Note |
@@ -75,6 +90,7 @@ Deploy confermato in data `2026-07-04` per i seguenti file:
 |------|--------|
 | `Ufficio/backend/ldap.php` | Solo locale: contiene `dev_bypass: true` |
 | `Ufficio/backend/config.php` | In produzione esiste gia la configurazione DB corretta |
+| `Ufficio/data/db.json` | Dati locali di test; in produzione il DB reale non va sovrascritto (il campo `avatar` viene creato on-demand dal backend, nessuna migrazione) |
 | `.claude/`, `CLAUDE.md`, `Ufficio/data/sync_ts` | File locali di supporto, non applicativi |
 
 ## Note
