@@ -8,14 +8,20 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 
 | File locale | Path produzione | Note |
 |------|------|------|
+| _Nessuno_ |  |  |
+
+## Gia deployato
+
+Deploy confermato in data `2026-07-06` (v1.9.13 — wizard grafici step-by-step, resize a step fini, fix click grafici personali) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
 | `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Resize grafici più graduale: `chartSpanSteps` passa da `[3,6,9,12]` a `[3,4,6,8,9,12]`, così i pulsanti ◀/▶ cambiano la larghezza a step più fini (¼ → ⅓ → ½ → ⅔ → ¾ → intero) invece di raddoppiare di colpo. Wizard grafici (step "Ripristina i grafici"): rimossa l'opzione placeholder "— Seleziona un grafico default —" dalla tendina, spostata come titolo della sezione ("Seleziona un grafico default"); il pulsante "Ripristina grafico" rinominato in "Aggiungi grafico" (toast allineato). Progress step del wizard spostata in alto (sotto il titolo, sopra la descrizione). Grafici "Ticket personali"/"Ticket gruppo": il click sui punti non redirige più a "Cerca ticket" (rimossa `openPersonalPeriodTickets`); in vista annuale il click sul punto entra nel dettaglio del mese come le etichette, in vista mensile non fa nulla. Wizard "Aggiungi grafico": rimosse le descrizioni sotto il titolo (elemento `.report-modal-desc` e relativi testi in ogni step). Step 2 "Crea grafico personalizzato" ridisegnato come flusso guidato: 1) scelta di una o più categorie; 2) scelta se vedere le categorie per intero o solo alcuni incident (elenco incident filtrato per le categorie scelte, con disambiguazione dei nomi uguali tra categorie diverse); 3) filtro opzionale per singolo FAB/team/severity. Rimossa la vecchia UI multi-dimensione (`buildDimSection`/`selectedDims`); `finalizeCreate`/`renderReview`/validazione usano il nuovo stato guidato. `filterableCustomDimension` esteso a `category` e `severity`. **Version bump v1.9.13** (cache-busting `script.js`) |
 | `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Aggiunte le classi `.chart-span-4` e `.chart-span-8` (griglia 12 colonne); nel breakpoint responsive `<1400px` (griglia a 4 colonne) mappati `span-4→1` col e `span-8→3` col, in linea con gli step più fini del resize. Progress step del wizard grafici ridisegnata come stepper non interattivo (`pointer-events:none`, cursore default, pallini collegati da linee di progresso colorate verso gli step raggiunti). Stili per il flusso guidato dello step 2 (`.add-chart-guide`, `.add-chart-guide-block`, `.add-chart-subq`, `.add-chart-mode-choice`/`.add-chart-mode-btn`, `.add-chart-filter-row`) |
 | `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | **Version bump v1.9.13**: cache-busting `styles.css` + `script.js` e badge versione |
 | `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | **Version bump v1.9.13**: cache-busting `styles.css` e badge versione |
 | `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | **Version bump v1.9.13**: cache-busting `styles.css` e badge versione |
 | `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | **Version bump v1.9.13**: cache-busting `styles.css` e badge versione |
-
-## Gia deployato
 
 Deploy confermato in data `2026-07-06` (v1.9.12 — anti-flash tema, wizard aggiungi grafico, compattazione a tendina, fix resize grafici, pill responsive) per i seguenti file:
 
