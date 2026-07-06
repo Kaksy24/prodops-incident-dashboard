@@ -1672,6 +1672,40 @@ if ($path === '/api/me' && $method === 'GET') {
 }
 
 
+function allowed_avatars() {
+    return array('🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸');
+}
+
+if ($path === '/api/user-avatars' && $method === 'GET') {
+    $map = array();
+    foreach ($db['users'] as $u) {
+        if (isset($u['avatar']) && $u['avatar'] !== '' && isset($u['username'])) {
+            $map[$u['username']] = $u['avatar'];
+        }
+    }
+    json_response(array('avatars' => (object)$map), 200);
+}
+
+if ($path === '/api/me/avatar' && $method === 'PUT') {
+    $avatar = array_key_exists('avatar', $payload) ? strval($payload['avatar']) : '';
+    if ($avatar !== '' && !in_array($avatar, allowed_avatars(), true)) {
+        json_response(array('error' => 'Avatar non valido'), 400);
+    }
+    $found = false;
+    foreach ($db['users'] as &$u) {
+        if (intval($u['id']) === intval($user['id'])) {
+            if ($avatar === '') { unset($u['avatar']); } else { $u['avatar'] = $avatar; }
+            $found = true;
+            break;
+        }
+    }
+    unset($u);
+    if (!$found) json_response(array('error' => 'Utente non trovato'), 404);
+    save_db($db);
+    json_response(array('ok' => true, 'avatar' => $avatar), 200);
+}
+
+
 if ($path === '/api/ui-colors' && $method === 'GET') {
     json_response(array('ui_colors' => normalize_ui_colors(isset($db['ui_colors']) ? $db['ui_colors'] : default_ui_colors())), 200);
 }
@@ -1748,7 +1782,7 @@ if ($path === '/api/users' && $method === 'POST') {
     $personal_target = normalize_personal_target(isset($payload['personal_target']) ? $payload['personal_target'] : 20);
     $group_target = normalize_group_target(isset($payload['group_target']) ? $payload['group_target'] : 20);
     if ($username === '') json_response(array('error' => 'Username obbligatorio'), 400);
-    if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor') json_response(array('error' => 'Ruolo non valido'), 400);
+    if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor' && $role !== 'moderator') json_response(array('error' => 'Ruolo non valido'), 400);
     foreach ($db['users'] as $u) {
         if (strtolower($u['username']) === strtolower($username)) json_response(array('error' => 'Username gia esistente'), 409);
     }
@@ -1795,7 +1829,7 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'PUT') {
             if ($personal_target !== null) $u['personal_target'] = $personal_target;
             if ($group_target !== null) $u['group_target'] = $group_target;
             if ($role !== null && $role !== '') {
-                if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor') json_response(array('error' => 'Ruolo non valido'), 400);
+                if ($role !== 'admin' && $role !== 'user' && $role !== 'supervisor' && $role !== 'moderator') json_response(array('error' => 'Ruolo non valido'), 400);
                 if ($id === intval($user['id']) && $role !== $u['role']) json_response(array('error' => 'Non puoi modificare il ruolo del tuo utente'), 400);
                 if ($u['role'] === 'admin' && $role !== 'admin' && $adminCount <= 1) json_response(array('error' => 'Deve restare almeno un amministratore'), 400);
                 $u['role'] = $role;
@@ -1931,7 +1965,7 @@ if ($path === '/api/preset-option-requests' && $method === 'POST') {
 }
 
 if ($path === '/api/admin/preset-option-requests' && $method === 'GET') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $pending = array();
     foreach ($db['preset_option_requests'] as $request) {
         if (isset($request['status']) && $request['status'] === 'pending') $pending[] = $request;
@@ -1941,7 +1975,7 @@ if ($path === '/api/admin/preset-option-requests' && $method === 'GET') {
 }
 
 if (preg_match('#^/api/admin/preset-option-requests/(\d+)$#', $path, $m) && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $id = intval($m[1]);
     $action = isset($payload['action']) ? strtolower(trim(strval($payload['action']))) : '';
     if ($action !== 'approve' && $action !== 'reject') json_response(array('error' => 'Azione non valida'), 400);
@@ -1967,7 +2001,7 @@ if (preg_match('#^/api/admin/preset-option-requests/(\d+)$#', $path, $m) && $met
 }
 
 if ($path === '/api/admin/preset-options' && $method === 'GET') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $out = array();
     foreach ($db['preset_options'] as $fieldKey => $options) {
         if (!is_array($options)) $options = array();
@@ -1999,7 +2033,7 @@ if ($path === '/api/admin/preset-options' && $method === 'GET') {
 }
 
 if ($path === '/api/admin/preset-options' && $method === 'POST') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $fieldLabel = isset($payload['field_label']) ? trim(strval($payload['field_label'])) : '';
     $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : $fieldLabel);
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
@@ -2017,7 +2051,7 @@ if ($path === '/api/admin/preset-options' && $method === 'POST') {
 }
 
 if ($path === '/api/admin/preset-options' && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
     $originalValue = isset($payload['original_value']) ? trim(strval($payload['original_value'])) : '';
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
@@ -2040,7 +2074,7 @@ if ($path === '/api/admin/preset-options' && $method === 'PUT') {
 }
 
 if ($path === '/api/admin/preset-options' && $method === 'DELETE') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
     $value = isset($payload['value']) ? trim(strval($payload['value'])) : '';
     if ($fieldKey === '' || $value === '') json_response(array('error' => 'Campo e valore obbligatori'), 400);
@@ -2061,7 +2095,7 @@ if ($path === '/api/admin/preset-options' && $method === 'DELETE') {
 }
 
 if ($path === '/api/admin/preset-option-format' && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $fieldKey = normalize_preset_field_key(isset($payload['field_key']) ? $payload['field_key'] : '');
     if ($fieldKey === '') json_response(array('error' => 'Campo non valido'), 400);
     $mode = normalize_preset_format_mode(isset($payload['mode']) ? $payload['mode'] : 'none');
@@ -2135,7 +2169,7 @@ if ($path === '/api/categories' && $method === 'GET') {
 }
 
 if ($path === '/api/categories' && $method === 'POST') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
     if ($name === '') json_response(array('error' => 'Nome categoria obbligatorio'), 400);
     if (supabase_enabled()) {
@@ -2158,7 +2192,7 @@ if ($path === '/api/categories' && $method === 'POST') {
 }
 
 if ($path === '/api/categories/reorder' && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $orderedIds = isset($payload['orderedIds']) && is_array($payload['orderedIds']) ? $payload['orderedIds'] : array();
     if (count($orderedIds)) {
         $byId = array();
@@ -2192,7 +2226,7 @@ if ($path === '/api/categories/reorder' && $method === 'PUT') {
 }
 
 if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $id = intval($m[1]);
     if ($method === 'PUT') {
         $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
@@ -2245,7 +2279,7 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
 }
 
 if ($path === '/api/incidents' && $method === 'POST') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $categoryId = isset($payload['category_id']) ? intval($payload['category_id']) : 0;
     $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
     if ($categoryId <= 0 || $name === '') json_response(array('error' => 'Dati mancanti'), 400);
@@ -2273,7 +2307,7 @@ if ($path === '/api/incidents' && $method === 'POST') {
 }
 
 if ($path === '/api/incidents/reorder' && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $categoryId = isset($payload['category_id']) ? intval($payload['category_id']) : 0;
     $orderedIds = isset($payload['orderedIds']) && is_array($payload['orderedIds']) ? $payload['orderedIds'] : array();
     if ($categoryId > 0 && count($orderedIds)) {
@@ -2313,7 +2347,7 @@ if ($path === '/api/incidents/reorder' && $method === 'PUT') {
 }
 
 if (preg_match('#^/api/incidents/(\d+)/presets$#', $path, $m) && $method === 'PUT') {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $id = intval($m[1]);
     $presets = isset($payload['presets']) && is_array($payload['presets']) ? $payload['presets'] : array();
     $clean = array();
@@ -2332,7 +2366,7 @@ if (preg_match('#^/api/incidents/(\d+)/presets$#', $path, $m) && $method === 'PU
 }
 
 if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
-    require_api_auth('admin');
+    require_api_auth('moderator');
     $id = intval($m[1]);
     if ($method === 'PUT') {
         $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';

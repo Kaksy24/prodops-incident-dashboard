@@ -11,7 +11,7 @@ $LDAP_SERVERS = array(
 
 $LDAP_CONFIG = array(
     'enabled'            => true,
-    'dev_bypass'         => false,
+    'dev_bypass'         => true,
     'allow_dev_password' => false,
     'dev_password'       => '',
 );

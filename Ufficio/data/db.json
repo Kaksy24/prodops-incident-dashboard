@@ -923,6 +923,61 @@
             "severity": 1,
             "owner_user_id": 1,
             "owner_team": "A"
+        },
+        {
+            "id": 66,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-05T21:32:00+00:00"
+        },
+        {
+            "id": 67,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6comm.down\u00e3\u20ac\u2030",
+            "fab": "L1",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-05T21:42:00+00:00"
+        },
+        {
+            "id": 68,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis43\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6comm.down\u00e3\u20ac\u2030tgtg",
+            "fab": "NRK",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-05T21:56:00+00:00"
+        },
+        {
+            "id": 69,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la mhthacchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6comm.down\u00e3\u20ac\u2030gth",
+            "fab": "L1",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-05T21:56:00+00:00"
+        },
+        {
+            "id": 70,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;\nMotivo del reset: \u00e3\u20ac\u02c6busy\u00e3\u20ac\u2030",
+            "fab": "NRK",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-06T07:40:00+00:00"
         }
     ],
     "users": [
@@ -934,7 +989,8 @@
             "team": "A",
             "group_name": "ProdOps",
             "personal_target": 200,
-            "group_target": 20
+            "group_target": 20,
+            "avatar": "\ud83d\udc3c"
         },
         {
             "id": 5,
@@ -954,6 +1010,16 @@
             "team": "B",
             "group_name": "ProdOps",
             "personal_target": 200,
+            "group_target": 20
+        },
+        {
+            "id": 7,
+            "username": "testmod",
+            "password": "testmod",
+            "role": "moderator",
+            "team": "A",
+            "group_name": "ProdOps",
+            "personal_target": 20,
             "group_target": 20
         }
     ],
@@ -1091,7 +1157,7 @@
                         "months"
                     ],
                     "scope": "all",
-                    "type": "bar",
+                    "type": "donut",
                     "filters": []
                 },
                 {
@@ -1132,7 +1198,28 @@
                 "chartPanelCustom_cmqviijqbbp90",
                 "chartPanelCustom_cmqviixrh4mos"
             ],
-            "panel_titles": []
+            "panel_titles": [],
+            "chart_modes": {
+                "fabYear": "day",
+                "catYear": "day",
+                "teamYear": "day",
+                "severityYear": "day",
+                "userYear": "months"
+            },
+            "chart_custom_ranges": [],
+            "chart_spans": [],
+            "chart_types": {
+                "fabDay": "column",
+                "catDay": "column",
+                "fabYear": "donut",
+                "catYear": "column",
+                "personalMineChart": "column",
+                "personalGroupChart": "column",
+                "teamYear": "donut",
+                "severityYear": "donut"
+            },
+            "palette": "blu",
+            "dark_mode": false
         },
         "5": {
             "charts": [],
@@ -1218,8 +1305,10 @@
     "counters": {
         "category": 6,
         "incident": 19,
-        "ticket": 65,
-        "user": 6,
+        "ticket": 70,
+        "user": 7,
         "preset_option_request": 4
-    }
+    },
+    "preset_option_formats": [],
+    "pinned_tickets": []
 }

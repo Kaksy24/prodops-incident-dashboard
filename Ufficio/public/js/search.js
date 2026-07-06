@@ -1,4 +1,13 @@
 const openAdminBtn = document.getElementById('openAdminBtn');
+
+function getAvatarBadge(username) {
+  try {
+    const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
+    const emoji = username && all[username] ? all[username] : null;
+    if (!emoji) return '';
+    return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
+  } catch { return ''; }
+}
 const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
 
 function appUrl(path) {
@@ -305,7 +314,7 @@ function openSearchModal(ticket) {
         highlightPresetValues(ticket.description || '') +
       '</div>' +
       (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
-      (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0">Da: ' + escapeHtml(ticket.ownerUsername) + '</p>' : '');
+      (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
   }
   if (searchModalDeleteBtn) {
     searchModalDeleteBtn.style.display = isAdminUser() ? '' : 'none';
@@ -419,7 +428,7 @@ function renderSearchTickets(tickets) {
         '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
       '</div>' +
       '<div class="ticket-row-footer">' +
-        (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
+        (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
       '</div>';
@@ -733,6 +742,14 @@ function applyTicketSearchListeners() {
   const me = await fetchJson('/api/me');
   currentUser = me.user;
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  // Idrata la cache locale con gli avatar (dal server) per i badge nei ticket, cross-browser.
+  try {
+    const av = await fetchJson('/api/user-avatars');
+    const map = (av && av.avatars) || {};
+    const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
+    Object.keys(map).forEach((u) => { if (map[u]) all[u] = map[u]; });
+    localStorage.setItem('prodops_avatars_v1', JSON.stringify(all));
+  } catch (error) {}
   await loadCategories();
   const _today = new Date();
   const _pad = function(n) { return String(n).padStart(2, '0'); };

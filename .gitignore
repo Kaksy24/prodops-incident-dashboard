@@ -4,3 +4,5 @@ node_modules/
 .vs/
 *.log
 Ufficio/avvia.exe
+.claude/
+Ufficio/data/sync_ts

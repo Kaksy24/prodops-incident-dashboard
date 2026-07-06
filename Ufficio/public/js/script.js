@@ -2535,14 +2535,35 @@ async function fetchJson(url, options, attempt = 0) {
 async function loadCurrentUser() {
   const data = await fetchJson('/api/me');
   currentUser = data.user;
-  if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  if (openAdminBtn) openAdminBtn.style.display = (currentUser?.role === 'admin' || currentUser?.role === 'moderator') ? '' : 'none';
   const pill = document.getElementById('userPill');
   const pillName = document.getElementById('userPillName');
+  const pillTeam = document.getElementById('userPillTeam');
+  const pillRole = document.getElementById('userPillRole');
   if (pill && pillName && currentUser) {
     pillName.textContent = currentUser.username || '';
+    if (pillTeam) {
+      const team = currentUser.team ? 'Team ' + currentUser.team : '';
+      pillTeam.textContent = team;
+      const dot = pill.querySelector('.user-pill-dot');
+      if (dot) dot.style.display = team ? '' : 'none';
+    }
+    if (pillRole) {
+      const roleLabels = { admin: 'Admin', moderator: 'Moderatore', supervisor: 'Supervisor', user: 'Operatore' };
+      pillRole.textContent = roleLabels[currentUser.role] || currentUser.role || '';
+    }
     pill.style.display = '';
-    pill.onclick = function() { if (window._openUserSettingsModal) window._openUserSettingsModal(); };
+    // La preferenza avatar arriva dal server (persiste tra browser/PC/cache); localStorage è solo cache.
+    const serverAvatar = (currentUser.avatar !== undefined && currentUser.avatar !== null) ? currentUser.avatar : undefined;
+    if (serverAvatar !== undefined && window._cacheAvatar) window._cacheAvatar(currentUser.username, serverAvatar);
+    const avatarToShow = serverAvatar !== undefined
+      ? (serverAvatar || null)
+      : (window._getStoredAvatar ? window._getStoredAvatar(currentUser.username) : null);
+    if (window._applyUserAvatar) window._applyUserAvatar(avatarToShow);
+    pill.onclick = function() { if (window._openAvatarPicker) window._openAvatarPicker(); };
   }
+  // Idrata la cache locale con gli avatar di tutti gli utenti (per i badge nei ticket, cross-browser).
+  if (window._hydrateAvatars) window._hydrateAvatars();
 }
 
 function formatCustomRangeLabel(range) {
@@ -2954,7 +2975,7 @@ function personalChartBackToYear(targetId) {
 
 // ── Drill: click su un elemento del grafico -> pagina "Cerca ticket" ──────────
 function goToSearchWithParams(params) {
-  window.location.href = appUrl('/search.html?' + params.toString());
+  window.open(appUrl('/search.html?' + params.toString()), '_blank');
 }
 
 function handleChartElementClick(el) {
@@ -3152,6 +3173,15 @@ async function loadCategories() {
   });
 }
 
+function getAvatarBadge(username) {
+  try {
+    const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
+    const emoji = username && all[username] ? all[username] : null;
+    if (!emoji) return '';
+    return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
+  } catch { return ''; }
+}
+
 function createTicketRowElement(t, isAnimated) {
   const pad = (v) => String(v).padStart(2, '0');
   const incidentId = Number(t.incident_id || 0);
@@ -3190,7 +3220,7 @@ function createTicketRowElement(t, isAnimated) {
       '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
-      (ownerUsername ? '<span class="ticket-row-owner">' + escapeHtml(ownerUsername) + '</span>' : '') +
+      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
       '<span class="ticket-row-datetime">' + dayMonth + ' ' + hhmm + '</span>' +
     '</div>';
   return li;
@@ -5075,8 +5105,9 @@ function setupChartResizeControls() {
         const newSpan = chartSpanSteps[newIdx];
         if (newSpan === current) return;
         chartSpans[panel.id] = newSpan;
-        saveChartSpans();
         applyChartSpan(panel, newSpan);
+        renderCharts();
+        saveChartSpans();
       });
       controls.appendChild(btn);
     });
@@ -5298,6 +5329,167 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
   if (modal) modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeUserSettingsModal(); });
 
   window._openUserSettingsModal = openUserSettingsModal;
+})();
+
+/* ── Avatar picker ───────────────────────────────────── */
+(function () {
+  var AVATARS = ['🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸'];
+  var STORAGE_KEY = 'prodops_avatars_v1';
+  var DEFAULT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>';
+
+  function getAll() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+  }
+
+  function getAvatar(username) {
+    return username ? (getAll()[username] || null) : null;
+  }
+
+  function cacheAvatar(username, emoji) {
+    if (!username) return;
+    try {
+      var all = getAll();
+      if (emoji) all[username] = emoji; else delete all[username];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {}
+  }
+
+  // Salva la preferenza: server (persistente) + cache locale.
+  function saveAvatar(username, emoji) {
+    if (!username) return;
+    cacheAvatar(username, emoji);
+    try {
+      fetchJson('/api/me/avatar', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar: emoji || '' })
+      }).catch(function () {});
+    } catch {}
+  }
+
+  // Scarica la mappa avatar di tutti gli utenti dal server nella cache locale.
+  function hydrateAvatars() {
+    try {
+      fetchJson('/api/user-avatars').then(function (data) {
+        var map = (data && data.avatars) || {};
+        try {
+          var all = getAll();
+          Object.keys(map).forEach(function (u) { if (map[u]) all[u] = map[u]; });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+        } catch {}
+      }).catch(function () {});
+    } catch {}
+  }
+
+  function applyAvatar(emoji) {
+    var wrap = document.getElementById('userPillAvatarWrap');
+    if (!wrap) return;
+    wrap.innerHTML = emoji ? '<span class="user-pill-emoji">' + emoji + '</span>' : DEFAULT_SVG;
+  }
+
+  window._applyUserAvatar = applyAvatar;
+  window._getStoredAvatar = getAvatar;
+  window._cacheAvatar = cacheAvatar;
+  window._hydrateAvatars = hydrateAvatars;
+
+  function openPicker() {
+    var existing = document.getElementById('avatarPickerOverlay');
+    if (existing) { existing.remove(); }
+
+    var current = getAvatar(currentUser && currentUser.username);
+    var overlay = document.createElement('div');
+    overlay.id = 'avatarPickerOverlay';
+    overlay.className = 'avatar-picker-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Scegli avatar');
+
+    var panel = document.createElement('div');
+    panel.className = 'avatar-picker-panel';
+
+    var header = document.createElement('div');
+    header.className = 'avatar-picker-header';
+    header.innerHTML = '<strong>Scegli il tuo avatar</strong>';
+    var closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'avatar-picker-close-x';
+    closeX.setAttribute('aria-label', 'Chiudi');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', closePicker);
+    header.appendChild(closeX);
+
+    var grid = document.createElement('div');
+    grid.className = 'avatar-picker-grid';
+
+    var defaultOpt = document.createElement('button');
+    defaultOpt.type = 'button';
+    defaultOpt.className = 'avatar-option avatar-option-default' + (!current ? ' selected' : '');
+    defaultOpt.title = 'Predefinito';
+    defaultOpt.setAttribute('aria-label', 'Predefinito');
+    defaultOpt.innerHTML = DEFAULT_SVG;
+    defaultOpt.addEventListener('click', function () {
+      choose(null);
+    });
+    grid.appendChild(defaultOpt);
+
+    AVATARS.forEach(function (emoji) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'avatar-option' + (current === emoji ? ' selected' : '');
+      btn.title = emoji;
+      btn.setAttribute('aria-label', emoji);
+      btn.textContent = emoji;
+      btn.addEventListener('click', function () { choose(emoji); });
+      grid.appendChild(btn);
+    });
+
+    var footer = document.createElement('div');
+    footer.className = 'avatar-picker-footer';
+    var settingsBtn = document.createElement('button');
+    settingsBtn.type = 'button';
+    settingsBtn.className = 'avatar-picker-settings-btn';
+    settingsBtn.textContent = 'Impostazioni profilo';
+    settingsBtn.addEventListener('click', function () {
+      closePicker();
+      if (window._openUserSettingsModal) window._openUserSettingsModal();
+    });
+    footer.appendChild(settingsBtn);
+
+    panel.appendChild(header);
+    panel.appendChild(grid);
+    panel.appendChild(footer);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(function () { overlay.classList.add('active'); });
+
+    overlay.addEventListener('mousedown', function (e) {
+      if (e.target === overlay) closePicker();
+    });
+    document.addEventListener('keydown', onEsc);
+  }
+
+  function onEsc(e) {
+    if (e.key === 'Escape') closePicker();
+  }
+
+  function closePicker() {
+    var overlay = document.getElementById('avatarPickerOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    overlay.classList.add('closing');
+    document.removeEventListener('keydown', onEsc);
+    setTimeout(function () { overlay.remove(); }, 220);
+  }
+
+  function choose(emoji) {
+    var username = currentUser && currentUser.username;
+    saveAvatar(username, emoji);
+    applyAvatar(emoji);
+    closePicker();
+  }
+
+  window._openAvatarPicker = openPicker;
 })();
 
 /* ── PIN checkbox listeners ─────────────────────────── */

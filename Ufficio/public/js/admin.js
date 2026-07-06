@@ -1016,7 +1016,7 @@ function renderUsers() {
         </td>
         <td>
           <select class="user-role-select" aria-label="Ruolo ${username}" data-user-id="${Number(user.id)}" ${roleLocked ? `disabled title="${lockReason}"` : ''}>
-            ${['user', 'admin', 'supervisor'].map((item) => `<option value="${item}" ${role === item ? 'selected' : ''}>${item === 'admin' ? 'Amministratore' : item === 'supervisor' ? 'Supervisor' : 'Operatore'}</option>`).join('')}
+            ${['user', 'moderator', 'admin', 'supervisor'].map((item) => `<option value="${item}" ${role === item ? 'selected' : ''}>${item === 'admin' ? 'Amministratore' : item === 'supervisor' ? 'Supervisor' : item === 'moderator' ? 'Moderatore' : 'Operatore'}</option>`).join('')}
           </select>
         </td>
         <td>
@@ -2232,17 +2232,33 @@ userCreateForm?.addEventListener('submit', async (e) => {
   }
   setAdminTab(savedAdminTab);
   await loadCurrentAdmin();
+
+  const isModerator = currentAdminUser?.role === 'moderator';
+  if (isModerator) {
+    const restrictedTabs = ['users', 'appearance'];
+    adminTabButtons.forEach((btn) => {
+      if (restrictedTabs.includes(btn.dataset.adminTab)) btn.style.display = 'none';
+    });
+    adminTabPanels.forEach((panel) => {
+      if (restrictedTabs.includes(panel.dataset.adminPanel)) panel.hidden = true;
+    });
+    if (restrictedTabs.includes(savedAdminTab)) {
+      savedAdminTab = 'catalog';
+      setAdminTab('catalog');
+    }
+  }
+
   await loadUserPreferences();
   loadChartTypes();
   syncAdminColorToggle();
   await Promise.allSettled([
     loadAdminMenu(null),
-    loadUsers(),
-    loadGroupTargets(),
+    isModerator ? Promise.resolve() : loadUsers(),
+    isModerator ? Promise.resolve() : loadGroupTargets(),
     loadPresetOptionRequests(),
     loadPresetOptionsManager(),
-    loadUiColors(),
-    loadAdminChartsPreviewData()
+    isModerator ? Promise.resolve() : loadUiColors(),
+    isModerator ? Promise.resolve() : loadAdminChartsPreviewData()
   ]);
 })();
 
