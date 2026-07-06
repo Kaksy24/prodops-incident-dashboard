@@ -2896,12 +2896,15 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
     hitRects;
   target.appendChild(svg);
 
-  // Click su un punto -> lista ticket di quel mese (annuale) o giorno (mensile).
+  // Click su un punto dei grafici "Ticket personali"/"Ticket gruppo":
+  // NIENTE redirect a "Cerca ticket". In vista annuale il click entra nel
+  // dettaglio del mese (come le etichette); in vista mensile non fa nulla.
   var pointHits = svg.querySelectorAll('.personal-point-hit');
   for (var phi = 0; phi < pointHits.length; phi++) {
     (function (el) {
       el.addEventListener('click', function () {
-        openPersonalPeriodTickets(target, parseInt(el.getAttribute('data-idx'), 10));
+        if (drillMonth) return;
+        personalChartDrillToMonth(target.id, parseInt(el.getAttribute('data-idx'), 10) + 1);
       });
     })(pointHits[phi]);
   }
@@ -3000,29 +3003,6 @@ function handleChartElementClick(el) {
       (cfg.filters[k] || []).forEach(function (v) { params.append('filter_' + k + '[]', v); });
     });
   }
-  goToSearchWithParams(params);
-}
-
-// Click su punto/mese dei grafici personali -> ticket di quel periodo su Cerca.
-function openPersonalPeriodTickets(target, bucketIndex) {
-  const isGroup = personalChartIsGroup(target.id);
-  const scope = isGroup ? 'group' : 'mine';
-  const year = new Date().getFullYear();
-  const month = personalChartMonthView[target.id] || null;
-  let startISO, endISO;
-  if (month) {
-    const day = bucketIndex + 1;
-    startISO = new Date(Date.UTC(year, month - 1, day)).toISOString();
-    endISO = new Date(Date.UTC(year, month - 1, day + 1)).toISOString();
-  } else {
-    const m = bucketIndex + 1;
-    startISO = new Date(Date.UTC(year, m - 1, 1)).toISOString();
-    endISO = new Date(Date.UTC(year, m, 1)).toISOString();
-  }
-  const params = new URLSearchParams();
-  params.set('scope', scope);
-  params.set('start', startISO);
-  params.set('end', endISO);
   goToSearchWithParams(params);
 }
 
@@ -3835,7 +3815,7 @@ function customLabel(list, value) { const d = list.find((x) => x.value === value
 function customDimensionGroup(value) { const d = CUSTOM_DIMENSIONS.find((x) => x.value === value); return d ? d.group : ''; }
 function customChartElementId(def) { return 'custom_' + def.id + 'Chart'; }
 function customChartKey(def) { return 'custom_' + def.id; }
-function filterableCustomDimension(value) { return value === 'fab' || value === 'team'; }
+function filterableCustomDimension(value) { return value === 'fab' || value === 'team' || value === 'category' || value === 'severity'; }
 
 // Normalizza windows (backward compat: def.window → [def.window])
 function defWindows(def) {
@@ -4297,9 +4277,6 @@ function openAddChartModal() {
   header.appendChild(title);
   header.appendChild(closeBtn);
 
-  const desc = document.createElement('p');
-  desc.className = 'report-modal-desc';
-
   const progress = document.createElement('div');
   progress.className = 'add-chart-wizard-progress';
 
@@ -4315,7 +4292,7 @@ function openAddChartModal() {
 
   const defTitle = document.createElement('div');
   defTitle.className = 'add-chart-section-title';
-  defTitle.textContent = 'Grafici default';
+  defTitle.textContent = 'Seleziona un grafico default';
   defSection.appendChild(defTitle);
 
   const defWrap = document.createElement('div');
@@ -4323,10 +4300,6 @@ function openAddChartModal() {
 
   const defSelect = document.createElement('select');
   defSelect.className = 'add-chart-select';
-  const defPlaceholder = document.createElement('option');
-  defPlaceholder.value = '';
-  defPlaceholder.textContent = '— Seleziona un grafico default —';
-  defSelect.appendChild(defPlaceholder);
 
   DEFAULT_CHART_PANELS.forEach((def) => {
     const opt = document.createElement('option');
@@ -4340,10 +4313,10 @@ function openAddChartModal() {
   const defAddBtn = document.createElement('button');
   defAddBtn.type = 'button';
   defAddBtn.className = 'primary';
-  defAddBtn.textContent = 'Ripristina grafico';
+  defAddBtn.textContent = 'Aggiungi grafico';
   defAddBtn.addEventListener('click', async () => {
     const panelId = defSelect.value;
-    if (!panelId) { showToast('Seleziona prima un grafico dalla lista a tendina per poterlo ripristinare.', 'warning', 'Nessun grafico selezionato'); return; }
+    if (!panelId) { showToast('Seleziona prima un grafico dalla lista a tendina per poterlo aggiungere.', 'warning', 'Nessun grafico selezionato'); return; }
     hiddenDefaultPanels = hiddenDefaultPanels.filter((id) => id !== panelId);
     const el = document.getElementById(panelId);
     if (el) el.style.display = '';
@@ -4483,246 +4456,236 @@ function openAddChartModal() {
 
   winField.appendChild(customRangePanel);
 
-  // 2) Dati — multi-dimensione con item picker (caricato async da /api/stats/meta)
+  // 2) Dati — flusso guidato: categorie → (intero | incident) → filtri opzionali
   const dataField = document.createElement('div');
   dataField.className = 'add-chart-field';
   const dataFieldLabel = document.createElement('label');
   dataFieldLabel.className = 'add-chart-label';
-  dataFieldLabel.textContent = 'Dati da visualizzare';
+  dataFieldLabel.textContent = 'Cosa vuoi inserire nel grafico?';
   dataField.appendChild(dataFieldLabel);
 
-  const dimSections = document.createElement('div');
-  dimSections.className = 'add-chart-dim-sections';
-  dataField.appendChild(dimSections);
+  const dataGuide = document.createElement('div');
+  dataGuide.className = 'add-chart-guide';
+  dataGuide.innerHTML = '<p class="muted" style="font-size:.82rem;padding:6px 0">Caricamento opzioni…</p>';
+  dataField.appendChild(dataGuide);
 
-  // Stato selezionato: Map<dimType, Set<string>|null>  (null = tutte)
-  // null = non incluso in questo grafico, Set vuoto = tutti, Set pieno = selezionati
-  const selectedDims = new Map(); // dimType → null | Set<string>
-  const selectedDimFilters = { fab: false, team: false };
+  // Stato dello step 2 (flusso guidato)
+  const step2 = {
+    categories: new Set(),   // nomi categorie scelte
+    mode: 'full',            // 'full' = categorie per intero | 'incident' = solo alcuni incident
+    incidents: new Set(),    // nomi incident scelti (mode === 'incident')
+    filterFab: '',           // singolo FAB (opzionale)
+    filterTeam: '',          // singolo team (opzionale)
+    filterSeverity: ''       // singola severity, come label (opzionale)
+  };
 
-  // Helper per costruire un accordion-section per una dimensione
-  function buildDimSection(dimDef, items) {
-    const sec = document.createElement('div');
-    sec.className = 'add-chart-dim-sec';
-    sec.dataset.dim = dimDef.value;
-
-    // Header: toggle enable + nome
-    const secHead = document.createElement('div');
-    secHead.className = 'add-chart-dim-head';
-
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.id = 'dimChk_' + dimDef.value;
-    chk.className = 'add-chart-dim-checkbox';
-
-    const lbl = document.createElement('label');
-    lbl.htmlFor = chk.id;
-    lbl.className = 'add-chart-dim-name';
-    lbl.textContent = dimDef.label;
-
-    const countBadge = document.createElement('span');
-    countBadge.className = 'add-chart-dim-badge';
-    countBadge.textContent = 'tutti';
-
-    secHead.appendChild(chk);
-    secHead.appendChild(lbl);
-    secHead.appendChild(countBadge);
-
-    let filterToggleBtn = null;
-    function updateFilterToggleBtn() {
-      if (!filterToggleBtn) return;
-      const enabled = chk.checked;
-      const active = !!selectedDimFilters[dimDef.value];
-      filterToggleBtn.disabled = !enabled;
-      filterToggleBtn.classList.toggle('active', enabled && active);
-      filterToggleBtn.textContent = enabled && active ? 'Filtro ON' : 'Filtro OFF';
-      filterToggleBtn.title = enabled ? 'Attiva o disattiva l\'uso come filtro' : 'Abilita prima la dimensione';
+  // Costruisce dimensions + filters (contratto /api/stats/custom) dallo stato guidato.
+  function collectStep2() {
+    const cats = Array.from(step2.categories);
+    const dims = [];
+    const filters = {};
+    if (step2.mode === 'incident') {
+      dims.push({ type: 'incident', items: step2.incidents.size ? Array.from(step2.incidents) : null });
+      if (cats.length) { dims.push({ type: 'category', items: cats }); filters.category = true; }
+    } else {
+      dims.push({ type: 'category', items: cats.length ? cats : null });
     }
-
-    if (filterableCustomDimension(dimDef.value)) {
-      filterToggleBtn = document.createElement('button');
-      filterToggleBtn.type = 'button';
-      filterToggleBtn.className = 'add-chart-filter-toggle';
-      filterToggleBtn.addEventListener('click', () => {
-        if (!chk.checked) return;
-        selectedDimFilters[dimDef.value] = !selectedDimFilters[dimDef.value];
-        updateFilterToggleBtn();
-      });
-      secHead.appendChild(filterToggleBtn);
-      updateFilterToggleBtn();
-    }
-
-    const secBody = document.createElement('div');
-    secBody.className = 'add-chart-dim-body';
-    secBody.hidden = true;
-
-    if (items && items.length) {
-      const selectBar = document.createElement('div');
-      selectBar.className = 'add-chart-dim-selectbar';
-      const selAll = document.createElement('button');
-      selAll.type = 'button'; selAll.className = 'add-chart-dim-sellink'; selAll.textContent = 'Tutti';
-      const selNone = document.createElement('button');
-      selNone.type = 'button'; selNone.className = 'add-chart-dim-sellink'; selNone.textContent = 'Nessuno';
-      selectBar.appendChild(selAll); selectBar.appendChild(document.createTextNode(' · ')); selectBar.appendChild(selNone);
-      secBody.appendChild(selectBar);
-
-      const itemGrid = document.createElement('div');
-      itemGrid.className = 'add-chart-dim-item-grid';
-
-      const itemChips = [];
-      items.forEach((item) => {
-        const ic = document.createElement('button');
-        ic.type = 'button';
-        ic.className = 'add-chart-chip add-chart-dim-item active';
-        ic.textContent = typeof item === 'object' ? (item.display || item.label) : item;
-        ic.dataset.val  = typeof item === 'object' ? (item.val   || item.label) : item;
-        ic.addEventListener('click', () => {
-          ic.classList.toggle('active');
-          updateDimBadge();
-        });
-        itemChips.push(ic);
-        itemGrid.appendChild(ic);
-      });
-
-      selAll.addEventListener('click', () => { itemChips.forEach((c) => c.classList.add('active')); updateDimBadge(); });
-      selNone.addEventListener('click', () => { itemChips.forEach((c) => c.classList.remove('active')); updateDimBadge(); });
-
-      secBody.appendChild(itemGrid);
-
-      function updateDimBadge() {
-        const active = itemChips.filter((c) => c.classList.contains('active'));
-        if (active.length === 0 || active.length === itemChips.length) {
-          countBadge.textContent = 'tutti';
-          selectedDims.set(dimDef.value, new Set()); // empty set = tutti
-        } else {
-          countBadge.textContent = active.length + ' selezionati';
-          selectedDims.set(dimDef.value, new Set(active.map((c) => c.dataset.val)));
-        }
-      }
-    }
-
-    chk.addEventListener('change', () => {
-      if (chk.checked) {
-        selectedDims.set(dimDef.value, new Set()); // tutti di default
-        secBody.hidden = false;
-      } else {
-        selectedDims.delete(dimDef.value);
-        if (filterableCustomDimension(dimDef.value)) selectedDimFilters[dimDef.value] = false;
-        secBody.hidden = true;
-      }
-      sec.classList.toggle('enabled', chk.checked);
-      updateFilterToggleBtn();
+    [['fab', step2.filterFab], ['team', step2.filterTeam], ['severity', step2.filterSeverity]].forEach(function (pair) {
+      if (pair[1]) { dims.push({ type: pair[0], items: [pair[1]] }); filters[pair[0]] = true; }
     });
-
-    sec.appendChild(secHead);
-    sec.appendChild(secBody);
-    dimSections.appendChild(sec);
+    return { dimensions: dims, filters: filters };
   }
 
-  // Carica meta e popola le sezioni
-  (async () => {
-    dimSections.innerHTML = '<p class="muted" style="font-size:.82rem;padding:6px 0">Caricamento opzioni…</p>';
+  (async function buildDataGuide() {
     const meta = await fetchMeta();
-    dimSections.innerHTML = '';
+    dataGuide.innerHTML = '';
 
-    // Rileva incident con nome duplicato e aggiunge "(Categoria)" per disambiguare
-    const incNameCount = {};
-    meta.incidents.forEach((i) => { incNameCount[i.name] = (incNameCount[i.name] || 0) + 1; });
-    const incItems = meta.incidents.map((i) => {
-      if (incNameCount[i.name] > 1) {
-        const catName = i.category_name || '';
-        return { display: i.name + (catName ? ' (' + catName + ')' : ''), val: i.name };
-      }
-      return i.name;
-    });
-
-    const dimItemsMap = {
-      category: meta.categories.map((c) => c.name),
-      incident: incItems,
-      fab:      meta.fabs,
-      team:     meta.teams,
-      severity: meta.severities.map((s) => s.label)
-    };
-
-    CUSTOM_DIMENSIONS.forEach((dimDef) => {
-      buildDimSection(dimDef, dimItemsMap[dimDef.value] || []);
-    });
-
-    // Mappa incident_name → Set<fab_default> e category_name → Set<fab>
-    const incFabLookup = {};
-    const catFabsLookup = {};
-    meta.incidents.forEach((i) => {
-      const fab = (i.fab_default || '').toUpperCase();
-      if (!incFabLookup[i.name]) incFabLookup[i.name] = new Set();
-      if (fab) incFabLookup[i.name].add(fab);
-      const cat = i.category_name || '';
-      if (cat) {
-        if (!catFabsLookup[cat]) catFabsLookup[cat] = new Set();
-        if (fab) catFabsLookup[cat].add(fab);
-      }
-    });
-
-    const fabSecEl = dimSections.querySelector('[data-dim="fab"]');
-    const catSecEl = dimSections.querySelector('[data-dim="category"]');
-    const incSecEl = dimSections.querySelector('[data-dim="incident"]');
-
-    // Badge che appare nell'header FAB per segnalare la modalità filtro
-    const fabFilterBadge = document.createElement('span');
-    fabFilterBadge.className = 'add-chart-fab-filter-badge';
-    fabFilterBadge.textContent = 'filtro';
-    fabFilterBadge.style.display = 'none';
-    fabSecEl?.querySelector('.add-chart-dim-head')?.appendChild(fabFilterBadge);
-
-    function applyFabFilter() {
-      const fabChk = fabSecEl?.querySelector('.add-chart-dim-checkbox');
-      const otherEnabled = !!dimSections.querySelector('[data-dim]:not([data-dim="fab"]) .add-chart-dim-checkbox:checked');
-      const fabEnabled = fabChk?.checked;
-      const fabFiltering = fabEnabled && otherEnabled && !!selectedDimFilters.fab;
-      fabFilterBadge.style.display = fabFiltering ? '' : 'none';
-
-      if (!fabFiltering) {
-        catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
-        incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
-        return;
-      }
-      const activeFabChips = Array.from(fabSecEl.querySelectorAll('.add-chart-dim-item.active'));
-      const allFabChips = fabSecEl.querySelectorAll('.add-chart-dim-item');
-      if (!activeFabChips.length || activeFabChips.length === allFabChips.length) {
-        catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
-        incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => { c.style.display = ''; });
-        return;
-      }
-      const activeFabs = new Set(activeFabChips.map((c) => c.dataset.val));
-      incSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => {
-        const fabs = incFabLookup[c.dataset.val] || new Set();
-        c.style.display = (!fabs.size || Array.from(fabs).some((f) => activeFabs.has(f))) ? '' : 'none';
+    function makeChip(display, val, active, onToggle) {
+      const ic = document.createElement('button');
+      ic.type = 'button';
+      ic.className = 'add-chart-chip add-chart-dim-item' + (active ? ' active' : '');
+      ic.textContent = display;
+      ic.dataset.val = val;
+      ic.addEventListener('click', function () {
+        ic.classList.toggle('active');
+        onToggle(ic.classList.contains('active'), ic);
       });
-      catSecEl?.querySelectorAll('.add-chart-dim-item').forEach((c) => {
-        const fabs = catFabsLookup[c.dataset.val] || new Set();
-        c.style.display = (!fabs.size || Array.from(fabs).some((f) => activeFabs.has(f))) ? '' : 'none';
+      return ic;
+    }
+
+    // ── Blocco A: categorie ──────────────────────────────────────────────
+    const aBlock = document.createElement('div');
+    aBlock.className = 'add-chart-guide-block';
+    const aQ = document.createElement('div');
+    aQ.className = 'add-chart-subq';
+    aQ.textContent = 'Quali categorie vuoi inserire nel grafico?';
+    aBlock.appendChild(aQ);
+    const catBar = document.createElement('div');
+    catBar.className = 'add-chart-dim-selectbar';
+    const catAll = document.createElement('button');
+    catAll.type = 'button'; catAll.className = 'add-chart-dim-sellink'; catAll.textContent = 'Tutte';
+    const catNone = document.createElement('button');
+    catNone.type = 'button'; catNone.className = 'add-chart-dim-sellink'; catNone.textContent = 'Nessuna';
+    catBar.appendChild(catAll); catBar.appendChild(document.createTextNode(' · ')); catBar.appendChild(catNone);
+    aBlock.appendChild(catBar);
+    const catGrid = document.createElement('div');
+    catGrid.className = 'add-chart-dim-item-grid';
+    aBlock.appendChild(catGrid);
+    dataGuide.appendChild(aBlock);
+
+    // ── Blocco B: intero vs incident ─────────────────────────────────────
+    const bBlock = document.createElement('div');
+    bBlock.className = 'add-chart-guide-block';
+    bBlock.hidden = true;
+    const bQ = document.createElement('div');
+    bQ.className = 'add-chart-subq';
+    bQ.textContent = 'Come vuoi vedere queste categorie?';
+    bBlock.appendChild(bQ);
+    const modeWrap = document.createElement('div');
+    modeWrap.className = 'add-chart-mode-choice';
+    const modeFull = document.createElement('button');
+    modeFull.type = 'button';
+    modeFull.className = 'add-chart-mode-btn active';
+    modeFull.innerHTML = '<strong>Categorie per intero</strong><span>Un dato per ogni categoria scelta.</span>';
+    const modeInc = document.createElement('button');
+    modeInc.type = 'button';
+    modeInc.className = 'add-chart-mode-btn';
+    modeInc.innerHTML = '<strong>Solo alcuni incident</strong><span>Scegli quali incident mostrare.</span>';
+    modeWrap.appendChild(modeFull); modeWrap.appendChild(modeInc);
+    bBlock.appendChild(modeWrap);
+    dataGuide.appendChild(bBlock);
+
+    // ── Blocco C: incident ───────────────────────────────────────────────
+    const cBlock = document.createElement('div');
+    cBlock.className = 'add-chart-guide-block';
+    cBlock.hidden = true;
+    const cQ = document.createElement('div');
+    cQ.className = 'add-chart-subq';
+    cQ.textContent = 'Quali incident vuoi mostrare?';
+    cBlock.appendChild(cQ);
+    const incBar = document.createElement('div');
+    incBar.className = 'add-chart-dim-selectbar';
+    const incAll = document.createElement('button');
+    incAll.type = 'button'; incAll.className = 'add-chart-dim-sellink'; incAll.textContent = 'Tutti';
+    const incNone = document.createElement('button');
+    incNone.type = 'button'; incNone.className = 'add-chart-dim-sellink'; incNone.textContent = 'Nessuno';
+    incBar.appendChild(incAll); incBar.appendChild(document.createTextNode(' · ')); incBar.appendChild(incNone);
+    cBlock.appendChild(incBar);
+    const incGrid = document.createElement('div');
+    incGrid.className = 'add-chart-dim-item-grid';
+    cBlock.appendChild(incGrid);
+    const incEmpty = document.createElement('p');
+    incEmpty.className = 'muted';
+    incEmpty.style.cssText = 'font-size:.8rem;margin:4px 0 0';
+    incEmpty.textContent = 'Nessun incident disponibile per le categorie scelte.';
+    incEmpty.hidden = true;
+    cBlock.appendChild(incEmpty);
+    dataGuide.appendChild(cBlock);
+
+    // ── Blocco D: filtri opzionali ───────────────────────────────────────
+    const dBlock = document.createElement('div');
+    dBlock.className = 'add-chart-guide-block';
+    dBlock.hidden = true;
+    const dQ = document.createElement('div');
+    dQ.className = 'add-chart-subq';
+    dQ.textContent = 'Vuoi filtrare per un singolo FAB, team o severity? (opzionale)';
+    dBlock.appendChild(dQ);
+    function makeFilterRow(labelText, options, onChange) {
+      const row = document.createElement('div');
+      row.className = 'add-chart-filter-row';
+      const lab = document.createElement('span');
+      lab.className = 'add-chart-filter-row-label';
+      lab.textContent = labelText;
+      const sel = document.createElement('select');
+      sel.className = 'add-chart-select';
+      const none = document.createElement('option');
+      none.value = ''; none.textContent = '— Nessun filtro —';
+      sel.appendChild(none);
+      options.forEach(function (o) {
+        const opt = document.createElement('option');
+        opt.value = o.val; opt.textContent = o.display;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', function () { onChange(sel.value); });
+      row.appendChild(lab); row.appendChild(sel);
+      return row;
+    }
+    const fabOpts = (meta.fabs || []).map(function (f) { return { val: f, display: f }; });
+    const teamOpts = (meta.teams || []).map(function (t) { return { val: t, display: 'Team ' + t }; });
+    const sevOpts = (meta.severities || []).map(function (s) { return { val: s.label, display: s.label }; });
+    dBlock.appendChild(makeFilterRow('FAB', fabOpts, function (v) { step2.filterFab = v; }));
+    dBlock.appendChild(makeFilterRow('Team', teamOpts, function (v) { step2.filterTeam = v; }));
+    dBlock.appendChild(makeFilterRow('Severity', sevOpts, function (v) { step2.filterSeverity = v; }));
+    dataGuide.appendChild(dBlock);
+
+    // ── Logica ───────────────────────────────────────────────────────────
+    function syncBlocks() {
+      const hasCat = step2.categories.size > 0;
+      bBlock.hidden = !hasCat;
+      dBlock.hidden = !hasCat;
+      cBlock.hidden = !(hasCat && step2.mode === 'incident');
+      modeFull.classList.toggle('active', step2.mode === 'full');
+      modeInc.classList.toggle('active', step2.mode === 'incident');
+    }
+
+    function rebuildIncidents() {
+      incGrid.innerHTML = '';
+      // Nome incident → categorie (tra quelle scelte) in cui compare
+      const byName = new Map();
+      (meta.incidents || []).forEach(function (i) {
+        if (!step2.categories.has(i.category_name)) return;
+        if (!byName.has(i.name)) byName.set(i.name, new Set());
+        byName.get(i.name).add(i.category_name);
+      });
+      // Rimuove selezioni non più valide
+      Array.from(step2.incidents).forEach(function (n) { if (!byName.has(n)) step2.incidents.delete(n); });
+      incEmpty.hidden = byName.size > 0;
+      byName.forEach(function (catsSet, name) {
+        // Disambigua se lo stesso nome compare in più categorie scelte
+        const display = catsSet.size > 1 ? name + ' (' + Array.from(catsSet).join(', ') + ')' : name;
+        const chip = makeChip(display, name, step2.incidents.has(name), function (active) {
+          if (active) step2.incidents.add(name); else step2.incidents.delete(name);
+        });
+        incGrid.appendChild(chip);
       });
     }
 
-    // Reagisce a click sui chip FAB (dopo il toggle active della chip stessa)
-    if (fabSecEl) {
-      fabSecEl.addEventListener('click', (e) => {
-        if (e.target.classList.contains('add-chart-dim-item') || e.target.classList.contains('add-chart-dim-sellink') || e.target.classList.contains('add-chart-filter-toggle')) {
-          setTimeout(applyFabFilter, 0);
-        }
+    // Categorie
+    (meta.categories || []).forEach(function (c) {
+      const chip = makeChip(c.name, c.name, false, function (active) {
+        if (active) step2.categories.add(c.name); else step2.categories.delete(c.name);
+        if (step2.mode === 'incident') rebuildIncidents();
+        syncBlocks();
       });
-      fabSecEl.querySelector('.add-chart-dim-checkbox')?.addEventListener('change', applyFabFilter);
-    }
-    // Reagisce all'abilitazione/disabilitazione di qualsiasi altra sezione
-    dimSections.addEventListener('change', (e) => {
-      if (e.target !== fabSecEl?.querySelector('.add-chart-dim-checkbox') &&
-          e.target.classList.contains('add-chart-dim-checkbox')) {
-        applyFabFilter();
-      }
+      catGrid.appendChild(chip);
+    });
+    catAll.addEventListener('click', function () {
+      step2.categories = new Set((meta.categories || []).map(function (c) { return c.name; }));
+      catGrid.querySelectorAll('.add-chart-dim-item').forEach(function (c) { c.classList.add('active'); });
+      if (step2.mode === 'incident') rebuildIncidents();
+      syncBlocks();
+    });
+    catNone.addEventListener('click', function () {
+      step2.categories.clear();
+      catGrid.querySelectorAll('.add-chart-dim-item').forEach(function (c) { c.classList.remove('active'); });
+      if (step2.mode === 'incident') rebuildIncidents();
+      syncBlocks();
     });
 
-    // Pre-seleziona "categoria" come default
-    const firstChk = dimSections.querySelector('#dimChk_category');
-    if (firstChk) { firstChk.checked = true; firstChk.dispatchEvent(new Event('change')); }
+    // Modalità intero/incident
+    modeFull.addEventListener('click', function () { step2.mode = 'full'; syncBlocks(); });
+    modeInc.addEventListener('click', function () { step2.mode = 'incident'; rebuildIncidents(); syncBlocks(); });
+
+    // Incident: seleziona tutti / nessuno
+    incAll.addEventListener('click', function () {
+      incGrid.querySelectorAll('.add-chart-dim-item').forEach(function (c) { c.classList.add('active'); step2.incidents.add(c.dataset.val); });
+    });
+    incNone.addEventListener('click', function () {
+      incGrid.querySelectorAll('.add-chart-dim-item').forEach(function (c) { c.classList.remove('active'); });
+      step2.incidents.clear();
+    });
+
+    syncBlocks();
   })();
 
   // 3) Ambito
@@ -4792,23 +4755,25 @@ function openAddChartModal() {
 
   function renderReview() {
     const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
-    const dimensionsArr = [];
-    selectedDims.forEach((itemSet, dimType) => {
-      const items = itemSet && itemSet.size > 0 ? Array.from(itemSet) : null;
-      dimensionsArr.push({ type: dimType, items });
-    });
-    const filterModes = effectiveCustomFilterModes(dimensionsArr, selectedDimFilters);
+    const built = collectStep2();
+    const filterModes = effectiveCustomFilterModes(built.dimensions, built.filters);
+    const plotDims = built.dimensions.filter(function (d) { return !filterModes[d.type]; });
+    const filterDims = built.dimensions.filter(function (d) { return filterModes[d.type] && d.items && d.items.length; });
+    const dataVal = plotDims.map(function (d) {
+      const base = customLabel(CUSTOM_DIMENSIONS, d.type);
+      if (!d.items || !d.items.length) return base + ' (tutte)';
+      return base + ': ' + d.items.slice(0, 3).join(', ') + (d.items.length > 3 ? '…' : '');
+    }).join(' | ');
+    const filtersVal = filterDims.map(function (d) {
+      return customLabel(CUSTOM_DIMENSIONS, d.type).replace(/^Per /i, '') + ': ' + d.items.join(', ');
+    }).join(' | ');
     const summary = [
       { label: 'Finestre', value: windowsList.length ? windowsList.map(windowLabel).join(', ') : 'Nessuna selezionata' },
-      { label: 'Dati', value: dimensionsArr.length ? dimensionsArr.map(function(d) {
-        const base = customLabel(CUSTOM_DIMENSIONS, d.type);
-        if (!d.items || !d.items.length) return base;
-        return base + ': ' + d.items.slice(0, 3).join(', ') + (d.items.length > 3 ? '…' : '');
-      }).join(' | ') : 'Nessun dato selezionato' },
+      { label: 'Dati', value: dataVal || 'Nessun dato selezionato' },
       { label: 'Ambito', value: customLabel(CUSTOM_SCOPES, scopeSelect.value) },
       { label: 'Tipo', value: customLabel(CUSTOM_TYPES, typeSelect.value) },
       { label: 'Titolo', value: titleInput.value.trim() || 'Automatico' },
-      { label: 'Filtri attivi', value: Object.keys(filterModes).filter(function(key) { return filterModes[key]; }).join(', ') || 'Nessuno' }
+      { label: 'Filtri attivi', value: filtersVal || 'Nessuno' }
     ];
     reviewField.innerHTML = '';
     summary.forEach(function(item) {
@@ -4822,14 +4787,12 @@ function openAddChartModal() {
   async function finalizeCreate() {
     const windowsList = [...Array.from(selectedWindowValues), ...customRanges];
     if (!windowsList.length) { showToast('Scegli almeno una finestra temporale (es. settimana, mese) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
-    if (!selectedDims.size) { showToast('Scegli almeno un tipo di dato da visualizzare (es. incidenti, downtime) prima di creare il grafico.', 'warning', 'Selezione incompleta'); return; }
+    if (step2.categories.size === 0) { showToast('Scegli almeno una categoria da inserire nel grafico.', 'warning', 'Selezione incompleta'); return; }
+    if (step2.mode === 'incident' && step2.incidents.size === 0) { showToast('Hai scelto "Solo alcuni incident": seleziona almeno un incident.', 'warning', 'Selezione incompleta'); return; }
 
-    // Costruisce l'array dimensions
-    const dimensionsArr = [];
-    selectedDims.forEach((itemSet, dimType) => {
-      const items = itemSet && itemSet.size > 0 ? Array.from(itemSet) : null;
-      dimensionsArr.push({ type: dimType, items });
-    });
+    // Costruisce l'array dimensions + filtri dallo stato guidato
+    const built = collectStep2();
+    const dimensionsArr = built.dimensions;
 
     const scope = scopeSelect.value;
     const type = typeSelect.value;
@@ -4837,7 +4800,7 @@ function openAddChartModal() {
     nextBtn.disabled = true;
 
     const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const filterModes = effectiveCustomFilterModes(dimensionsArr, selectedDimFilters);
+    const filterModes = effectiveCustomFilterModes(dimensionsArr, built.filters);
     const titleDims = dimensionsArr.filter((d) => !filterModes[d.type]);
     const filterSuffixes = [];
     dimensionsArr.forEach((d) => {
@@ -4898,9 +4861,15 @@ function openAddChartModal() {
         return false;
       }
     }
-    if (currentCreateStep === 1 && !selectedDims.size) {
-      showToast('Scegli almeno un tipo di dato da visualizzare prima di andare avanti.', 'warning', 'Selezione incompleta');
-      return false;
+    if (currentCreateStep === 1) {
+      if (step2.categories.size === 0) {
+        showToast('Scegli almeno una categoria da inserire nel grafico prima di andare avanti.', 'warning', 'Selezione incompleta');
+        return false;
+      }
+      if (step2.mode === 'incident' && step2.incidents.size === 0) {
+        showToast('Hai scelto "Solo alcuni incident": seleziona almeno un incident prima di andare avanti.', 'warning', 'Selezione incompleta');
+        return false;
+      }
     }
     return true;
   }
@@ -4927,7 +4896,6 @@ function openAddChartModal() {
 
     if (!selectedFlow) {
       title.textContent = 'Aggiungi grafico';
-      desc.textContent = 'Scegli se creare un nuovo grafico oppure ripristinare la dashboard esistente.';
       renderProgress(0, 0);
       stepHost.appendChild(choiceStep);
       backBtn.hidden = true;
@@ -4938,7 +4906,6 @@ function openAddChartModal() {
 
     if (selectedFlow === 'restore') {
       title.textContent = 'Ripristina grafici';
-      desc.textContent = 'Seleziona un grafico nascosto da riportare in dashboard oppure ripristina l\'intera configurazione iniziale.';
       renderProgress(1, 0);
       stepHost.appendChild(defSection);
       backBtn.textContent = '← Indietro';
@@ -4948,7 +4915,6 @@ function openAddChartModal() {
 
     var step = createSteps[currentCreateStep];
     title.textContent = 'Crea grafico personalizzato';
-    desc.textContent = step.desc;
     renderProgress(createSteps.length, currentCreateStep);
     if (currentCreateStep === createSteps.length - 1) renderReview();
     stepHost.appendChild(step.content);
@@ -4990,7 +4956,6 @@ function openAddChartModal() {
   actions.appendChild(backBtn);
   actions.appendChild(nextBtn);
 
-  modalBody.appendChild(desc);
   modalBody.appendChild(progress);
   modalBody.appendChild(stepHost);
 
@@ -5217,7 +5182,7 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 // --- Chart panel spans / order / drag & resize ---
 const chartSpanStorageKey = 'prodops_chart_spans';
 const chartOrderStorageKey = 'prodops_chart_order';
-const chartSpanSteps = [3, 6, 9, 12];
+const chartSpanSteps = [3, 4, 6, 8, 9, 12];
 let chartSpans = {};
 let dragSrcPanel = null;
 
