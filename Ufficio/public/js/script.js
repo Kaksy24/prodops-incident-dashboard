@@ -339,7 +339,8 @@ function defaultChartTypes() {
     personalMineChart: 'column',
     personalGroupChart: 'column',
     teamYear: 'donut',
-    incidentYear: 'bar'
+    incidentYear: 'bar',
+    userYear: 'column'
   };
 }
 
@@ -2862,7 +2863,7 @@ function renderColumnChart(target, stats) {
     row.className = 'bar chart-clickable';
     row.setAttribute('data-chart-label', s.label);
     const color = getBarColor(target.id, s.label);
-    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(s.label)}</span>`;
+    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(chartItemLabel(s))}</span>`;
     barsWrap.appendChild(row);
   });
 
@@ -2888,7 +2889,7 @@ function renderHorizontalChart(target, stats) {
     const pct = Math.round((item.total / Math.max(sortedStats.reduce((sum, x) => sum + x.total, 0), 1)) * 100);
     const color = getBarColor(target.id, item.label);
     row.innerHTML = `
-      <span class="chart-horizontal-label">${escapeHtml(item.label)}</span>
+      <span class="chart-horizontal-label">${escapeHtml(chartItemLabel(item))}</span>
       <div class="chart-horizontal-track"><div class="bar-fill" style="width:${width}%;background:${color}"></div><span class="bar-pct">${pct}%</span></div>
       <span class="chart-horizontal-value">${formatChartValueWithPercent(item.total, pct)}</span>
     `;
@@ -2942,7 +2943,7 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
     row.innerHTML = `
       <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
-      <span class="chart-pie-label">${escapeHtml(item.label)}</span>
+      <span class="chart-pie-label">${escapeHtml(chartItemLabel(item))}</span>
       ${hideLegendValue ? `<strong class="chart-pie-value">${pct}%</strong>` : `<strong class="chart-pie-value">${formatChartValueWithPercent(item.total, pct)}</strong>`}
     `;
     legend.appendChild(row);
@@ -2979,7 +2980,7 @@ function renderLineChart(target, stats) {
     <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" class="chart-line-axis"></line>
     <path d="${path}" class="chart-line-path"></path>
     ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4.5" class="chart-line-point chart-clickable" data-chart-label="${escapeHtml(point.item.label)}" fill="${getBarColor(target.id, point.item.label)}"></circle>`).join('')}
-    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label chart-clickable" data-chart-label="${escapeHtml(point.item.label)}">${escapeHtml(point.item.label)}</text>`).join('')}
+    ${points.map((point) => `<text x="${point.x}" y="${height - 6}" text-anchor="middle" class="chart-line-label chart-clickable" data-chart-label="${escapeHtml(point.item.label)}">${escapeHtml(chartItemLabel(point.item))}</text>`).join('')}
     ${points.map((point) => `<text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-line-value">${point.item.total}</text>`).join('')}
   `;
   target.appendChild(svg);
@@ -3255,6 +3256,14 @@ function handleChartElementClick(el) {
   });
 })();
 
+// Testo visibile di un elemento del grafico: usa 'display' se il backend lo
+// fornisce (es. team: "Team A"), altrimenti il 'label' grezzo. Il 'label' resta
+// il valore usato per il filtro al click (data-chart-label) e per i colori.
+function chartItemLabel(item) {
+  if (item && item.display != null && String(item.display) !== '') return String(item.display);
+  return item ? String(item.label) : '';
+}
+
 function renderChart(target, stats) {
   const type = getChartType(target.id);
   const all = stats || [];
@@ -3267,6 +3276,12 @@ function renderChart(target, stats) {
     for (let i = 0; i < zeros.length && shown.length < 4; i++) {
       shown.push(zeros[i]);
     }
+  }
+  // Se anche cosi restano meno di 4 elementi (es. dimensioni con pochi valori
+  // possibili, come gli utenti), completa con segnaposto vuoti a 0 in modo da
+  // mostrare sempre almeno 4 elementi.
+  while (shown.length < 4) {
+    shown.push({ label: '—', total: 0, __placeholder: true });
   }
   if (type === 'bar') return renderHorizontalChart(target, shown);
   if (type === 'donut') return renderPieOrDonutChart(target, shown, true);
@@ -5518,7 +5533,10 @@ function getChartSpan(panelId) {
 
 function chartGridColumnCount(grid) {
   if (!grid) return 12;
-  if (window.matchMedia('(max-width: 640px)').matches) return 1;
+  // Deve rispecchiare i breakpoint CSS di .charts-grid: <=900 = 1 col,
+  // 901-1200 = 2 col (cap "max 2 per riga"), 1201-1400 = 4 col, oltre = 12.
+  if (window.matchMedia('(max-width: 900px)').matches) return 1;
+  if (window.matchMedia('(min-width: 901px) and (max-width: 1200px)').matches) return 2;
   if (window.matchMedia('(min-width: 901px) and (max-width: 1400px)').matches) return 4;
   return 12;
 }
@@ -5526,10 +5544,27 @@ function chartGridColumnCount(grid) {
 function chartSpanToGridColumns(span, columnCount) {
   if (columnCount <= 1) return 1;
   if (columnCount >= 12) return span;
+  if (columnCount === 2) return span <= 6 ? 1 : 2; // 3,6 = meta ; 9,12 = pieno
   if (span === 3 || span === 4) return 1;
   if (span === 6) return 2;
   if (span === 8 || span === 9) return 3;
   return 4;
+}
+
+// Prossimo step di resize che cambia DAVVERO la larghezza mostrata: quando la
+// griglia ha meno di 12 colonne piu span logici mappano sulle stesse colonne
+// (es. a 2 colonne 3 e 6 sono entrambi "meta"), quindi salta gli step che non
+// cambierebbero nulla, cosi ogni click sulle frecce ha un effetto visibile.
+function nextResizeSpan(panel, current, dir) {
+  var grid = document.getElementById('chartsGrid');
+  var cols = chartGridColumnCount(grid);
+  var curCols = chartSpanToGridColumns(current, cols);
+  var idx = chartSpanSteps.indexOf(current);
+  if (idx === -1) idx = chartSpanSteps.indexOf(getChartSpan(panel ? panel.id : ''));
+  for (var i = idx + dir; i >= 0 && i < chartSpanSteps.length; i += dir) {
+    if (chartSpanToGridColumns(chartSpanSteps[i], cols) !== curCols) return chartSpanSteps[i];
+  }
+  return null;
 }
 
 function estimatedPanelWidthForSpan(grid, span) {
@@ -5595,8 +5630,10 @@ function refreshChartResizeControls(panel) {
   var current = currentDisplaySpan(panel);
   var buttons = panel.querySelectorAll('.chart-resize-btn');
   if (buttons && buttons.length >= 2) {
-    buttons[0].disabled = current === chartSpanSteps[0];
-    buttons[1].disabled = current === chartSpanSteps[chartSpanSteps.length - 1];
+    // Disabilita in base alla reale disponibilita di uno step piu piccolo/grande
+    // che cambi la larghezza mostrata (coerente con nextResizeSpan).
+    buttons[0].disabled = nextResizeSpan(panel, current, -1) == null;
+    buttons[1].disabled = nextResizeSpan(panel, current, 1) == null;
   }
   var valueBadge = panel.querySelector('.chart-resize-value');
   if (valueBadge) valueBadge.textContent = String(current);
@@ -5663,10 +5700,8 @@ function setupChartResizeControls() {
       btn.title = cfg.dir === -1 ? 'Riduci larghezza' : 'Espandi larghezza';
       btn.addEventListener('click', function () {
         const current = currentDisplaySpan(panel);
-        const idx = chartSpanSteps.indexOf(current);
-        const newIdx = Math.max(0, Math.min(chartSpanSteps.length - 1, idx + cfg.dir));
-        const newSpan = chartSpanSteps[newIdx];
-        if (newSpan === current) return;
+        const newSpan = nextResizeSpan(panel, current, cfg.dir);
+        if (newSpan == null || newSpan === current) return;
         chartSpans[panel.id] = newSpan;
         applyChartSpan(panel, newSpan);
         refreshChartResizeControls(panel);

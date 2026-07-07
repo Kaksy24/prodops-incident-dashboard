@@ -2347,6 +2347,34 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   background-size: 100% 25%;
   pointer-events: none;
 }
+/* Grafici a colonne: le colonne partono sempre dal fondo del panel, anche
+   quando questo viene stirato piu alto degli altri nella stessa riga della
+   griglia. La catena flex fa crescere il grafico fino in fondo e
+   .chart-bars-wrap (align-items: flex-end) ancora le barre alla base. */
+.charts-grid > .panel:has(> .vertical-chart > .chart-inner) {
+  display: flex;
+  flex-direction: column;
+}
+.charts-grid > .panel > .vertical-chart:has(> .chart-inner) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.vertical-chart > .chart-inner { flex: 1 1 auto; }
+/* Grafici a torta/ciambella: stessa logica delle colonne. La legenda parte
+   dall'alto, il cerchio viene ancorato in fondo al panel (margin-top:auto),
+   e la catena flex fa crescere il grafico fino in fondo anche quando il panel
+   e stirato piu alto degli altri nella stessa riga. */
+.charts-grid > .panel:has(> .vertical-chart > .chart-pie-layout) {
+  display: flex;
+  flex-direction: column;
+}
+.charts-grid > .panel > .vertical-chart:has(> .chart-pie-layout) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.vertical-chart > .chart-pie-layout { flex: 1 1 auto; }
 .chart-horizontal-wrap {
   display: grid;
   gap: 10px;
@@ -2401,17 +2429,15 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   pointer-events: none;
 }
 .chart-pie-layout {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 16px;
-  align-items: center;
   min-height: 232px;
   min-width: 0;
 }
 .chart-pie-layout.donut {
-  grid-template-columns: 1fr;
   gap: 14px;
-  justify-items: center;
   width: 100%;
   overflow: hidden;
 }
@@ -2423,7 +2449,8 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   border-radius: 50%;
   background: #d9e3ee;
   box-shadow: inset 0 0 0 1px rgba(120, 146, 176, .18);
-  justify-self: center;
+  align-self: center;
+  margin-top: auto;
 }
 .chart-pie-visual.donut::after {
   content: "";
@@ -2459,8 +2486,8 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 }
 .chart-pie-layout.donut .chart-pie-legend {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  order: 0;
-  align-self: start;
+  order: -1;
+  align-self: stretch;
   gap: 6px 14px;
   width: 100%;
   max-width: 100%;
@@ -2468,8 +2495,9 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   overflow: hidden;
 }
 .chart-pie-layout.donut .chart-pie-visual {
-  order: -1;
-  justify-self: center;
+  order: 0;
+  align-self: center;
+  margin-top: auto;
   width: min(100%, clamp(180px, 62cqi, 320px));
   max-width: 320px;
   min-width: 0;
@@ -3056,6 +3084,23 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
   .charts-grid > .panel.chart-span-8,
   .charts-grid > .panel.chart-span-9 { grid-column: span 3; }
   .charts-grid > .panel.chart-span-12 { grid-column: span 4; }
+}
+/* Risoluzioni orizzontalmente strette: la griglia a 4 colonne rende i grafici
+   "a quarto/terzo" troppo compressi (< ~260px). Sotto i 1200px passiamo a 2
+   colonne e collassiamo tutti gli span cosi nessun grafico scende sotto meta
+   riga: al massimo 2 grafici per riga. (Deve stare DOPO il blocco 901-1400
+   per vincere nell'intervallo sovrapposto.) */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .charts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .charts-grid > .panel.chart-span-3,
+  .charts-grid > .add-chart-card.chart-span-3,
+  .charts-grid > .panel.chart-span-4,
+  .charts-grid > .panel.chart-span-6 { grid-column: span 1; }
+  .charts-grid > .panel.chart-span-8,
+  .charts-grid > .panel.chart-span-9,
+  .charts-grid > .panel.chart-span-12 { grid-column: span 2; }
 }
 /* La toolbar del turno corrente va a capo invece di sovrapporsi
    (vale anche su mobile) */

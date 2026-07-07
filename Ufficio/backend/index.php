@@ -1547,7 +1547,9 @@ function summarize_by_team($tickets)
         $counts[$team]++;
     }
     $out = array();
-    foreach ($teams as $team) $out[] = array('label' => $team, 'total' => isset($counts[$team]) ? $counts[$team] : 0);
+    // 'label' resta la lettera (valore per filtro/colori); 'display' e' il testo
+    // mostrato nei grafici ("Team A", "Team B", ...).
+    foreach ($teams as $team) $out[] = array('label' => $team, 'display' => 'Team ' . $team, 'total' => isset($counts[$team]) ? $counts[$team] : 0);
     return $out;
 }
 
@@ -3429,7 +3431,7 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     $allowedPaletteValues = array('cappuccino', 'bordeaux', 'verde', 'blu', 'giallo');
     $allowedChartSpanPanels = array('chartPanelPersonal', 'chartPanelPersonalMine', 'chartPanelPersonalGroup', 'chartPanelFab', 'chartPanelCat', 'chartPanelTeam', 'chartPanelIncident', 'chartPanelUser');
     $allowedChartSpanValues = array(3, 6, 9, 12);
-    $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'incidentYear');
+    $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'incidentYear', 'userYear');
     $allowedChartTypeValues = array('column', 'bar', 'donut');
     $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : (isset($existingUserData['chart_modes']) && is_array($existingUserData['chart_modes']) ? $existingUserData['chart_modes'] : array());
     $cleanModes = array();
