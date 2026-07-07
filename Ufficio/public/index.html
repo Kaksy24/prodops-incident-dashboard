@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incident Dashboard</title>
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.9.13" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.11.0" />
 </head>
 <body>
   <div class="app-layout">
@@ -129,14 +129,20 @@
           <div class="panel-heading-row">
             <h3 id="fabYearChartTitle">Ticket per FAB</h3>
           </div>
-          <div class="chart-controls-row"></div>
+          <div class="chart-controls-row">
+            <select class="chart-range-select" data-target="fabYear" aria-label="Intervallo Ticket per FAB">
+              <option value="months">Anno</option>
+              <option value="q1">Q1</option>
+              <option value="q2">Q2</option>
+              <option value="q3">Q3</option>
+              <option value="q4">Q4</option>
+              <option value="day" selected>24h</option>
+              <option value="t1">T1</option>
+              <option value="t2">T2</option>
+              <option value="t3">T3</option>
+            </select>
+          </div>
           <div class="toggle-row">
-            <button class="range-btn year-btn" data-target="fabYear" data-mode="months">Anno</button>
-            <button class="range-btn" data-target="fabYear" data-mode="q1">Q1</button>
-            <button class="range-btn" data-target="fabYear" data-mode="q2">Q2</button>
-            <button class="range-btn" data-target="fabYear" data-mode="q3">Q3</button>
-            <button class="range-btn" data-target="fabYear" data-mode="q4">Q4</button>
-            <button class="range-btn active" data-target="fabYear" data-mode="day">24h</button>
             <div class="range-calendar-wrap" data-target="fabYear">
               <button type="button" class="range-calendar-btn" data-target="fabYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
               <div class="range-calendar-popover" hidden>
@@ -153,14 +159,20 @@
           <div class="panel-heading-row">
             <h3 id="catYearChartTitle">Ticket per categoria</h3>
           </div>
-          <div class="chart-controls-row"></div>
+          <div class="chart-controls-row">
+            <select class="chart-range-select" data-target="catYear" aria-label="Intervallo Ticket per categoria">
+              <option value="months">Anno</option>
+              <option value="q1">Q1</option>
+              <option value="q2">Q2</option>
+              <option value="q3">Q3</option>
+              <option value="q4">Q4</option>
+              <option value="day" selected>24h</option>
+              <option value="t1">T1</option>
+              <option value="t2">T2</option>
+              <option value="t3">T3</option>
+            </select>
+          </div>
           <div class="toggle-row">
-            <button class="range-btn year-btn" data-target="catYear" data-mode="months">Anno</button>
-            <button class="range-btn" data-target="catYear" data-mode="q1">Q1</button>
-            <button class="range-btn" data-target="catYear" data-mode="q2">Q2</button>
-            <button class="range-btn" data-target="catYear" data-mode="q3">Q3</button>
-            <button class="range-btn" data-target="catYear" data-mode="q4">Q4</button>
-            <button class="range-btn active" data-target="catYear" data-mode="day">24h</button>
             <div class="range-calendar-wrap" data-target="catYear">
               <button type="button" class="range-calendar-btn" data-target="catYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
               <div class="range-calendar-popover" hidden>
@@ -177,14 +189,20 @@
           <div class="panel-heading-row">
             <h3 id="teamYearChartTitle">Ticket per Team</h3>
           </div>
-          <div class="chart-controls-row"></div>
+          <div class="chart-controls-row">
+            <select class="chart-range-select" data-target="teamYear" aria-label="Intervallo Ticket per Team">
+              <option value="months">Anno</option>
+              <option value="q1">Q1</option>
+              <option value="q2">Q2</option>
+              <option value="q3">Q3</option>
+              <option value="q4">Q4</option>
+              <option value="day" selected>24h</option>
+              <option value="t1">T1</option>
+              <option value="t2">T2</option>
+              <option value="t3">T3</option>
+            </select>
+          </div>
           <div class="toggle-row">
-            <button class="range-btn year-btn" data-target="teamYear" data-mode="months">Anno</button>
-            <button class="range-btn" data-target="teamYear" data-mode="q1">Q1</button>
-            <button class="range-btn" data-target="teamYear" data-mode="q2">Q2</button>
-            <button class="range-btn" data-target="teamYear" data-mode="q3">Q3</button>
-            <button class="range-btn" data-target="teamYear" data-mode="q4">Q4</button>
-            <button class="range-btn active" data-target="teamYear" data-mode="day">24h</button>
             <div class="range-calendar-wrap" data-target="teamYear">
               <button type="button" class="range-calendar-btn" data-target="teamYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
               <div class="range-calendar-popover" hidden>
@@ -197,20 +215,26 @@
           <div id="teamYearChart" class="chart vertical-chart"></div>
         </section>
 
-        <section class="panel" id="chartPanelSeverity">
+        <section class="panel" id="chartPanelIncident">
           <div class="panel-heading-row">
-            <h3 id="severityYearChartTitle">Severity Ticket</h3>
+            <h3 id="incidentYearChartTitle">Ticket per Incident</h3>
           </div>
-          <div class="chart-controls-row"></div>
+          <div class="chart-controls-row">
+            <select class="chart-range-select" data-target="incidentYear" aria-label="Intervallo Ticket per Incident">
+              <option value="months">Anno</option>
+              <option value="q1">Q1</option>
+              <option value="q2">Q2</option>
+              <option value="q3">Q3</option>
+              <option value="q4">Q4</option>
+              <option value="day" selected>24h</option>
+              <option value="t1">T1</option>
+              <option value="t2">T2</option>
+              <option value="t3">T3</option>
+            </select>
+          </div>
           <div class="toggle-row">
-            <button class="range-btn year-btn" data-target="severityYear" data-mode="months">Anno</button>
-            <button class="range-btn" data-target="severityYear" data-mode="q1">Q1</button>
-            <button class="range-btn" data-target="severityYear" data-mode="q2">Q2</button>
-            <button class="range-btn" data-target="severityYear" data-mode="q3">Q3</button>
-            <button class="range-btn" data-target="severityYear" data-mode="q4">Q4</button>
-            <button class="range-btn active" data-target="severityYear" data-mode="day">24h</button>
-            <div class="range-calendar-wrap" data-target="severityYear">
-              <button type="button" class="range-calendar-btn" data-target="severityYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+            <div class="range-calendar-wrap" data-target="incidentYear">
+              <button type="button" class="range-calendar-btn" data-target="incidentYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -218,21 +242,27 @@
               </div>
             </div>
           </div>
-          <div id="severityYearChart" class="chart vertical-chart"></div>
+          <div id="incidentYearChart" class="chart vertical-chart"></div>
         </section>
 
         <section class="panel" id="chartPanelUser">
           <div class="panel-heading-row">
             <h3 id="userYearChartTitle">Ticket Utenti</h3>
           </div>
-          <div class="chart-controls-row"></div>
+          <div class="chart-controls-row">
+            <select class="chart-range-select" data-target="userYear" aria-label="Intervallo Ticket Utenti">
+              <option value="months">Anno</option>
+              <option value="q1">Q1</option>
+              <option value="q2">Q2</option>
+              <option value="q3">Q3</option>
+              <option value="q4">Q4</option>
+              <option value="day" selected>24h</option>
+              <option value="t1">T1</option>
+              <option value="t2">T2</option>
+              <option value="t3">T3</option>
+            </select>
+          </div>
           <div class="toggle-row">
-            <button class="range-btn year-btn" data-target="userYear" data-mode="months">Anno</button>
-            <button class="range-btn" data-target="userYear" data-mode="q1">Q1</button>
-            <button class="range-btn" data-target="userYear" data-mode="q2">Q2</button>
-            <button class="range-btn" data-target="userYear" data-mode="q3">Q3</button>
-            <button class="range-btn" data-target="userYear" data-mode="q4">Q4</button>
-            <button class="range-btn active" data-target="userYear" data-mode="day">24h</button>
             <div class="range-calendar-wrap" data-target="userYear">
               <button type="button" class="range-calendar-btn" data-target="userYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
               <div class="range-calendar-popover" hidden>
@@ -276,8 +306,19 @@
           <input id="customIncidentName" name="customIncidentName" type="text" placeholder="Inserisci nome incident personalizzato" />
         </div>
 
-        <label for="description">Descrizione problema</label>
-        <textarea id="description" name="description" rows="7" required></textarea>
+        <label for="descriptionEditor">Descrizione problema</label>
+        <div id="descriptionToolbar" class="desc-toolbar" role="toolbar" aria-label="Formattazione descrizione">
+          <button type="button" class="desc-tool" data-cmd="bold" title="Grassetto (Ctrl+B)" aria-label="Grassetto"><b>B</b></button>
+          <button type="button" class="desc-tool" data-cmd="italic" title="Corsivo (Ctrl+I)" aria-label="Corsivo"><i>I</i></button>
+          <button type="button" class="desc-tool" data-cmd="underline" title="Sottolineato (Ctrl+U)" aria-label="Sottolineato"><u>U</u></button>
+          <span class="desc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="desc-tool" data-cmd="insertUnorderedList" title="Elenco puntato" aria-label="Elenco puntato">&#8226;</button>
+          <button type="button" class="desc-tool" data-cmd="insertOrderedList" title="Elenco numerato" aria-label="Elenco numerato">1.</button>
+          <span class="desc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="desc-tool" data-cmd="removeFormat" title="Rimuovi formattazione" aria-label="Rimuovi formattazione">T&#215;</button>
+        </div>
+        <div id="descriptionEditor" class="desc-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Descrizione problema" data-placeholder="Inserisci descrizione problema..."></div>
+        <textarea id="description" name="description" required hidden aria-hidden="true"></textarea>
         <div id="descriptionRead" class="ticket-read-desc" style="display:none"></div>
         <div id="presetInlineComposer" class="panel" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
 
@@ -347,9 +388,9 @@
       </div>
     </div>
   </div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.9.1"></script>
-  <script src="./public/js/toast.js?v=1.9.1"></script>
-  <script src="./public/js/script.js?v=1.9.13"></script>
-  <div class="app-version-badge">v1.9.13</div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.11.0"></script>
+  <script src="./public/js/toast.js?v=1.11.0"></script>
+  <script src="./public/js/script.js?v=1.11.0"></script>
+  <div class="app-version-badge">v1.11.0</div>
 </body>
 </html>

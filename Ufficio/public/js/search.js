@@ -217,6 +217,38 @@ function highlightPresetValues(text) {
     .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); });
 }
 
+// Rendering sicuro della descrizione: mantiene il sottoinsieme HTML di
+// formattazione, converte i marker 〈valore〉 in link e fa l'escape del resto.
+function renderDescriptionHtmlText(text) {
+  return escapeHtml(String(text == null ? '' : text))
+    .replace(/《([^》]*)》/g, function(_, value) { return renderPresetValueLink(value); })
+    .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); })
+    .replace(/\r\n?|\n/g, '<br>');
+}
+
+function renderDescriptionHtmlNode(node, out) {
+  var nodes = node.childNodes, i, child;
+  for (i = 0; i < nodes.length; i += 1) {
+    child = nodes[i];
+    if (child.nodeType === 3) { out.push(renderDescriptionHtmlText(child.nodeValue || '')); continue; }
+    if (child.nodeType !== 1) continue;
+    var tag = child.tagName;
+    if (tag === 'BR') { out.push('<br>'); continue; }
+    var map = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li' };
+    if (map[tag]) { out.push('<' + map[tag] + '>'); renderDescriptionHtmlNode(child, out); out.push('</' + map[tag] + '>'); continue; }
+    if (tag === 'DIV' || tag === 'P') { if (out.length) out.push('<br>'); renderDescriptionHtmlNode(child, out); continue; }
+    renderDescriptionHtmlNode(child, out);
+  }
+}
+
+function renderDescriptionHtml(raw) {
+  var tpl = document.createElement('template');
+  tpl.innerHTML = String(raw == null ? '' : raw);
+  var out = [];
+  renderDescriptionHtmlNode(tpl.content, out);
+  return out.join('');
+}
+
 function defaultUiColors() {
   return { labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } } };
 }
@@ -317,7 +349,7 @@ function openSearchModal(ticket) {
       '</div>' +
       '<label>Descrizione</label>' +
       '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' +
-        highlightPresetValues(ticket.description || '') +
+        renderDescriptionHtml(ticket.description || '') +
       '</div>' +
       (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
       (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
@@ -398,6 +430,9 @@ function renderSearchTickets(tickets) {
   const ul = document.createElement('ul');
   ul.className = 'ticket-list ticket-list-scrollable';
 
+  const monthNames = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  let prevMonthKey = null;
+
   tickets.forEach((t) => {
     const incidentId = Number(t.incident_id || 0);
     const incidentName = String(incidentIdToNameMap[String(incidentId)] || t.incident_name || '');
@@ -409,6 +444,16 @@ function renderSearchTickets(tickets) {
     const dayMonth = isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
     const hhmm = isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
     const ownerUsername = String(t.owner_username || '');
+
+    const monthKey = isNaN(d.getTime()) ? null : d.getFullYear() + '-' + (d.getMonth() + 1);
+    if (monthKey && monthKey !== prevMonthKey) {
+      prevMonthKey = monthKey;
+      const sep = document.createElement('li');
+      sep.className = 'ticket-search-month-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = monthNames[d.getMonth()] + ' ' + d.getFullYear();
+      ul.appendChild(sep);
+    }
 
     const li = document.createElement('li');
     li.className = 'ticket-row';
@@ -431,7 +476,7 @@ function renderSearchTickets(tickets) {
       '</div>' +
       '<div class="ticket-row-body">' +
         '<div class="ticket-row-title">' + escapeHtml(incidentName) + '</div>' +
-        '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
+        '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
       '</div>' +
       '<div class="ticket-row-footer">' +
         (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
@@ -765,9 +810,9 @@ function applyTicketSearchListeners() {
   await loadCategories();
   const _today = new Date();
   const _pad = function(n) { return String(n).padStart(2, '0'); };
-  const _yearStart = _today.getFullYear() + '-01-01';
+  const _monthStart = _today.getFullYear() + '-' + _pad(_today.getMonth() + 1) + '-01';
   const _todayStr = _today.getFullYear() + '-' + _pad(_today.getMonth() + 1) + '-' + _pad(_today.getDate());
-  if (ticketSearchFromInput) ticketSearchFromInput.value = _yearStart;
+  if (ticketSearchFromInput) ticketSearchFromInput.value = _monthStart;
   if (ticketSearchToInput) ticketSearchToInput.value = _todayStr;
   applyTicketSearchListeners();
   const sp = new URLSearchParams(window.location.search);

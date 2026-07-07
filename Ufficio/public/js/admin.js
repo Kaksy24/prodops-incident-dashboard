@@ -86,8 +86,10 @@ let usersPage = 1;
 const USERS_PAGE_SIZE = 5;
 const adminColorGroups = [
   { group: 'categories', label: 'Categorie', statsKey: 'catYear' },
+  { group: 'fabs', label: 'FAB', statsKey: 'fabYear' },
   { group: 'teams', label: 'Team', statsKey: 'teamYear' },
-  { group: 'severities', label: 'Severity', statsKey: 'severityYear' }
+  { group: 'severities', label: 'Severity', statsKey: 'severityYear' },
+  { group: 'users', label: 'Utenti', statsKey: 'userYear' }
 ];
 const adminChartDefinitions = [
   { key: 'personalMineChart', label: 'Ticket personali', preview: false, helper: 'Titolo del grafico personale in dashboard.' },
@@ -95,7 +97,7 @@ const adminChartDefinitions = [
   { key: 'fabYear', label: 'Ticket per FAB', preview: true, helper: 'Grafico riepilogo per FAB.' },
   { key: 'catYear', label: 'Ticket per categoria', preview: true, helper: 'Grafico riepilogo per categoria.' },
   { key: 'teamYear', label: 'Ticket per Team', preview: true, helper: 'Grafico riepilogo per team.' },
-  { key: 'severityYear', label: 'Severity Ticket', preview: true, helper: 'Grafico riepilogo per severity.' }
+  { key: 'incidentYear', label: 'Ticket per Incident', preview: true, helper: 'Grafico riepilogo per incident.' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
 
@@ -167,14 +169,15 @@ function defaultUiColors() {
       fabYear: { light: '#355a84', dark: '#1fb6ff' },
       catYear: { light: '#6b4ea6', dark: '#9b6cff' },
       teamYear: { light: '#d97706', dark: '#f59e0b' },
-      severityYear: { light: '#be185d', dark: '#ec4899' }
+      incidentYear: { light: '#be185d', dark: '#ec4899' }
     },
     bars: {},
     labels: {
       categories: { light: {}, dark: {} },
       fabs: { light: {}, dark: {} },
       teams: { light: {}, dark: {} },
-      severities: { light: {}, dark: {} }
+      severities: { light: {}, dark: {} },
+      users: { light: {}, dark: {} }
     },
     titles: {
       personalMineChart: 'Ticket personali',
@@ -182,7 +185,7 @@ function defaultUiColors() {
       fabYear: 'Ticket per FAB',
       catYear: 'Ticket per categoria',
       teamYear: 'Ticket per Team',
-      severityYear: 'Severity Ticket'
+      incidentYear: 'Ticket per Incident'
     },
     settings: {
       personal_axis_max: 0,
@@ -202,7 +205,7 @@ function normalizeUiColors(input) {
   const out = {
     charts: {},
     bars: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } },
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} }, users: { light: {}, dark: {} } },
     titles: { ...defaults.titles },
     settings: { ...defaults.settings }
   };
@@ -216,7 +219,7 @@ function normalizeUiColors(input) {
       if (next) out.charts[key][theme] = next;
     });
   });
-  ['categories', 'fabs', 'teams', 'severities'].forEach((group) => {
+  ['categories', 'fabs', 'teams', 'severities', 'users'].forEach((group) => {
     ['light', 'dark'].forEach((theme) => {
       const rows = input?.labels?.[group]?.[theme];
       if (!rows || typeof rows !== 'object') return;
@@ -287,7 +290,8 @@ function chartGroupForId(chartId) {
   if (chartId === 'fabDayChart' || chartId === 'fabYearChart') return 'fabs';
   if (chartId === 'catDayChart' || chartId === 'catYearChart') return 'categories';
   if (chartId === 'teamYearChart') return 'teams';
-  if (chartId === 'severityYearChart') return 'severities';
+  if (chartId === 'severityDayChart' || chartId === 'severityYearChart') return 'severities';
+  if (chartId === 'userDayChart' || chartId === 'userYearChart') return 'users';
   return '';
 }
 
@@ -295,7 +299,8 @@ function chartKeysForGroup(group) {
   if (group === 'fabs') return ['fabDay', 'fabYear'];
   if (group === 'categories') return ['catDay', 'catYear'];
   if (group === 'teams') return ['teamYear'];
-  if (group === 'severities') return ['severityYear'];
+  if (group === 'severities') return ['severityDay', 'severityYear'];
+  if (group === 'users') return ['userDay', 'userYear'];
   return [];
 }
 
@@ -314,7 +319,7 @@ function defaultChartTypes() {
     fabYear: 'bar',
     catYear: 'bar',
     teamYear: 'donut',
-    severityYear: 'bar'
+    incidentYear: 'bar'
   };
 }
 
@@ -738,17 +743,21 @@ async function loadUiColors() {
 
 async function loadAdminChartsPreviewData() {
   try {
-    const [fabYear, catYear, teamYear, severityYear] = await Promise.all([
+    const [fabYear, catYear, teamYear, incidentYear, severityYear, userYear] = await Promise.all([
       fetchJson('/api/stats/fab/current-year?mode=months'),
       fetchJson('/api/stats/category/current-year?mode=months'),
       fetchJson('/api/stats/team/current-year?mode=months'),
-      fetchJson('/api/stats/severity/current-year?mode=months')
+      fetchJson('/api/stats/incident/current-year?mode=months'),
+      fetchJson('/api/stats/severity/current-year?mode=months'),
+      fetchJson('/api/stats/user/current-year?mode=months')
     ]);
     adminChartStats = {
       fabYear: fabYear.stats || [],
       catYear: catYear.stats || [],
       teamYear: teamYear.stats || [],
-      severityYear: severityYear.stats || []
+      incidentYear: incidentYear.stats || [],
+      severityYear: severityYear.stats || [],
+      userYear: userYear.stats || []
     };
     renderColorSettings();
   } catch (error) {

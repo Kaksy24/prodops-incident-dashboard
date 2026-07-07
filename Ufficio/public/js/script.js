@@ -47,7 +47,7 @@ const ticketSearchResults = document.getElementById('ticketSearchResults');
 const fabYearChart = document.getElementById('fabYearChart');
 const catYearChart = document.getElementById('catYearChart');
 const teamYearChart = document.getElementById('teamYearChart');
-const severityYearChart = document.getElementById('severityYearChart');
+const incidentYearChart = document.getElementById('incidentYearChart');
 const userYearChart = document.getElementById('userYearChart');
 const personalMineChart = document.getElementById('personalMineChart');
 const personalMineChartTitleText = document.getElementById('personalMineChartTitleText');
@@ -83,9 +83,9 @@ const THEMES = [
 let fabYearMode = 'day';
 let catYearMode = 'day';
 let teamYearMode = 'day';
-let severityYearMode = 'day';
+let incidentYearMode = 'day';
 let userYearMode = 'day';
-const chartCustomRanges = { fabYear: null, catYear: null, teamYear: null, severityYear: null, userYear: null };
+const chartCustomRanges = { fabYear: null, catYear: null, teamYear: null, incidentYear: null, userYear: null };
 const currentYear = new Date().getFullYear();
 const incidentCategoryMap = {};
 const incidentNameToIdMap = {};
@@ -112,6 +112,7 @@ let previousShiftsLoading = false;
 let previousShiftsData = null;
 let syncLastTs = 0;
 let syncPollTimer = null;
+let _sseSource = null;
 let currentShiftAutoRefreshBusy = false;
 let currentShiftOwnerFilter = 'all';
 let currentShiftSortKey = 'time';
@@ -214,10 +215,11 @@ function sanitizePinText(text) {
     .replace(/Ã²/g, 'ò')
     .replace(/Ã¬/g, 'ì');
 }
-function decoratePinnedTickets(pins) {
-  if (!ticketList) return;
+function decoratePinnedTickets(pins, container) {
+  var root = container || ticketList;
+  if (!root) return;
   var pinnedIds = new Set((pins || []).map(function(p) { return Number(p.id); }));
-  ticketList.querySelectorAll('[data-ticket-id]').forEach(function(li) {
+  root.querySelectorAll('[data-ticket-id]').forEach(function(li) {
     var tid = Number(li.dataset.ticketId);
     var isPinned = pinnedIds.has(tid);
     var row = li.classList.contains('ticket-row') ? li : li.querySelector('.ticket-row');
@@ -282,6 +284,39 @@ function highlightPresetValues(text) {
   return escapeHtml(text).replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); });
 }
 
+// Rendering sicuro della descrizione: mantiene il sottoinsieme HTML di
+// formattazione (grassetto/corsivo/sottolineato/elenchi), converte i marker
+// 〈valore〉 in link preset ed effettua l'escape di tutto il resto. Compatibile
+// con le descrizioni "legacy" solo-testo (i newline diventano <br>).
+function renderDescriptionHtmlText(text) {
+  return escapeHtml(String(text == null ? '' : text))
+    .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, function(_, value) { return renderPresetValueLink(value); })
+    .replace(/\r\n?|\n/g, '<br>');
+}
+
+function renderDescriptionHtmlNode(node, out) {
+  var nodes = node.childNodes, i, child;
+  for (i = 0; i < nodes.length; i += 1) {
+    child = nodes[i];
+    if (child.nodeType === 3) { out.push(renderDescriptionHtmlText(child.nodeValue || '')); continue; }
+    if (child.nodeType !== 1) continue;
+    var tag = child.tagName;
+    if (tag === 'BR') { out.push('<br>'); continue; }
+    var map = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li' };
+    if (map[tag]) { out.push('<' + map[tag] + '>'); renderDescriptionHtmlNode(child, out); out.push('</' + map[tag] + '>'); continue; }
+    if (tag === 'DIV' || tag === 'P') { if (out.length) out.push('<br>'); renderDescriptionHtmlNode(child, out); continue; }
+    renderDescriptionHtmlNode(child, out); // unwrap tag non ammessi mantenendo il testo
+  }
+}
+
+function renderDescriptionHtml(raw) {
+  var tpl = document.createElement('template');
+  tpl.innerHTML = String(raw == null ? '' : raw);
+  var out = [];
+  renderDescriptionHtmlNode(tpl.content, out);
+  return out.join('');
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -304,7 +339,7 @@ function defaultChartTypes() {
     personalMineChart: 'column',
     personalGroupChart: 'column',
     teamYear: 'donut',
-    severityYear: 'bar'
+    incidentYear: 'bar'
   };
 }
 
@@ -408,9 +443,8 @@ function setTicketModalReadMode(isReadMode) {
   if (deleteTicketBtn) deleteTicketBtn.style.display = readMode ? 'none' : (editingTicketId ? 'inline-block' : 'none');
   if (addSameIncidentBtn) addSameIncidentBtn.style.display = readMode ? 'none' : 'grid';
   if (ticketForm) ticketForm.dataset.readMode = readMode ? '1' : '0';
-  const descTextarea = document.getElementById('description');
   const descRead = document.getElementById('descriptionRead');
-  if (descTextarea) descTextarea.style.display = readMode ? 'none' : '';
+  descShow(!readMode);
   if (descRead) descRead.style.display = readMode ? '' : 'none';
   if (editFromReadBtn) editFromReadBtn.style.display = 'none';
 }
@@ -467,10 +501,202 @@ function getCustomIncidentNameForSubmit() {
   return String(customIncidentNameInput.value || '').trim();
 }
 
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+// ============================================================================
+// Editor descrizione (rich text semplice) — contenteditable con toolbar
+// (grassetto/corsivo/sottolineato + elenchi) e "chip" per i valori dei preset.
+// La textarea nascosta #description resta il campo del form: viene sincronizzata
+// con la stringa di storage (sottoinsieme HTML + marker token 〈valore〉).
+// ============================================================================
+var descEditorEl = document.getElementById('descriptionEditor');
+var descTextareaEl = document.getElementById('description');
+var descToolbarEl = document.getElementById('descriptionToolbar');
+// I marker dei token nel resto del codice sono salvati con una sequenza
+// "mojibake" (doppia codifica) e non con i veri caratteri U+3008/U+3009: per
+// restare coerenti (regex di render, extractPresetValuesFromMarkup, ecc.)
+// deriviamo le sequenze esatte da buildMarkupDescription invece di codificarle.
+var DESC_TOKEN_OPEN, DESC_TOKEN_CLOSE;
+(function () {
+  try {
+    var probe = buildMarkupDescription('', [{ raw: '', type: 'text', label: 'x', options: [], value: '' }]);
+    var idx = probe.indexOf('');
+    if (idx >= 0) { DESC_TOKEN_OPEN = probe.slice(0, idx); DESC_TOKEN_CLOSE = probe.slice(idx + 1); }
+  } catch (e) {}
+  if (!DESC_TOKEN_OPEN || !DESC_TOKEN_CLOSE) { DESC_TOKEN_OPEN = String.fromCharCode(0x3008); DESC_TOKEN_CLOSE = String.fromCharCode(0x3009); }
+})();
+var DESC_INLINE_TAGS = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li' };
+var DESC_TOOLBAR_CMDS = ['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList'];
+
+function descTokenRe() { return new RegExp(DESC_TOKEN_OPEN + '([^' + DESC_TOKEN_CLOSE + ']*)' + DESC_TOKEN_CLOSE, 'g'); }
+
+function descChipHtml(index, label, value) {
+  var empty = String(value == null ? '' : value).trim() === '';
+  var safeLabel = escapeHtml(String(label || 'campo'));
+  var display = empty ? '[' + safeLabel + ']' : escapeHtml(String(value));
+  return '<span class="preset-chip" contenteditable="false" data-token-index="' + index +
+    '" data-token-label="' + safeLabel + '" data-token-empty="' + (empty ? '1' : '0') + '">' + display + '</span>';
+}
+
+// storage string (editor DOM) -> HTML editor con chip. tokens: array opzionale
+// di tokenState (per label), i marker 〈…〉 vengono convertiti in chip in ordine.
+function descBuildEditorHtml(storage, tokens) {
+  var tpl = document.createElement('template');
+  tpl.innerHTML = String(storage == null ? '' : storage);
+  var out = [];
+  var ctr = { i: 0 };
+  descWalkBuild(tpl.content, out, tokens || null, ctr);
+  return out.join('');
+}
+
+function descWalkBuild(node, out, tokens, ctr) {
+  var nodes = node.childNodes, i, child;
+  for (i = 0; i < nodes.length; i += 1) {
+    child = nodes[i];
+    if (child.nodeType === 3) {
+      var text = child.nodeValue || '';
+      var re = descTokenRe();
+      var last = 0, m;
+      while ((m = re.exec(text)) !== null) {
+        out.push(escapeHtml(text.slice(last, m.index)).replace(/\n/g, '<br>'));
+        var idx = ctr.i++;
+        var label = tokens && tokens[idx] ? tokens[idx].label : '';
+        out.push(descChipHtml(idx, label, m[1]));
+        last = m.index + m[0].length;
+      }
+      out.push(escapeHtml(text.slice(last)).replace(/\n/g, '<br>'));
+      continue;
+    }
+    if (child.nodeType !== 1) continue;
+    var tag = child.tagName;
+    if (tag === 'BR') { out.push('<br>'); continue; }
+    var wrap = DESC_INLINE_TAGS[tag];
+    if (wrap) { out.push('<' + wrap + '>'); descWalkBuild(child, out, tokens, ctr); out.push('</' + wrap + '>'); continue; }
+    if (tag === 'DIV' || tag === 'P') { if (out.length) out.push('<br>'); descWalkBuild(child, out, tokens, ctr); continue; }
+    descWalkBuild(child, out, tokens, ctr); // unwrap span/altro
+  }
+}
+
+// editor DOM -> stringa di storage (sottoinsieme HTML + 〈valore〉 per i chip)
+function descSerializeNode(node, out) {
+  var nodes = node.childNodes, i, child;
+  for (i = 0; i < nodes.length; i += 1) {
+    child = nodes[i];
+    if (child.nodeType === 3) { out.push(escapeHtml(child.nodeValue || '')); continue; }
+    if (child.nodeType !== 1) continue;
+    var tag = child.tagName;
+    if (child.classList && child.classList.contains('preset-chip')) {
+      if (child.getAttribute('data-token-empty') === '1') {
+        out.push('[' + (child.getAttribute('data-token-label') || 'campo') + ']');
+      } else {
+        out.push(DESC_TOKEN_OPEN + (child.textContent || '') + DESC_TOKEN_CLOSE);
+      }
+      continue;
+    }
+    if (tag === 'BR') { out.push('\n'); continue; }
+    var wrap = DESC_INLINE_TAGS[tag];
+    if (wrap) { out.push('<' + wrap + '>'); descSerializeNode(child, out); out.push('</' + wrap + '>'); continue; }
+    if (tag === 'DIV' || tag === 'P') { if (out.length) out.push('\n'); descSerializeNode(child, out); continue; }
+    descSerializeNode(child, out);
+  }
+}
+
+function descGetStorage() {
+  if (!descEditorEl) return descTextareaEl ? descTextareaEl.value : '';
+  var out = [];
+  descSerializeNode(descEditorEl, out);
+  var s = out.join('');
+  s = s.replace(/\n{3,}/g, '\n\n').replace(/\n/g, '<br>');
+  s = s.replace(/(?:<br>){3,}/g, '<br><br>').replace(/^(?:<br>)+|(?:<br>)+$/g, '');
+  return s.trim();
+}
+
+function descGetText() {
+  if (!descEditorEl) return descTextareaEl ? descTextareaEl.value : '';
+  return String(descEditorEl.textContent || '').replace(/ /g, ' ').trim();
+}
+
+function descSyncFromEditor() {
+  if (descTextareaEl) descTextareaEl.value = descGetStorage();
+  if (typeof syncSubmitBtnState === 'function') syncSubmitBtnState();
+}
+
+// Imposta il contenuto dell'editor da una stringa di storage. tokens opzionale
+// per trasformare i marker 〈…〉 in chip (modalità preset).
+function descSetContent(storage, tokens) {
+  if (!descEditorEl) { if (descTextareaEl) descTextareaEl.value = String(storage || ''); return; }
+  descEditorEl.innerHTML = descBuildEditorHtml(storage, tokens);
+  descSyncFromEditor();
+}
+
+// Contenuto libero (nessun token): strip degli eventuali marker 〈v〉 → v.
+function descSetPlain(storage) {
+  descSetContent(String(storage == null ? '' : storage).replace(descTokenRe(), '$1'), null);
+}
+
+function descSetChipValue(index, value) {
+  if (!descEditorEl) return;
+  var chip = descEditorEl.querySelector('.preset-chip[data-token-index="' + index + '"]');
+  if (!chip) return;
+  var label = chip.getAttribute('data-token-label') || 'campo';
+  var empty = String(value == null ? '' : value).trim() === '';
+  chip.setAttribute('data-token-empty', empty ? '1' : '0');
+  chip.textContent = empty ? '[' + label + ']' : String(value);
+  descSyncFromEditor();
+}
+
+function descSetReadOnly(readOnly) {
+  if (!descEditorEl) return;
+  descEditorEl.setAttribute('contenteditable', readOnly ? 'false' : 'true');
+  if (descToolbarEl) descToolbarEl.style.display = readOnly ? 'none' : '';
+}
+
+function descShow(visible) {
+  if (descEditorEl) descEditorEl.style.display = visible ? '' : 'none';
+  if (descToolbarEl) descToolbarEl.style.display = (visible && descEditorEl && descEditorEl.getAttribute('contenteditable') !== 'false') ? '' : 'none';
+}
+
+function descUpdateToolbarState() {
+  if (!descToolbarEl) return;
+  var buttons = descToolbarEl.querySelectorAll('.desc-tool');
+  Array.prototype.forEach.call(buttons, function (btn) {
+    var cmd = btn.getAttribute('data-cmd');
+    if (DESC_TOOLBAR_CMDS.indexOf(cmd) === -1) return;
+    var active = false;
+    try { active = document.queryCommandState(cmd); } catch (e) { active = false; }
+    btn.classList.toggle('is-active', !!active);
+  });
+}
+
+function descInitEditor() {
+  if (!descEditorEl) return;
+  try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) {}
+  descEditorEl.addEventListener('input', descSyncFromEditor);
+  descEditorEl.addEventListener('keyup', descUpdateToolbarState);
+  descEditorEl.addEventListener('mouseup', descUpdateToolbarState);
+  descEditorEl.addEventListener('focus', descUpdateToolbarState);
+  if (descToolbarEl) {
+    // mousedown preventDefault: non perdere la selezione nell'editor
+    descToolbarEl.addEventListener('mousedown', function (e) { if (e.target.closest('.desc-tool')) e.preventDefault(); });
+    descToolbarEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.desc-tool');
+      if (!btn) return;
+      descEditorEl.focus();
+      try { document.execCommand(btn.getAttribute('data-cmd'), false, null); } catch (err) {}
+      descSyncFromEditor();
+      descUpdateToolbarState();
+    });
+  }
+}
+descInitEditor();
+
 function syncSubmitBtnState() {
   if (!ticketSubmitBtn || ticketSubmitBusy || ticketForm.dataset.readMode === '1') return;
-  const descEl = document.getElementById('description');
-  const description = descEl.value.trim();
+  const description = descGetText();
   const presetComplete = !getIncompletePresetFields(presetInlineComposer).length;
   const valid = !!Number(incidentTypeInput.value || 0)
     && !!description
@@ -488,7 +714,6 @@ if (customIncidentNameInput) {
   });
 }
 
-document.getElementById('description').addEventListener('input', syncSubmitBtnState);
 if (ticketTimestampInput) ticketTimestampInput.addEventListener('input', syncSubmitBtnState);
 
 function openTicketReadModal(ticket) {
@@ -497,12 +722,10 @@ function openTicketReadModal(ticket) {
   clearExtraTicketCards();
   incidentTypeInput.value = String(item.incidentId || '');
   syncCustomIncidentNameField(item.incidentId, item.incidentName || '', true);
-  document.getElementById('description').value = String(item.description || '').replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1');
-  document.getElementById('description').readOnly = true;
-  document.getElementById('description').style.display = '';
-  document.getElementById('description').placeholder = '';
+  descSetReadOnly(true);
+  descShow(false);
   const descReadEl = document.getElementById('descriptionRead');
-  if (descReadEl) descReadEl.innerHTML = highlightPresetValues(String(item.description || ''));
+  if (descReadEl) descReadEl.innerHTML = renderDescriptionHtml(String(item.description || ''));
   if (presetInlineComposer) {
     presetInlineComposer.style.display = 'none';
     presetInlineComposer.innerHTML = '';
@@ -545,14 +768,15 @@ function defaultUiColors() {
       fabYear: { light: '#355a84', dark: '#1fb6ff' },
       catYear: { light: '#6b4ea6', dark: '#9b6cff' },
       teamYear: { light: '#d97706', dark: '#f59e0b' },
-      severityYear: { light: '#be185d', dark: '#ec4899' }
+      incidentYear: { light: '#be185d', dark: '#ec4899' }
     },
     bars: {},
     labels: {
       categories: { light: {}, dark: {} },
       fabs: { light: {}, dark: {} },
       teams: { light: {}, dark: {} },
-      severities: { light: {}, dark: {} }
+      severities: { light: {}, dark: {} },
+      users: { light: {}, dark: {} }
     },
     titles: {
       personalMineChart: 'Ticket personali',
@@ -560,7 +784,7 @@ function defaultUiColors() {
       fabYear: 'Ticket per FAB',
       catYear: 'Ticket per categoria',
       teamYear: 'Ticket per Team',
-      severityYear: 'Severity Ticket',
+      incidentYear: 'Ticket per Incident',
       userYear: 'Ticket Utenti'
     },
     settings: {
@@ -581,7 +805,7 @@ function normalizeUiColors(input) {
   const out = {
     charts: {},
     bars: {},
-    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} } },
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} }, users: { light: {}, dark: {} } },
     titles: { ...defaults.titles },
     settings: { ...defaults.settings }
   };
@@ -598,7 +822,7 @@ function normalizeUiColors(input) {
       if (next) out.charts[key][theme] = next;
     });
   });
-  ['categories', 'fabs', 'teams', 'severities'].forEach((group) => {
+  ['categories', 'fabs', 'teams', 'severities', 'users'].forEach((group) => {
     ['light', 'dark'].forEach((theme) => {
       const rows = input?.labels?.[group]?.[theme];
       if (!rows || typeof rows !== 'object') return;
@@ -659,7 +883,7 @@ function applyDashboardChartTitles() {
     fabYear: document.getElementById('fabYearChartTitle'),
     catYear: document.getElementById('catYearChartTitle'),
     teamYear: document.getElementById('teamYearChartTitle'),
-    severityYear: document.getElementById('severityYearChartTitle'),
+    incidentYear: document.getElementById('incidentYearChartTitle'),
     userYear: document.getElementById('userYearChartTitle')
   };
   Object.keys(titleMap).forEach((key) => {
@@ -701,8 +925,9 @@ function chartGroupForId(chartId) {
       return 'categories';
     case 'teamYear':
       return 'teams';
-    case 'severityYear':
-      return 'severities';
+    case 'userDay':
+    case 'userYear':
+      return 'users';
     default:
       return customChartGroupMap[normalizeChartKey(chartId)] || '';
   }
@@ -1655,9 +1880,12 @@ function revealModal() {
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
   lockModalScroll();
-  requestAnimationFrame(() => {
+  requestAnimationFrame(function() {
     modal.classList.add('active');
     updateSingleTicketModalHeight();
+    setTimeout(function() {
+      autoResizeTextarea(document.getElementById('description'));
+    }, 0);
   });
 }
 
@@ -1855,6 +2083,7 @@ function makeSearchableSelect(select) {
       li2.setAttribute('role', 'option');
       li2.addEventListener('mousedown', function(e) {
         e.preventDefault();
+        select.dataset.proposedDraft = (search.value || '').trim();
         select.value = '__propose_new__';
         select.dispatchEvent(new Event('input', { bubbles: true }));
         closePanel();
@@ -1896,6 +2125,7 @@ function makeSearchableSelect(select) {
     panel.hidden = false;
     wrapper.setAttribute('aria-expanded', 'true');
     search.value = '';
+    select.dataset.proposedDraft = '';
     renderList('');
     requestAnimationFrame(function() {
       syncOpenSpacing();
@@ -1917,6 +2147,7 @@ function makeSearchableSelect(select) {
   });
 
   search.addEventListener('input', function() {
+    select.dataset.proposedDraft = (search.value || '').trim();
     renderList(search.value.trim().toLowerCase());
     requestAnimationFrame(function() {
       syncOpenSpacing();
@@ -2007,6 +2238,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     presetTokenState = [];
     composerContainer.dataset.presetTemplate = '';
     composerContainer.style.display = 'none';
+    composerContainer.classList.remove('preset-inline-composer--triple');
     composerContainer.innerHTML = '';
     descriptionInput.readOnly = false;
     descriptionInput.dataset.presetAutoSync = 'off';
@@ -2015,8 +2247,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     descriptionInput.dataset.presetGeneratedBase = '';
     descriptionInput.dataset.presetMarkupBase = '';
     descriptionInput.dataset.presetManualText = '';
-    descriptionInput.placeholder = 'Inserisci descrizione problema...';
-    descriptionInput.value = template || '';
+    descSetReadOnly(false);
+    descShow(true);
+    // Nessun token: contenuto libero. In edit riusa la descrizione salvata
+    // (preserva la formattazione), altrimenti parte dal template come testo.
+    descSetPlain((savedDescription != null && savedDescription !== '') ? savedDescription : (template || ''));
     return;
   }
 
@@ -2027,7 +2262,8 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
   });
   presetTokenState = tokenState;
   composerContainer.dataset.presetTemplate = template || '';
-  composerContainer.style.display = 'flex';
+  composerContainer.style.display = 'grid';
+  composerContainer.classList.toggle('preset-inline-composer--triple', tokenState.length >= 3);
   composerContainer.innerHTML = '';
   descriptionInput.readOnly = false;
   descriptionInput.dataset.presetAutoSync = 'on';
@@ -2073,13 +2309,15 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     input.style.width = '100%';
     const syncPresetFieldValue = async () => {
       if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__propose_new__') {
-        const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', confirmText: 'Invia proposta' });
+        const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', defaultValue: String(input.dataset.proposedDraft || '').trim(), confirmText: 'Invia proposta' });
         if (!proposedValue || !proposedValue.trim()) {
           input.value = '';
+          input.dataset.proposedDraft = '';
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           return;
         }
         const value = proposedValue.trim();
+        input.dataset.proposedDraft = value;
         const normalizedValue = value.toLocaleLowerCase('it');
         const duplicateOption = [...input.querySelectorAll('option')].find((option) => {
           if (!option || option.value === '__propose_new__' || option.dataset.separator === '1') return false;
@@ -2087,11 +2325,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         });
         if (duplicateOption) {
           input.value = duplicateOption.value;
+          input.dataset.proposedDraft = '';
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Questo elemento esiste gia: "' + duplicateOption.value + '".', 'warning', 'Elemento duplicato');
-          descriptionInput.value = replacePresetTokenInDescription(descriptionInput.value, tokenState, tokenIndex, input.value || '');
           tokenState[tokenIndex].value = input.value || '';
-          descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
+          descSetChipValue(tokenIndex, input.value || '');
           syncSubmitBtnState();
           return;
         }
@@ -2113,18 +2351,19 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           pendingOption.textContent = `${storedValue} (in revisione)`;
           input.insertBefore(pendingOption, input.querySelector('option[value="__propose_new__"]'));
           input.value = storedValue;
+          input.dataset.proposedDraft = '';
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Il nuovo elemento è stato inviato all\'admin per la revisione. Sarà disponibile dopo l\'approvazione.', 'success', 'Proposta inviata');
         } catch (error) {
           input.value = '';
+          input.dataset.proposedDraft = value;
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Non è stato possibile inviare la proposta: ' + (error.message || error), 'error', 'Errore invio proposta');
           return;
         }
       }
-      descriptionInput.value = replacePresetTokenInDescription(descriptionInput.value, tokenState, tokenIndex, input.value || '');
       tokenState[tokenIndex].value = input.value || '';
-      descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
+      descSetChipValue(tokenIndex, input.value || '');
       syncSubmitBtnState();
     };
     input.addEventListener('input', syncPresetFieldValue);
@@ -2133,17 +2372,17 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     composerContainer.appendChild(fieldWrap);
   });
 
-  descriptionInput.oninput = function() {
-    descriptionInput.dataset.presetMarkupValue = buildMarkupFromCurrentDescription(descriptionInput.value, tokenState);
-  };
-
-  const initialGenerated = buildDescriptionFromTemplate(template, tokenState, true);
-  const initialMarkupGenerated = buildMarkupDescription(template, tokenState);
-  descriptionInput.dataset.presetGeneratedBase = initialGenerated;
-  descriptionInput.dataset.presetMarkupBase = initialMarkupGenerated;
-  descriptionInput.dataset.presetAutoValue = initialGenerated;
-  descriptionInput.dataset.presetMarkupValue = initialMarkupGenerated;
-  descriptionInput.value = initialGenerated;
+  // Costruisce il contenuto dell'editor: in edit riusa la descrizione salvata
+  // (preserva testo/formattazione manuale + 〈valori〉), in creazione parte dal
+  // template con i token come chip (vuoti o precompilati dai valori salvati).
+  var buildStr;
+  if (savedDescription != null && savedDescription !== '') {
+    buildStr = String(savedDescription);
+  } else {
+    buildStr = template || '';
+    tokenState.forEach(function (t) { buildStr = buildStr.replace(t.raw, DESC_TOKEN_OPEN + (t.value || '') + DESC_TOKEN_CLOSE); });
+  }
+  descSetContent(buildStr, tokenState);
   syncSubmitBtnState();
 }
 
@@ -2578,10 +2817,10 @@ function formatCustomRangeLabel(range) {
 function chartTitleForTarget(target) {
   const baseTitle = target.closest('.panel') ? target.closest('.panel').querySelector('h3')?.textContent || target.id || 'Grafico' : (target.id || 'Grafico');
   const chartKey = normalizeChartKey(target && target.id);
-  const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode };
+  const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, incidentYear: incidentYearMode, userYear: userYearMode };
   if (modeByKey[chartKey] === 'custom' && chartCustomRanges[chartKey]) return `${baseTitle} (${formatCustomRangeLabel(chartCustomRanges[chartKey])})`;
-  if (chartKey === 'fabYear' && fabYearMode === 'day') return `${baseTitle} (24h)`;
-  if (chartKey === 'catYear' && catYearMode === 'day') return `${baseTitle} (24h)`;
+  const modeLabel = customLabel(CUSTOM_WINDOWS, modeByKey[chartKey]);
+  if (modeLabel && modeByKey[chartKey] !== 'months') return `${baseTitle} (${modeLabel})`;
   return baseTitle;
 }
 
@@ -2862,7 +3101,7 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
   var targetLines = '';
   if (targetMonthlyY !== null) {
     targetLines += '<line x1="' + padL + '" y1="' + targetMonthlyY.toFixed(1) + '" x2="' + (width - padR) + '" y2="' + targetMonthlyY.toFixed(1) + '" class="personal-chart-target personal-chart-target-monthly"/>' +
-      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 6).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">T.mens. ' + targetMonthly + '</text>';
+      '<text x="' + (padL + 6) + '" y="' + (targetMonthlyY - 6).toFixed(1) + '" text-anchor="start" class="personal-chart-target-label personal-chart-target-label-monthly">Target Mensile ' + targetMonthly + '</text>';
   }
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -3200,7 +3439,7 @@ function createTicketRowElement(t, isAnimated) {
     '</div>' +
     '<div class="ticket-row-body">' +
       '<div class="ticket-row-title">' + escapeHtml(incidentName) + '</div>' +
-      '<div class="ticket-row-desc">' + highlightPresetValues(description) + '</div>' +
+      '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
       (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
@@ -3425,11 +3664,62 @@ function pingUrl() {
 }
 
 function startCurrentShiftAutoRefresh() {
-  if (syncPollTimer) return;
+  if (typeof EventSource === 'undefined') {
+    // Fallback: polling
+    if (syncPollTimer) return;
+    fetch(pingUrl())
+      .then(function(r) { return r.json(); })
+      .then(function(data) { syncLastTs = data.ts || 0; scheduleSyncPoll(); })
+      .catch(function() { scheduleSyncPoll(); });
+    return;
+  }
+  if (_sseSource) return;
+  // Initial ping to seed syncLastTs so we don't re-fire on stale changes
   fetch(pingUrl())
-    .then((r) => r.json())
-    .then((data) => { syncLastTs = data.ts || 0; scheduleSyncPoll(); })
-    .catch(() => scheduleSyncPoll());
+    .then(function(r) { return r.json(); })
+    .then(function(data) { syncLastTs = data.ts || 0; _openSSE(); })
+    .catch(function() { _openSSE(); });
+}
+
+function _openSSE() {
+  if (_sseSource) return;
+  var src = new EventSource('/api/events?last=' + syncLastTs);
+  _sseSource = src;
+  var received = false;
+  // Fallback: if server doesn't stream (e.g. PHP built-in dev server buffers), switch to polling
+  var fallbackTimer = setTimeout(function() {
+    if (!received) {
+      src.close();
+      _sseSource = null;
+      scheduleSyncPoll();
+    }
+  }, 8000);
+  src.onmessage = function(e) {
+    received = true;
+    clearTimeout(fallbackTimer);
+    try {
+      var ts = Number(JSON.parse(e.data).ts) || 0;
+      if (ts > syncLastTs + 0.001) {
+        syncLastTs = ts;
+        refreshCurrentShiftTickets().catch(function() {});
+        loadCharts().catch(function() {});
+        if (previousShiftsLoaded) loadPreviousShifts().catch(function() {});
+      }
+      syncLastTs = Math.max(syncLastTs, ts);
+    } catch (_) {}
+    // EventSource auto-reconnects using Last-Event-ID — no manual retry needed
+  };
+  src.onerror = function() {
+    clearTimeout(fallbackTimer);
+    if (src.readyState === EventSource.CLOSED) {
+      _sseSource = null;
+      if (received) {
+        setTimeout(_openSSE, 3000);
+      } else {
+        scheduleSyncPoll();
+      }
+    }
+  };
 }
 
 function scheduleSyncPoll() {
@@ -3473,7 +3763,7 @@ function renderSearchTickets(tickets) {
       const editBtn = item.can_edit
         ? `<button type="button" class="edit-ticket-btn" data-ticket-id="${item.id}" data-incident-id="${item.incident_id || ''}" data-incident="${item.incident_name.replace(/"/g, '&quot;')}" data-description="${item.description.replace(/"/g, '&quot;')}" data-fab="${item.fab}" data-created-at="${item.created_at || ''}" data-severity="${item.severity || ''}">Modifica</button>`
         : '';
-      return `<li data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${highlightPresetValues(item.description)}</span>${editBtn}</li>`;
+      return `<li data-ticket-id="${item.id}"><span class="incident-entry-text"><span class="incident-title">${escapeHtml(item.incident_name)}</span> - ${renderDescriptionHtml(item.description)}</span>${editBtn}</li>`;
     }).join('');
     return `<li><strong class="ticket-category-label" style="color:${categoryColor}">${group.category}</strong> | <strong class="ticket-fab-label" style="color:${fabColor}">${group.fab}</strong><ul>${rows}</ul></li>`;
   }).join('');
@@ -3521,10 +3811,8 @@ function handleEditTicketButton(btn) {
       ? ''
       : 'Severity impostata di default dall\'admin.';
   }
-  document.getElementById('description').value = (btn.dataset.description || '').replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1');
-  document.getElementById('description').readOnly = false;
-  document.getElementById('description').style.display = '';
-  document.getElementById('description').placeholder = 'Inserisci descrizione problema...';
+  descSetReadOnly(false);
+  descShow(true);
   const editPresets = incidentIdToPresetMap[String(incidentId)] || [];
   if (presetInlineComposer) {
     presetInlineComposer.style.display = 'none';
@@ -3532,6 +3820,8 @@ function handleEditTicketButton(btn) {
   }
   if (editPresets.length && presetInlineComposer) {
     renderPresetForTargets(editPresets[0] || '', document.getElementById('description'), presetInlineComposer, incidentId, btn.dataset.description || '');
+  } else {
+    descSetPlain(btn.dataset.description || '');
   }
   ticketTimestampInput.value = toDatetimeLocalValue(btn.dataset.createdAt || new Date());
   fabValue.value = (btn.dataset.fab || '').toUpperCase();
@@ -3596,6 +3886,9 @@ async function loadPreviousShifts() {
       block.appendChild(list);
       previousShiftsContent.appendChild(block);
     });
+    fetchJson('/api/pinned-tickets').then(function(pins) {
+      decoratePinnedTickets(pins, previousShiftsContent);
+    }).catch(function() {});
     previousShiftsLoaded = true;
   } finally {
     previousShiftsLoading = false;
@@ -3646,23 +3939,23 @@ function buildYearStatsUrl(basePath, mode, customRange) {
 
 async function loadCharts() {
   try {
-    const [fabYear, catYear, teamYear, severityYear, userYear] = await Promise.all([
+    const [fabYear, catYear, teamYear, incidentYear, userYear] = await Promise.all([
       fetchJson(buildYearStatsUrl('/api/stats/fab', fabYearMode, chartCustomRanges.fabYear)),
       fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)),
       fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)),
-      fetchJson(buildYearStatsUrl('/api/stats/severity', severityYearMode, chartCustomRanges.severityYear)),
+      fetchJson(buildYearStatsUrl('/api/stats/incident', incidentYearMode, chartCustomRanges.incidentYear)),
       fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear))
     ]);
     renderChart(fabYearChart, fabYear.stats);
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
-    renderChart(severityYearChart, severityYear.stats);
+    renderChart(incidentYearChart, incidentYear.stats);
     if (userYearChart) renderChart(userYearChart, userYear.stats);
     // Config per il filtro-ticket al click su un elemento del grafico.
     if (fabYearChart) fabYearChart._chartFilter = { dimension: 'fab', scope: 'all', getWindow: function () { return fabYearMode; }, start: (chartCustomRanges.fabYear || {}).start || '', end: (chartCustomRanges.fabYear || {}).end || '' };
     if (catYearChart) catYearChart._chartFilter = { dimension: 'category', scope: 'all', getWindow: function () { return catYearMode; }, start: (chartCustomRanges.catYear || {}).start || '', end: (chartCustomRanges.catYear || {}).end || '' };
     if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; }, start: (chartCustomRanges.teamYear || {}).start || '', end: (chartCustomRanges.teamYear || {}).end || '' };
-    if (severityYearChart) severityYearChart._chartFilter = { dimension: 'severity', scope: 'all', getWindow: function () { return severityYearMode; }, start: (chartCustomRanges.severityYear || {}).start || '', end: (chartCustomRanges.severityYear || {}).end || '' };
+    if (incidentYearChart) incidentYearChart._chartFilter = { dimension: 'incident', scope: 'all', getWindow: function () { return incidentYearMode; }, start: (chartCustomRanges.incidentYear || {}).start || '', end: (chartCustomRanges.incidentYear || {}).end || '' };
     if (userYearChart) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; }, start: (chartCustomRanges.userYear || {}).start || '', end: (chartCustomRanges.userYear || {}).end || '' };
     // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
     // di drill-down mensile (annuale di default, o giorno per giorno).
@@ -3670,7 +3963,7 @@ async function loadCharts() {
     if (personalGroupChart) await loadPersonalChartData(personalGroupChart);
   } catch (error) {
     console.error(error);
-    [fabYearChart, catYearChart, teamYearChart, severityYearChart, userYearChart, personalMineChart, personalGroupChart].forEach((target) => {
+    [fabYearChart, catYearChart, teamYearChart, incidentYearChart, userYearChart, personalMineChart, personalGroupChart].forEach((target) => {
       if (target) target.innerHTML = '<p class="muted">Impossibile caricare il grafico.</p>';
     });
   }
@@ -3689,7 +3982,7 @@ const PANEL_TITLE_ELEMENTS = {
   chartPanelFab:           'fabYearChartTitle',
   chartPanelCat:           'catYearChartTitle',
   chartPanelTeam:          'teamYearChartTitle',
-  chartPanelSeverity:      'severityYearChartTitle',
+  chartPanelIncident:      'incidentYearChartTitle',
   chartPanelUser:          'userYearChartTitle'
 };
 
@@ -3779,7 +4072,7 @@ const DEFAULT_CHART_PANELS = [
   { id: 'chartPanelFab',           label: 'Ticket per FAB' },
   { id: 'chartPanelCat',           label: 'Ticket per categoria' },
   { id: 'chartPanelTeam',          label: 'Ticket per Team' },
-  { id: 'chartPanelSeverity',      label: 'Severity Ticket' },
+  { id: 'chartPanelIncident',      label: 'Ticket per Incident' },
   { id: 'chartPanelUser',          label: 'Ticket Utenti' }
 ];
 
@@ -3792,6 +4085,9 @@ const CUSTOM_DIMENSIONS = [
 ];
 const CUSTOM_WINDOWS = [
   { value: 'day',    label: '24h' },
+  { value: 't1',     label: 'T1' },
+  { value: 't2',     label: 'T2' },
+  { value: 't3',     label: 'T3' },
   { value: 'month',  label: 'Mese corrente' },
   { value: 'months', label: 'Anno' },
   { value: 'q1',     label: 'Q1' },
@@ -3895,7 +4191,7 @@ async function loadUserCharts() {
     hiddenDefaultPanels = Array.isArray(data.hidden_panels) ? data.hidden_panels : [];
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
-    chartSpans = (data.chart_spans && typeof data.chart_spans === 'object') ? data.chart_spans : chartSpans;
+    chartSpans = (data.chart_spans && typeof data.chart_spans === 'object') ? normalizeSpanMap(data.chart_spans) : chartSpans;
     chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? data.chart_types : chartTypes;
     currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : currentPaletteId;
     currentDarkMode = !!data.dark_mode;
@@ -3913,25 +4209,20 @@ async function loadUserCharts() {
     }
     if (data.chart_modes && typeof data.chart_modes === 'object') {
       const modes = data.chart_modes;
-      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4', 'custom'];
+      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3', 'custom'];
       if (allowed.includes(modes.fabYear) && (modes.fabYear !== 'custom' || chartCustomRanges.fabYear)) fabYearMode = modes.fabYear;
       if (allowed.includes(modes.catYear) && (modes.catYear !== 'custom' || chartCustomRanges.catYear)) catYearMode = modes.catYear;
       if (allowed.includes(modes.teamYear) && (modes.teamYear !== 'custom' || chartCustomRanges.teamYear)) teamYearMode = modes.teamYear;
-      if (allowed.includes(modes.severityYear) && (modes.severityYear !== 'custom' || chartCustomRanges.severityYear)) severityYearMode = modes.severityYear;
+      if (allowed.includes(modes.incidentYear) && (modes.incidentYear !== 'custom' || chartCustomRanges.incidentYear)) incidentYearMode = modes.incidentYear;
       if (allowed.includes(modes.userYear) && (modes.userYear !== 'custom' || chartCustomRanges.userYear)) userYearMode = modes.userYear;
-      document.querySelectorAll('.range-btn').forEach((btn) => {
-        const t = btn.dataset.target;
-        const m = btn.dataset.mode;
-        if (t && m) {
-          const active = (t === 'fabYear' && m === fabYearMode) || (t === 'catYear' && m === catYearMode) ||
-            (t === 'teamYear' && m === teamYearMode) || (t === 'severityYear' && m === severityYearMode) ||
-            (t === 'userYear' && m === userYearMode);
-          btn.classList.toggle('active', active);
-        }
+      document.querySelectorAll('.chart-range-select').forEach((select) => {
+        const t = select.dataset.target;
+        const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, incidentYear: incidentYearMode, userYear: userYearMode };
+        if (t && modeByKey[t] && modeByKey[t] !== 'custom') select.value = modeByKey[t];
       });
       document.querySelectorAll('.range-calendar-btn').forEach((btn) => {
         const t = btn.dataset.target;
-        const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode };
+        const modeByKey = { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, incidentYear: incidentYearMode, userYear: userYearMode };
         btn.classList.toggle('active', modeByKey[t] === 'custom');
       });
     }
@@ -3951,20 +4242,24 @@ async function loadUserCharts() {
 }
 
 async function saveUserCharts() {
+  const requestSeq = ++saveUserChartsRequestSeq;
   try {
     const data = await fetchJson('/api/user-charts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, severityYear: severityYearMode, userYear: userYearMode }, chart_custom_ranges: chartCustomRanges, chart_spans: chartSpans, chart_types: chartTypes, palette: currentPaletteId, dark_mode: currentDarkMode })
+      body: JSON.stringify({ charts: customCharts, hidden_panels: hiddenDefaultPanels, panel_order: panelOrder, panel_titles: panelTitles, chart_modes: { fabYear: fabYearMode, catYear: catYearMode, teamYear: teamYearMode, incidentYear: incidentYearMode, userYear: userYearMode }, chart_custom_ranges: chartCustomRanges, chart_spans: chartSpans, chart_types: chartTypes, palette: currentPaletteId, dark_mode: currentDarkMode })
     });
+    if (requestSeq < saveUserChartsAppliedSeq) return;
+    saveUserChartsAppliedSeq = requestSeq;
     if (Array.isArray(data.charts)) customCharts = data.charts;
     if (Array.isArray(data.hidden_panels)) hiddenDefaultPanels = data.hidden_panels;
     if (Array.isArray(data.panel_order)) panelOrder = data.panel_order;
     if (data.panel_titles && typeof data.panel_titles === 'object') panelTitles = data.panel_titles;
-    if (data.chart_spans && typeof data.chart_spans === 'object') chartSpans = data.chart_spans;
+    if (data.chart_spans && typeof data.chart_spans === 'object') chartSpans = normalizeSpanMap(data.chart_spans);
     if (data.chart_types && typeof data.chart_types === 'object') chartTypes = data.chart_types;
     if (typeof data.palette === 'string' && data.palette) currentPaletteId = data.palette;
     currentDarkMode = !!data.dark_mode;
+    applyAllChartSpans();
   } catch (e) {
     console.error(e);
     showToast('Impossibile salvare le impostazioni della dashboard. Verifica la connessione e riprova.', 'error', 'Salvataggio fallito');
@@ -4998,22 +5293,20 @@ function setChartMode(target, mode) {
   if (target === 'fabYear') fabYearMode = mode;
   if (target === 'catYear') catYearMode = mode;
   if (target === 'teamYear') teamYearMode = mode;
-  if (target === 'severityYear') severityYearMode = mode;
+  if (target === 'incidentYear') incidentYearMode = mode;
   if (target === 'userYear') userYearMode = mode;
 }
 
 function clearChartRangeActiveState(target) {
-  document.querySelectorAll(`.range-btn[data-target="${target}"]`).forEach((x) => x.classList.remove('active'));
   const calendarBtn = document.querySelector(`.range-calendar-btn[data-target="${target}"]`);
   if (calendarBtn) calendarBtn.classList.remove('active');
 }
 
-document.querySelectorAll('.range-btn').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    const target = btn.dataset.target;
-    const mode = btn.dataset.mode;
+document.querySelectorAll('.chart-range-select').forEach((select) => {
+  select.addEventListener('change', async () => {
+    const target = select.dataset.target;
+    const mode = select.value;
     clearChartRangeActiveState(target);
-    btn.classList.add('active');
     setChartMode(target, mode);
     await loadCharts();
     saveUserCharts();
@@ -5069,11 +5362,8 @@ ticketForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!beginTicketSubmitLock()) return;
   const incident_id = Number(incidentTypeInput.value || 0);
-  const descEl = document.getElementById('description');
-  const presetTokens = collectPresetStateFromComposer(presetInlineComposer ? presetInlineComposer.dataset.presetTemplate : '', presetInlineComposer);
-  const description = ((descEl.dataset.presetAutoSync !== 'off') && presetTokens.length)
-    ? buildMarkupFromCurrentDescription(descEl.value || '', presetTokens)
-    : descEl.value.trim();
+  // L'editor mantiene già i valori dei token come chip → 〈valore〉 nello storage.
+  const description = descGetStorage();
   const fab = fabValue.value;
   const severity = Number(ticketSeveritySelect.value || 1);
   const ticket_time_local = ticketTimestampInput.value;
@@ -5145,6 +5435,8 @@ ticketForm.addEventListener('submit', async (e) => {
       }
     }
     ticketForm.reset();
+    descSetReadOnly(false);
+    descSetPlain('');
     editingTicketId = null;
     if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Crea Ticket';
     if (deleteTicketBtn) deleteTicketBtn.style.display = 'none';
@@ -5182,9 +5474,26 @@ ticketSearchResetBtn?.addEventListener('click', async () => {
 // --- Chart panel spans / order / drag & resize ---
 const chartSpanStorageKey = 'prodops_chart_spans';
 const chartOrderStorageKey = 'prodops_chart_order';
-const chartSpanSteps = [3, 4, 6, 8, 9, 12];
+const chartSpanSteps = [3, 6, 9, 12];
 let chartSpans = {};
+
+// Il backend serializza una mappa vuota come `[]` (json_encode PHP) e anche
+// localStorage può contenere "[]": in quel caso chartSpans diventerebbe un
+// Array. Impostare chiavi-stringa su un Array funziona in memoria ma
+// JSON.stringify le SCARTA, azzerando i resize a ogni salvataggio. Qui
+// normalizziamo sempre a un oggetto piano con sole chiavi-stringa.
+function normalizeSpanMap(value) {
+  var out = {};
+  if (value && typeof value === 'object') {
+    Object.keys(value).forEach(function (k) {
+      if (!/^\d+$/.test(k)) out[k] = value[k];
+    });
+  }
+  return out;
+}
 let dragSrcPanel = null;
+let saveUserChartsRequestSeq = 0;
+let saveUserChartsAppliedSeq = 0;
 
 function defaultChartSpan(panelId) {
   if (panelId === 'chartPanelPersonal') return 12;
@@ -5194,7 +5503,7 @@ function defaultChartSpan(panelId) {
 
 function loadChartSpans() {
   if (chartSpans && typeof chartSpans === 'object' && Object.keys(chartSpans).length) return;
-  try { chartSpans = JSON.parse(localStorage.getItem(chartSpanStorageKey) || '{}'); } catch (e) { chartSpans = {}; }
+  try { chartSpans = normalizeSpanMap(JSON.parse(localStorage.getItem(chartSpanStorageKey) || '{}')); } catch (e) { chartSpans = {}; }
 }
 
 function saveChartSpans() {
@@ -5207,9 +5516,90 @@ function getChartSpan(panelId) {
   return chartSpanSteps.indexOf(v) !== -1 ? v : defaultChartSpan(panelId);
 }
 
+function chartGridColumnCount(grid) {
+  if (!grid) return 12;
+  if (window.matchMedia('(max-width: 640px)').matches) return 1;
+  if (window.matchMedia('(min-width: 901px) and (max-width: 1400px)').matches) return 4;
+  return 12;
+}
+
+function chartSpanToGridColumns(span, columnCount) {
+  if (columnCount <= 1) return 1;
+  if (columnCount >= 12) return span;
+  if (span === 3 || span === 4) return 1;
+  if (span === 6) return 2;
+  if (span === 8 || span === 9) return 3;
+  return 4;
+}
+
+function estimatedPanelWidthForSpan(grid, span) {
+  if (!grid) return 0;
+  var columns = chartGridColumnCount(grid);
+  var gridRect = grid.getBoundingClientRect();
+  var styles = window.getComputedStyle(grid);
+  var gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+  if (columns <= 1) return gridRect.width;
+  var oneColWidth = (gridRect.width - (gap * (columns - 1))) / columns;
+  var usedColumns = chartSpanToGridColumns(span, columns);
+  return (oneColWidth * usedColumns) + (gap * Math.max(0, usedColumns - 1));
+}
+
+function minReadableChartWidth(panel) {
+  if (!panel) return 0;
+  if (panel.id === 'chartPanelPersonalMine' || panel.id === 'chartPanelPersonalGroup') return 560;
+  var chart = panel.querySelector('.chart[id]');
+  if (!chart) return 0;
+  var type = getChartType(chart.id);
+  if (type === 'donut') return 360;
+  if (type === 'bar') return 430;
+  return 360;
+}
+
+function getEffectiveChartSpan(panel, baseSpan) {
+  var grid = document.getElementById('chartsGrid');
+  var effective = baseSpan;
+  // Se l'utente ha scelto esplicitamente una larghezza (presente in chartSpans),
+  // la rispettiamo alla lettera: l'auto-allargamento vale solo come default di
+  // leggibilità per i grafici che l'utente non ha mai ridimensionato a mano.
+  if (panel && Object.prototype.hasOwnProperty.call(chartSpans, panel.id)) return effective;
+  var minWidth = minReadableChartWidth(panel);
+  if (!grid || !minWidth || window.matchMedia('(max-width: 640px)').matches) return effective;
+  while (effective < chartSpanSteps[chartSpanSteps.length - 1] && estimatedPanelWidthForSpan(grid, effective) < minWidth) {
+    var idx = chartSpanSteps.indexOf(effective);
+    if (idx === -1 || idx >= chartSpanSteps.length - 1) break;
+    effective = chartSpanSteps[idx + 1];
+  }
+  return effective;
+}
+
 function applyChartSpan(panel, span) {
   chartSpanSteps.forEach(function (s) { panel.classList.remove('chart-span-' + s); });
-  panel.classList.add('chart-span-' + span);
+  var effectiveSpan = getEffectiveChartSpan(panel, span);
+  panel.classList.add('chart-span-' + effectiveSpan);
+  panel.dataset.chartSpan = String(span);
+  panel.dataset.chartEffectiveSpan = String(effectiveSpan);
+}
+
+// Larghezza da cui partono i pulsanti di resize: se l'utente ha già scelto
+// una larghezza usiamo quella, altrimenti quella effettivamente mostrata a
+// video (auto-allargata) così le frecce continuano dal valore visibile.
+function currentDisplaySpan(panel) {
+  if (!panel) return chartSpanSteps[0];
+  if (Object.prototype.hasOwnProperty.call(chartSpans, panel.id)) return getChartSpan(panel.id);
+  var eff = Number(panel.dataset.chartEffectiveSpan);
+  return chartSpanSteps.indexOf(eff) !== -1 ? eff : getChartSpan(panel.id);
+}
+
+function refreshChartResizeControls(panel) {
+  if (!panel) return;
+  var current = currentDisplaySpan(panel);
+  var buttons = panel.querySelectorAll('.chart-resize-btn');
+  if (buttons && buttons.length >= 2) {
+    buttons[0].disabled = current === chartSpanSteps[0];
+    buttons[1].disabled = current === chartSpanSteps[chartSpanSteps.length - 1];
+  }
+  var valueBadge = panel.querySelector('.chart-resize-value');
+  if (valueBadge) valueBadge.textContent = String(current);
 }
 
 function applyAllChartSpans() {
@@ -5217,6 +5607,7 @@ function applyAllChartSpans() {
   if (!grid) return;
   grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
     applyChartSpan(panel, getChartSpan(panel.id));
+    refreshChartResizeControls(panel);
   });
 }
 
@@ -5256,10 +5647,14 @@ function setupChartResizeControls() {
   const grid = document.getElementById('chartsGrid');
   if (!grid) return;
   grid.querySelectorAll(':scope > .panel[id]').forEach(function (panel) {
-    const target = panel.querySelector('.chart-controls-row') || panel.querySelector('.panel-heading-row');
+    const target = panel.querySelector('.panel-heading-row') || panel.querySelector('.chart-controls-row');
     if (!target || target.querySelector('.chart-resize-controls')) return;
     const controls = document.createElement('div');
     controls.className = 'chart-resize-controls';
+    const valueBadge = document.createElement('span');
+    valueBadge.className = 'chart-resize-value';
+    valueBadge.setAttribute('aria-label', 'Larghezza corrente grafico');
+    controls.appendChild(valueBadge);
     [{ dir: -1, label: '◀' }, { dir: 1, label: '▶' }].forEach(function (cfg) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -5267,18 +5662,23 @@ function setupChartResizeControls() {
       btn.textContent = cfg.label;
       btn.title = cfg.dir === -1 ? 'Riduci larghezza' : 'Espandi larghezza';
       btn.addEventListener('click', function () {
-        const current = getChartSpan(panel.id);
+        const current = currentDisplaySpan(panel);
         const idx = chartSpanSteps.indexOf(current);
         const newIdx = Math.max(0, Math.min(chartSpanSteps.length - 1, idx + cfg.dir));
         const newSpan = chartSpanSteps[newIdx];
         if (newSpan === current) return;
         chartSpans[panel.id] = newSpan;
         applyChartSpan(panel, newSpan);
+        refreshChartResizeControls(panel);
+        requestAnimationFrame(function () { refreshChartResizeControls(panel); });
         saveChartSpans();
       });
       controls.appendChild(btn);
     });
-    target.appendChild(controls);
+    const actionButton = target.querySelector('.custom-chart-delete, .default-chart-hide-btn');
+    if (actionButton) target.insertBefore(controls, actionButton);
+    else target.appendChild(controls);
+    refreshChartResizeControls(panel);
   });
 }
 
@@ -5903,6 +6303,8 @@ if (deleteTicketBtn) {
     editingTicketId = null;
     deleteTicketBtn.style.display = 'none';
     ticketForm.reset();
+    descSetReadOnly(false);
+    descSetPlain('');
     closeModal();
     await loadDayTickets();
     await loadCharts();
@@ -5947,10 +6349,15 @@ function _compactLabelForMode() {
 }
 
 function _compactBuild() {
-  var allRows = Array.from(ticketList.children).filter(function(li) {
-    return !!li.dataset.ticketId;
-  });
-  _compactFlatRows = allRows.slice();
+  var allRows = [];
+  if (_compactFlatRows.length) {
+    allRows = _compactFlatRows.slice();
+  } else {
+    allRows = Array.from(ticketList.children).filter(function(li) {
+      return !!li.dataset.ticketId;
+    });
+    _compactFlatRows = allRows.slice();
+  }
 
   var visRows = allRows.filter(function(li) { return li.style.display !== 'none'; });
 
@@ -6054,6 +6461,7 @@ if (tsPopup) {
 
 if (compactModeSelect) {
   compactModeSelect.addEventListener('change', function() {
+    if (_compactMode && _compactFlatRows.length) _compactRestoreFlat();
     _compactMode = String(this.value || '');
     if (_compactMode) {
       _compactBuild();

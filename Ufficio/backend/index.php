@@ -173,6 +173,100 @@ function normalize_group_name($value)
     return $name !== '' ? $name : 'ProdOps';
 }
 
+if (!function_exists('allowed_avatars_list')) {
+    function allowed_avatars_list()
+    {
+        return array('🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦄','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸');
+    }
+}
+
+function normalize_avatar_value($avatar)
+{
+    $avatar = trim(strval($avatar));
+    if ($avatar === '') return '';
+    return in_array($avatar, allowed_avatars_list(), true) ? $avatar : '';
+}
+
+function build_user_avatar_map($db)
+{
+    $map = isset($db['user_avatars']) && is_array($db['user_avatars']) ? $db['user_avatars'] : array();
+    foreach ($map as $username => $avatar) {
+        $cleanUsername = trim(strval($username));
+        $cleanAvatar = normalize_avatar_value($avatar);
+        if ($cleanUsername === '' || $cleanAvatar === '') {
+            unset($map[$username]);
+            continue;
+        }
+        if ($cleanUsername !== $username) {
+            unset($map[$username]);
+            $map[$cleanUsername] = $cleanAvatar;
+        } else {
+            $map[$username] = $cleanAvatar;
+        }
+    }
+    if (isset($db['users']) && is_array($db['users'])) {
+        foreach ($db['users'] as $user) {
+            if (!isset($user['username'])) continue;
+            $username = trim(strval($user['username']));
+            $avatar = normalize_avatar_value(isset($user['avatar']) ? $user['avatar'] : '');
+            if ($username !== '' && $avatar !== '') $map[$username] = $avatar;
+        }
+    }
+    return $map;
+}
+
+function pick_default_avatar_for_user($user, $usedAvatars)
+{
+    $avatars = allowed_avatars_list();
+    if (!count($avatars)) return '';
+    $seed = '';
+    if (isset($user['username'])) $seed .= strtolower(trim(strval($user['username'])));
+    $seed .= '#' . intval(isset($user['id']) ? $user['id'] : 0);
+    $hash = sprintf('%u', crc32($seed));
+    $index = intval($hash % count($avatars));
+    $candidate = $avatars[$index];
+    if (!in_array($candidate, $usedAvatars, true)) return $candidate;
+    for ($offset = 1; $offset < count($avatars); $offset++) {
+        $probe = $avatars[($index + $offset) % count($avatars)];
+        if (!in_array($probe, $usedAvatars, true)) return $probe;
+    }
+    return $candidate;
+}
+
+function ensure_default_user_avatars(&$db)
+{
+    if (!isset($db['users']) || !is_array($db['users'])) return false;
+    $changed = false;
+    $map = build_user_avatar_map($db);
+    $usedAvatars = array_values($map);
+    foreach ($db['users'] as $index => $user) {
+        $username = isset($user['username']) ? trim(strval($user['username'])) : '';
+        if ($username === '') continue;
+        $avatar = normalize_avatar_value(isset($user['avatar']) ? $user['avatar'] : '');
+        if ($avatar === '' && isset($map[$username])) {
+            $avatar = normalize_avatar_value($map[$username]);
+        }
+        if ($avatar === '') {
+            $avatar = pick_default_avatar_for_user($user, $usedAvatars);
+            if ($avatar !== '') {
+                $usedAvatars[] = $avatar;
+                $changed = true;
+            }
+        }
+        if ($avatar === '') continue;
+        if (!isset($db['users'][$index]['avatar']) || $db['users'][$index]['avatar'] !== $avatar) {
+            $db['users'][$index]['avatar'] = $avatar;
+            $changed = true;
+        }
+        if (!isset($map[$username]) || $map[$username] !== $avatar) {
+            $map[$username] = $avatar;
+            $changed = true;
+        }
+    }
+    $db['user_avatars'] = $map;
+    return $changed;
+}
+
 function normalize_group_targets($groupTargets, $users)
 {
     $normalized = array();
@@ -236,14 +330,15 @@ function default_ui_colors()
             'fabYear' => array('light' => '#355a84', 'dark' => '#1fb6ff'),
             'catYear' => array('light' => '#6b4ea6', 'dark' => '#9b6cff'),
             'teamYear' => array('light' => '#d97706', 'dark' => '#f59e0b'),
-            'severityYear' => array('light' => '#be185d', 'dark' => '#ec4899')
+            'incidentYear' => array('light' => '#be185d', 'dark' => '#ec4899')
         ),
         'bars' => array(),
         'labels' => array(
             'categories' => array('light' => array(), 'dark' => array()),
             'fabs' => array('light' => array(), 'dark' => array()),
             'teams' => array('light' => array(), 'dark' => array()),
-            'severities' => array('light' => array(), 'dark' => array())
+            'severities' => array('light' => array(), 'dark' => array()),
+            'users' => array('light' => array(), 'dark' => array())
         ),
         'titles' => array(
             'personalMineChart' => 'Ticket personali',
@@ -251,7 +346,7 @@ function default_ui_colors()
             'fabYear' => 'Ticket per FAB',
             'catYear' => 'Ticket per categoria',
             'teamYear' => 'Ticket per Team',
-            'severityYear' => 'Severity Ticket'
+            'incidentYear' => 'Ticket per Incident'
         ),
         'settings' => array(
             'personal_axis_max' => 0,
@@ -265,6 +360,25 @@ function sanitize_hex_color($value)
 {
     $value = trim(strval($value));
     return preg_match('/^#[0-9a-fA-F]{6}$/', $value) ? strtoupper($value) : '';
+}
+
+// Sanitizza la descrizione del ticket consentendo solo un piccolo sottoinsieme
+// di formattazione (grassetto/corsivo/sottolineato/elenchi + a-capo). Rimuove
+// ogni altro tag e tutti gli attributi (difesa anti-XSS). I marker preset
+// 〈valore〉 sono testo normale e non vengono toccati. Compatibile PHP 5.3.
+function sanitize_ticket_description($value)
+{
+    $s = strval($value);
+    // Rimuovi per intero blocchi pericolosi (script/style) col loro contenuto.
+    $s = preg_replace('/<\s*(script|style)\b[^>]*>.*?<\s*\/\s*\1\s*>/is', '', $s);
+    // Mantieni solo i tag ammessi, rimuovi tutti gli altri (con contenuto tag).
+    $s = strip_tags($s, '<b><strong><i><em><u><ul><ol><li><br>');
+    // Rimuovi eventuali attributi dai tag ammessi e normalizza strong/em.
+    $s = preg_replace('/<\s*(\/?)\s*(b|strong|i|em|u|ul|ol|li|br)(?:\s[^>]*)?\/?\s*>/i', '<$1$2>', $s);
+    $s = preg_replace('/<(\/?)strong>/i', '<$1b>', $s);
+    $s = preg_replace('/<(\/?)em>/i', '<$1i>', $s);
+    $s = str_replace(array('<B>', '</B>', '<I>', '</I>', '<U>', '</U>'), array('<b>', '</b>', '<i>', '</i>', '<u>', '</u>'), $s);
+    return trim($s);
 }
 
 function normalize_axis_max_setting($value)
@@ -288,7 +402,7 @@ function normalize_ui_colors($colors)
         }
     }
 
-    $groupDefaults = array('categories', 'fabs', 'teams', 'severities');
+    $groupDefaults = array('categories', 'fabs', 'teams', 'severities', 'users');
     foreach ($groupDefaults as $group) {
         foreach (array('light', 'dark') as $theme) {
             if (!isset($colors['labels'][$group][$theme]) || !is_array($colors['labels'][$group][$theme])) continue;
@@ -750,6 +864,7 @@ function mysql_load_db($defaultUsers)
         'users' => array(),
         'group_targets' => array(),
         'ui_colors' => default_ui_colors(),
+        'user_avatars' => array(),
         'user_charts' => array(),
         'preset_options' => array(),
         'preset_option_requests' => array(),
@@ -840,7 +955,7 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($ru);
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_charts','pinned_tickets','disabled_users')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','disabled_users')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
@@ -849,6 +964,7 @@ function mysql_load_db($defaultUsers)
             if ($row['setting_key'] === 'preset_option_requests') $db['preset_option_requests'] = $parsed;
             if ($row['setting_key'] === 'preset_option_formats') $db['preset_option_formats'] = $parsed;
             if ($row['setting_key'] === 'group_targets') $db['group_targets'] = $parsed;
+            if ($row['setting_key'] === 'user_avatars') $db['user_avatars'] = $parsed;
             if ($row['setting_key'] === 'user_charts') $db['user_charts'] = $parsed;
             if ($row['setting_key'] === 'pinned_tickets') $db['pinned_tickets'] = $parsed;
             if ($row['setting_key'] === 'disabled_users') $db['disabled_users'] = $parsed;
@@ -909,6 +1025,8 @@ function mysql_save_db($db)
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('preset_option_formats', '$presetFormatsJson')")) { $ok = false; }
         $groupTargetsJson = mysql_escape($conn, json_encode(normalize_group_targets(isset($db['group_targets']) ? $db['group_targets'] : array(), isset($db['users']) ? $db['users'] : array())));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('group_targets', '$groupTargetsJson')")) { $ok = false; }
+        $userAvatarsJson = mysql_escape($conn, json_encode(build_user_avatar_map($db)));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('user_avatars', '$userAvatarsJson')")) { $ok = false; }
         $userChartsJson = mysql_escape($conn, json_encode(isset($db['user_charts']) && is_array($db['user_charts']) ? $db['user_charts'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('user_charts', '$userChartsJson')")) { $ok = false; }
         $pinnedJson = mysql_escape($conn, json_encode(isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array()));
@@ -1073,6 +1191,7 @@ function load_json_db($defaultUsers)
             'tickets' => array(),
             'users' => $defaultUsers,
             'group_targets' => array(),
+            'user_avatars' => array(),
             'preset_options' => array(),
             'preset_option_requests' => array(),
             'preset_option_formats' => array(),
@@ -1094,6 +1213,7 @@ function load_json_db($defaultUsers)
     if (!isset($db['preset_option_requests']) || !is_array($db['preset_option_requests'])) $db['preset_option_requests'] = array();
     if (!isset($db['preset_option_formats']) || !is_array($db['preset_option_formats'])) $db['preset_option_formats'] = array();
     if (!isset($db['group_targets']) || !is_array($db['group_targets'])) $db['group_targets'] = array();
+    if (!isset($db['user_avatars']) || !is_array($db['user_avatars'])) $db['user_avatars'] = array();
     if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
@@ -1188,15 +1308,19 @@ function load_db($defaultUsers)
             $selected = 'mysql';
         }
         set_active_storage_backend($selected);
-        return $selected === 'mysql' ? $mysqlDb : $jsonDb;
+        $db = $selected === 'mysql' ? $mysqlDb : $jsonDb;
+        if (ensure_default_user_avatars($db)) save_db($db);
+        return $db;
     }
 
     if (is_array($mysqlDb)) {
         set_active_storage_backend('mysql');
+        if (ensure_default_user_avatars($mysqlDb)) save_db($mysqlDb);
         return $mysqlDb;
     }
 
     set_active_storage_backend('json');
+    if (ensure_default_user_avatars($jsonDb)) save_db($jsonDb);
     return $jsonDb;
 }
 
@@ -1275,33 +1399,52 @@ function current_day_bounds()
 
 function shift_windows()
 {
-    $bounds = current_day_bounds();
-    $startUtc = new DateTime($bounds['start'], new DateTimeZone('UTC'));
-    $morningStart = clone $startUtc;
-    $morningEnd = clone $startUtc;
-    $morningEnd->modify('+8 hours');
-    $afternoonStart = clone $startUtc;
-    $afternoonStart->modify('+8 hours');
-    $afternoonEnd = clone $startUtc;
-    $afternoonEnd->modify('+16 hours');
-    $nightStart = clone $startUtc;
-    $nightStart->modify('+16 hours');
-    $nightEnd = clone $startUtc;
-    $nightEnd->modify('+24 hours');
-    $shifts = array(
-        array('key' => 'morning', 'label' => 'Turno Mattina 06:10 - 14:10', 'start' => $morningStart, 'end' => $morningEnd),
-        array('key' => 'afternoon', 'label' => 'Turno Pomeriggio 14:10 - 22:10', 'start' => $afternoonStart, 'end' => $afternoonEnd),
-        array('key' => 'night', 'label' => 'Turno Notte 22:10 - 06:10', 'start' => $nightStart, 'end' => $nightEnd)
-    );
-    $now = new DateTime('now', new DateTimeZone('UTC'));
-    $currentIdx = 0;
-    for ($i = 0; $i < count($shifts); $i++) {
-        if ($now >= $shifts[$i]['start'] && $now < $shifts[$i]['end']) {
-            $currentIdx = $i;
-            break;
-        }
+    $slotOffsets = array(0, 8, 16);
+    $slotNames   = array('Mattina', 'Pomeriggio', 'Notte');
+    $slotTimes   = array('06:10 - 14:10', '14:10 - 22:10', '22:10 - 06:10');
+
+    // Day anchor: 06:10 Rome today, or yesterday if we're still before 06:10
+    $now = new DateTime('now', new DateTimeZone('Europe/Rome'));
+    $anchor = clone $now;
+    $anchor->setTime(6, 10, 0);
+    if ($now < $anchor) $anchor->modify('-1 day');
+
+    // Find current slot (0=morning, 1=afternoon, 2=night)
+    $currentSlot = 0;
+    for ($i = 0; $i < 3; $i++) {
+        $s = clone $anchor;
+        $s->modify('+' . $slotOffsets[$i] . ' hours');
+        $e = clone $s;
+        $e->modify('+8 hours');
+        if ($now >= $s && $now < $e) { $currentSlot = $i; break; }
     }
-    return array($shifts, $currentIdx);
+
+    // Build [prev2, prev1, current] — crosses into previous day when needed
+    $shifts = array();
+    for ($back = 2; $back >= 0; $back--) {
+        $slot = $currentSlot - $back;
+        $dayAnchor = clone $anchor;
+        if ($slot < 0) { $slot += 3; $dayAnchor->modify('-1 day'); }
+
+        $start = clone $dayAnchor;
+        $start->modify('+' . $slotOffsets[$slot] . ' hours');
+        $end = clone $start;
+        $end->modify('+8 hours');
+
+        $labelDate = $start->format('d/m');
+        $startUtc  = clone $start; $startUtc->setTimezone(new DateTimeZone('UTC'));
+        $endUtc    = clone $end;   $endUtc->setTimezone(new DateTimeZone('UTC'));
+
+        $shifts[] = array(
+            'key'   => strtolower($slotNames[$slot]),
+            'label' => 'Turno ' . $slotNames[$slot] . ' ' . $labelDate . ' ' . chr(194).chr(183) . ' ' . $slotTimes[$slot],
+            'start' => $startUtc,
+            'end'   => $endUtc
+        );
+    }
+
+    // Current shift is always at index 2
+    return array($shifts, 2);
 }
 
 function in_range($iso, $startIso, $endIso)
@@ -1450,6 +1593,44 @@ function summarize_by_incident($tickets, $incidents)
     return $out;
 }
 
+// Come summarize_by_incident, ma l'etichetta include la categoria: "Incident (Categoria)".
+function summarize_by_incident_cat($tickets, $incidents, $categories)
+{
+    $categoryNameById = array();
+    foreach ($categories as $cat) $categoryNameById[intval($cat['id'])] = strval($cat['name']);
+    $nameById = array();
+    $catByIncidentId = array();
+    $catByIncidentName = array();
+    foreach ($incidents as $inc) {
+        $iid = intval($inc['id']);
+        $nameById[$iid] = strval($inc['name']);
+        $catId = intval($inc['category_id']);
+        $catName = isset($categoryNameById[$catId]) ? $categoryNameById[$catId] : '';
+        $catByIncidentId[$iid] = $catName;
+        $catByIncidentName[strval($inc['name'])] = $catName;
+    }
+    $counts = array();
+    $order = array();
+    foreach ($tickets as $t) {
+        $incidentId = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+        if ($incidentId > 0 && isset($nameById[$incidentId])) {
+            $name = $nameById[$incidentId];
+            $catName = isset($catByIncidentId[$incidentId]) ? $catByIncidentId[$incidentId] : '';
+        } else {
+            $name = isset($t['incident_name']) ? strval($t['incident_name']) : '';
+            $catName = isset($catByIncidentName[$name]) ? $catByIncidentName[$name] : '';
+        }
+        if ($name === '') $name = 'N/D';
+        $label = ($catName !== '') ? ($name . ' (' . $catName . ')') : $name;
+        if (!isset($counts[$label])) { $counts[$label] = 0; $order[] = $label; }
+        $counts[$label]++;
+    }
+    $out = array();
+    foreach ($order as $label) $out[] = array('label' => $label, 'total' => $counts[$label]);
+    usort($out, function ($a, $b) { return $b['total'] - $a['total']; });
+    return $out;
+}
+
 function custom_ticket_category_name($ticket, $categories, $incidents)
 {
     $incidentToCatByName = array();
@@ -1525,6 +1706,8 @@ function custom_range_from_request()
 
 function year_range_from_mode($year, $mode)
 {
+    $shiftRange = shift_range_from_mode($mode);
+    if ($shiftRange) return $shiftRange;
     $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
     if (isset($quarter[$mode])) {
         $q = $quarter[$mode];
@@ -1536,6 +1719,31 @@ function year_range_from_mode($year, $mode)
     $start = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year));
     $end = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year + 1));
     return array($start, $end);
+}
+
+function shift_range_from_mode($mode)
+{
+    // Il "giorno corrente" va dalle 06:10 di oggi alle 06:09 del giorno
+    // successivo: prima delle 06:10 l'ancora del giorno è ieri.
+    $now = new DateTime('now', new DateTimeZone('Europe/Rome'));
+    $dayStart = io_window(0, 6, 10);
+    $anchorOffset = ($now >= $dayStart) ? 0 : -1;
+    if ($mode === 't1') {
+        $start = io_window($anchorOffset, 6, 10);
+        $end = io_window($anchorOffset, 14, 10);
+    } elseif ($mode === 't2') {
+        $start = io_window($anchorOffset, 14, 10);
+        $end = io_window($anchorOffset, 22, 10);
+    } elseif ($mode === 't3') {
+        $start = io_window($anchorOffset, 22, 10);
+        $end = io_window($anchorOffset + 1, 6, 10);
+    } else {
+        return null;
+    }
+    return array(
+        $start->setTimezone(new DateTimeZone('UTC'))->format(DateTime::ATOM),
+        $end->setTimezone(new DateTimeZone('UTC'))->format(DateTime::ATOM)
+    );
 }
 
 // Consente ad altri script (es. extensions/export.php) di includere questo file
@@ -1677,12 +1885,7 @@ function allowed_avatars() {
 }
 
 if ($path === '/api/user-avatars' && $method === 'GET') {
-    $map = array();
-    foreach ($db['users'] as $u) {
-        if (isset($u['avatar']) && $u['avatar'] !== '' && isset($u['username'])) {
-            $map[$u['username']] = $u['avatar'];
-        }
-    }
+    $map = build_user_avatar_map($db);
     json_response(array('avatars' => (object)$map), 200);
 }
 
@@ -1695,6 +1898,9 @@ if ($path === '/api/me/avatar' && $method === 'PUT') {
     foreach ($db['users'] as &$u) {
         if (intval($u['id']) === intval($user['id'])) {
             if ($avatar === '') { unset($u['avatar']); } else { $u['avatar'] = $avatar; }
+            if (!isset($db['user_avatars']) || !is_array($db['user_avatars'])) $db['user_avatars'] = array();
+            if ($avatar === '') unset($db['user_avatars'][$u['username']]);
+            else $db['user_avatars'][$u['username']] = $avatar;
             $found = true;
             break;
         }
@@ -2418,7 +2624,7 @@ if ($path === '/api/tickets' && $method === 'POST') {
     if (isset($user['role']) && $user['role'] === 'supervisor') json_response(array('error' => 'Il supervisor non può inserire ticket'), 403);
     $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
     $customIncidentName = isset($payload['incident_name']) ? trim(strval($payload['incident_name'])) : '';
-    $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
+    $desc = isset($payload['description']) ? sanitize_ticket_description($payload['description']) : '';
     $fab = isset($payload['fab']) ? strtoupper(trim(strval($payload['fab']))) : '';
     $ticketTime = isset($payload['ticket_time']) ? strval($payload['ticket_time']) : '';
     $severity = isset($payload['severity']) ? intval($payload['severity']) : 1;
@@ -2506,7 +2712,7 @@ if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
     if ($method === 'PUT') {
         $incidentId = isset($payload['incident_id']) ? intval($payload['incident_id']) : 0;
         $customIncidentName = isset($payload['incident_name']) ? trim(strval($payload['incident_name'])) : '';
-        $desc = isset($payload['description']) ? trim(strval($payload['description'])) : '';
+        $desc = isset($payload['description']) ? sanitize_ticket_description($payload['description']) : '';
         $fab = isset($payload['fab']) ? strtoupper(trim(strval($payload['fab']))) : '';
         $ticketTime = isset($payload['ticket_time']) ? strval($payload['ticket_time']) : '';
         $severity = isset($payload['severity']) ? intval($payload['severity']) : 1;
@@ -2571,7 +2777,7 @@ if ($path === '/api/tickets/previous-shifts' && $method === 'GET') {
         $start = $s['start']->format(DateTime::ATOM);
         $end = $s['end']->format(DateTime::ATOM);
         $tickets = array();
-        foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = ticket_with_permissions($t, $user);
+        foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = ticket_with_permissions($t, $user, $db['users']);
         usort($tickets, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
         $out[] = array('label' => $s['label'], 'start' => $start, 'end' => $end, 'tickets' => $tickets);
     }
@@ -2662,7 +2868,16 @@ if ($path === '/api/tickets/lookup' && $method === 'GET') {
         $userNameById[intval($u['id'])] = trim(strval(isset($u['display_name']) && strval($u['display_name']) !== '' ? $u['display_name'] : $u['username']));
     }
     $incidentNameById = array();
-    foreach ($db['incidents'] as $inc) $incidentNameById[intval($inc['id'])] = strval($inc['name']);
+    $incidentCatById = array();
+    $incidentCatByName = array();
+    $categoryNameById = array();
+    foreach ($db['categories'] as $cat) $categoryNameById[intval($cat['id'])] = strval($cat['name']);
+    foreach ($db['incidents'] as $inc) {
+        $incidentNameById[intval($inc['id'])] = strval($inc['name']);
+        $catName = isset($categoryNameById[intval($inc['category_id'])]) ? $categoryNameById[intval($inc['category_id'])] : '';
+        $incidentCatById[intval($inc['id'])] = $catName;
+        $incidentCatByName[strval($inc['name'])] = $catName;
+    }
 
     $matched = array();
     foreach ($db['tickets'] as $t) {
@@ -2683,9 +2898,17 @@ if ($path === '/api/tickets/lookup' && $method === 'GET') {
                 case 'severity': $match = custom_ticket_severity_label($t) === $value; break;
                 case 'incident':
                     $iid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
-                    $nm = ($iid > 0 && isset($incidentNameById[$iid])) ? $incidentNameById[$iid] : (isset($t['incident_name']) ? strval($t['incident_name']) : '');
+                    if ($iid > 0 && isset($incidentNameById[$iid])) {
+                        $nm = $incidentNameById[$iid];
+                        $catNm = isset($incidentCatById[$iid]) ? $incidentCatById[$iid] : '';
+                    } else {
+                        $nm = isset($t['incident_name']) ? strval($t['incident_name']) : '';
+                        $catNm = isset($incidentCatByName[$nm]) ? $incidentCatByName[$nm] : '';
+                    }
                     if ($nm === '') $nm = 'N/D';
-                    $match = $nm === $value; break;
+                    // Accetta sia l'etichetta con categoria ("Incident (Categoria)") che il nome semplice.
+                    $labeled = ($catNm !== '') ? ($nm . ' (' . $catNm . ')') : $nm;
+                    $match = ($labeled === $value) || ($nm === $value); break;
                 case 'user':
                     $nm = isset($userNameById[$ownerId]) ? $userNameById[$ownerId] : ('Utente ' . $ownerId);
                     $match = $nm === $value; break;
@@ -2793,6 +3016,24 @@ if ($path === '/api/stats/severity/current-year' && $method === 'GET') {
     $tickets = array();
     foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
     json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_severity($tickets)), 200);
+}
+
+if ($path === '/api/stats/incident/current-day' && $method === 'GET') {
+    $bounds = current_day_bounds();
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = $t;
+    json_response(array('day' => $bounds, 'stats' => summarize_by_incident_cat($tickets, $db['incidents'], $db['categories'])), 200);
+}
+
+if ($path === '/api/stats/incident/current-year' && $method === 'GET') {
+    $year = intval(gmdate('Y'));
+    $mode = isset($_GET['mode']) ? strval($_GET['mode']) : 'months';
+    $customRange = custom_range_from_request();
+    if ($customRange) { list($start, $end) = $customRange; $mode = 'custom'; }
+    else list($start, $end) = year_range_from_mode($year, $mode);
+    $tickets = array();
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $start, $end)) $tickets[] = $t;
+    json_response(array('year' => $year, 'mode' => $mode, 'stats' => summarize_by_incident_cat($tickets, $db['incidents'], $db['categories'])), 200);
 }
 
 function summarize_by_user($tickets, $users)
@@ -3104,11 +3345,11 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     $incoming = isset($payload['charts']) && is_array($payload['charts']) ? $payload['charts'] : (isset($existingUserData['charts']) && is_array($existingUserData['charts']) ? $existingUserData['charts'] : array());
     $incomingHidden = isset($payload['hidden_panels']) && is_array($payload['hidden_panels']) ? $payload['hidden_panels'] : (isset($existingUserData['hidden_panels']) && is_array($existingUserData['hidden_panels']) ? $existingUserData['hidden_panels'] : array());
     $allowedDimensions = array('fab', 'category', 'incident', 'team', 'severity');
-    $allowedWindows = array('day', 'month', 'months', 'q1', 'q2', 'q3', 'q4');
+    $allowedWindows = array('day', 'month', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3');
     $allowedScopes = array('all', 'mine', 'group');
     $allowedTypes = array('column', 'bar', 'pie', 'donut', 'line');
     $allowedFilterModes = array('fab', 'team');
-    $allowedDefaultPanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelSeverity','chartPanelUser');
+    $allowedDefaultPanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelIncident','chartPanelUser');
     $clean = array();
     foreach ($incoming as $c) {
         if (!is_array($c)) continue;
@@ -3175,7 +3416,7 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     }
     $cleanOrder = array_slice(array_unique($cleanOrder), 0, 48);
     $incomingTitles = isset($payload['panel_titles']) && is_array($payload['panel_titles']) ? $payload['panel_titles'] : (isset($existingUserData['panel_titles']) && is_array($existingUserData['panel_titles']) ? $existingUserData['panel_titles'] : array());
-    $allowedTitlePanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelSeverity','chartPanelUser');
+    $allowedTitlePanels = array('chartPanelPersonalMine','chartPanelPersonalGroup','chartPanelFab','chartPanelCat','chartPanelTeam','chartPanelIncident','chartPanelUser');
     $cleanTitles = array();
     foreach ($incomingTitles as $pid => $ptitle) {
         $pid = strval($pid);
@@ -3183,12 +3424,12 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
         $ptitle = trim(strval($ptitle));
         if ($ptitle !== '') $cleanTitles[$pid] = substr($ptitle, 0, 80);
     }
-    $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'severityYear', 'userYear');
-    $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4', 'custom');
+    $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'incidentYear', 'userYear');
+    $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3', 'custom');
     $allowedPaletteValues = array('cappuccino', 'bordeaux', 'verde', 'blu', 'giallo');
-    $allowedChartSpanPanels = array('chartPanelPersonal', 'chartPanelPersonalMine', 'chartPanelPersonalGroup', 'chartPanelFab', 'chartPanelCat', 'chartPanelTeam', 'chartPanelSeverity', 'chartPanelUser');
+    $allowedChartSpanPanels = array('chartPanelPersonal', 'chartPanelPersonalMine', 'chartPanelPersonalGroup', 'chartPanelFab', 'chartPanelCat', 'chartPanelTeam', 'chartPanelIncident', 'chartPanelUser');
     $allowedChartSpanValues = array(3, 6, 9, 12);
-    $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'severityYear');
+    $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'incidentYear');
     $allowedChartTypeValues = array('column', 'bar', 'donut');
     $incomingModes = isset($payload['chart_modes']) && is_array($payload['chart_modes']) ? $payload['chart_modes'] : (isset($existingUserData['chart_modes']) && is_array($existingUserData['chart_modes']) ? $existingUserData['chart_modes'] : array());
     $cleanModes = array();
@@ -3232,6 +3473,43 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
 if ($path === '/api/ping' && $method === 'GET') {
     $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
     json_response(array('ts' => $ts), 200);
+}
+
+if ($path === '/api/events' && $method === 'GET') {
+    // Auth già eseguita globalmente — $user è disponibile
+    set_time_limit(35);
+    @ini_set('zlib.output_compression', '0');
+    // Discard any buffered pre-output, then auto-flush for streaming
+    @ob_end_clean();
+    ob_implicit_flush(true);
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('X-Accel-Buffering: no');
+    $knownTs = 0;
+    if (!empty($_SERVER['HTTP_LAST_EVENT_ID'])) {
+        $knownTs = floatval($_SERVER['HTTP_LAST_EVENT_ID']);
+    } elseif (isset($_GET['last'])) {
+        $knownTs = floatval($_GET['last']);
+    }
+    // Send an immediate ping so the browser confirms the connection is live
+    echo ": ping\n\n";
+    flush();
+    $deadline = time() + 25;
+    while (time() < $deadline) {
+        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
+        if ($ts > $knownTs + 0.001) {
+            echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+            echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+            flush();
+            exit;
+        }
+        usleep(500000);
+    }
+    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
+    echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+    echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+    flush();
+    exit;
 }
 
 json_response(array('error' => 'Endpoint non trovato'), 404);

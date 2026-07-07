@@ -10,3 +10,4 @@ Ufficio/data/sync_ts
 deploy_ticket_manager_*.zip
 deploy_ticket_manager_*.zippa
 .deploy_staging_ticket_manager/
+outputs/

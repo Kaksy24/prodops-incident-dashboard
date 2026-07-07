@@ -89,7 +89,9 @@ foreach ($tickets as $t) {
     $total++;
     $cat  = export_strip_tag_brackets(export_fix_mojibake(html_entity_decode(trim(custom_ticket_category_name($t, $categories, $incidents)), ENT_QUOTES, 'UTF-8')));
     $fab  = isset($t['fab']) ? export_strip_tag_brackets(export_fix_mojibake(html_entity_decode(trim(strval($t['fab'])), ENT_QUOTES, 'UTF-8'))) : '';
-    $desc = isset($t['description']) ? export_strip_tag_brackets(export_fix_mojibake(html_entity_decode(trim(strval($t['description'])), ENT_QUOTES, 'UTF-8'))) : '';
+    $rawDesc = isset($t['description']) ? $t['description'] : '';
+    $desc = export_desc_plain($rawDesc);
+    $descHtml = export_desc_html($rawDesc);
     $gkey = strtolower($cat) . "\x01" . strtolower($fab);
     if (!isset($groupsMap[$gkey])) {
         $groupsMap[$gkey] = array('category' => $cat, 'fab' => $fab, 'items' => array(), 'order' => array());
@@ -97,7 +99,7 @@ foreach ($tickets as $t) {
     }
     $dkey = strtolower($desc);
     if (!isset($groupsMap[$gkey]['items'][$dkey])) {
-        $groupsMap[$gkey]['items'][$dkey] = array('text' => $desc, 'count' => 0);
+        $groupsMap[$gkey]['items'][$dkey] = array('text' => $desc, 'html' => $descHtml, 'count' => 0);
         $groupsMap[$gkey]['order'][] = $dkey;
     }
     $groupsMap[$gkey]['items'][$dkey]['count']++;
@@ -120,7 +122,8 @@ foreach ($groups as $g) {
     $html .= '<h3>' . htmlspecialchars($g['heading'], ENT_QUOTES) . '</h3><ul>';
     foreach ($g['items'] as $it) {
         $prefix = $it['count'] > 1 ? '[' . $it['count'] . '] ' : '';
-        $html .= '<li>' . htmlspecialchars($prefix . $it['text'], ENT_QUOTES) . '</li>';
+        $itemHtml = isset($it['html']) && $it['html'] !== '' ? $it['html'] : htmlspecialchars($it['text'], ENT_QUOTES);
+        $html .= '<li>' . htmlspecialchars($prefix, ENT_QUOTES) . $itemHtml . '</li>';
     }
     $html .= '</ul>';
 }
@@ -187,6 +190,22 @@ function export_fix_mojibake($s) {
     return $s;
 }
 
+// Rimuove tutti gli "a capo" dalla descrizione: sia i caratteri di newline reali
+// (\r, \n e le varianti Unicode LS/PS) sia la sequenza letterale di due caratteri
+// "\n" eventualmente salvata nel testo. Ogni interruzione viene sostituita con uno
+// spazio e gli spazi multipli risultanti vengono compattati, cosi' la descrizione
+// resta su una sola riga (richiesto dal TinyMCE del sito consumatore).
+function export_strip_newlines($s) {
+    if ($s === '') return $s;
+    // Sequenza letterale "\n"/"\r" (backslash + lettera) scritta nel testo.
+    $s = str_replace(array('\\r\\n', '\\n', '\\r'), ' ', $s);
+    // Newline reali e separatori di riga/paragrafo Unicode.
+    $s = preg_replace('/[\r\n\x{2028}\x{2029}]+/u', ' ', $s);
+    // Compatta spazi multipli generati dalla sostituzione.
+    $s = preg_replace('/[ \t]{2,}/', ' ', $s);
+    return trim($s);
+}
+
 // Toglie le parentesi angolari (sia ASCII "<>" che le varianti Unicode
 // "〈〉"/"⟨⟩" usate da alcune tastiere/autocorrezioni) che racchiudono un
 // valore, es. "<PEP08>" -> "PEP08", "〈16:47〉" -> "16:47", mantenendo il
@@ -195,4 +214,29 @@ function export_strip_tag_brackets($s) {
     if ($s === '') return $s;
     $pattern = '/[<\x{2329}\x{3008}]([^<>\x{2329}\x{232A}\x{3008}\x{3009}]*)[>\x{232A}\x{3009}]/u';
     return preg_replace($pattern, '$1', $s);
+}
+
+// Versione testo semplice della descrizione (per dedup, CSV e JSON): rimuove
+// i tag di formattazione mantenendo il testo, converte 〈valore〉 in "valore" e
+// toglie gli a-capo. Le interruzioni di formato (<br>, fine lista) diventano
+// spazi cosi' le parole non si attaccano.
+function export_desc_plain($raw) {
+    $s = export_fix_mojibake(html_entity_decode(trim(strval($raw)), ENT_QUOTES, 'UTF-8'));
+    $s = preg_replace('/<\s*br\s*\/?>/i', ' ', $s);
+    $s = preg_replace('/<\/\s*(li|ul|ol|div|p)\s*>/i', ' ', $s);
+    $s = strip_tags($s);
+    $s = export_strip_tag_brackets($s);
+    return export_strip_newlines($s);
+}
+
+// Versione HTML della descrizione (per l'export HTML consumato da TinyMCE):
+// mantiene solo il sottoinsieme di formattazione, converte 〈valore〉 in testo
+// semplice e rimuove i newline reali (la struttura e' nei tag <br>/<li>).
+function export_desc_html($raw) {
+    $s = export_fix_mojibake(html_entity_decode(trim(strval($raw)), ENT_QUOTES, 'UTF-8'));
+    $s = strip_tags($s, '<b><strong><i><em><u><ul><ol><li><br>');
+    $s = export_strip_tag_brackets($s);
+    $s = preg_replace('/[\r\n\x{2028}\x{2029}]+/u', ' ', $s);
+    $s = preg_replace('/[ \t]{2,}/', ' ', $s);
+    return trim($s);
 }
