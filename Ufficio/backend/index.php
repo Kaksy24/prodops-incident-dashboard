@@ -155,6 +155,51 @@ function get_preset_format_mode($db, $fieldKey)
     return normalize_preset_format_mode(isset($db['preset_option_formats'][$fieldKey]) ? $db['preset_option_formats'][$fieldKey] : 'none');
 }
 
+function collect_search_filter_preset_fields($db)
+{
+    $fields = array();
+    $incidents = isset($db['incidents']) && is_array($db['incidents']) ? $db['incidents'] : array();
+    foreach ($incidents as $incident) {
+        if (!isset($incident['presets']) || !is_array($incident['presets'])) continue;
+        foreach ($incident['presets'] as $template) {
+            $template = strval($template);
+            if ($template === '') continue;
+            if (!preg_match_all('/\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/', $template, $matches, PREG_SET_ORDER)) continue;
+            foreach ($matches as $match) {
+                $type = isset($match[1]) ? strval($match[1]) : '';
+                if ($type !== 'select' && $type !== 'dbselect') continue;
+                $label = isset($match[2]) ? trim(strval($match[2])) : '';
+                $fieldKey = normalize_preset_field_key($label);
+                if ($label === '' || $fieldKey === '') continue;
+                if (!isset($fields[$fieldKey])) $fields[$fieldKey] = array('key' => $fieldKey, 'label' => $label, 'options' => array());
+                if (isset($match[3]) && trim(strval($match[3])) !== '') {
+                    foreach (explode(',', strval($match[3])) as $inlineOption) {
+                        $inlineOption = trim(strval($inlineOption));
+                        if ($inlineOption === '') continue;
+                        $fields[$fieldKey]['options'][strtolower($inlineOption)] = $inlineOption;
+                    }
+                }
+                if (isset($db['preset_options'][$fieldKey]) && is_array($db['preset_options'][$fieldKey])) {
+                    foreach ($db['preset_options'][$fieldKey] as $storedOption) {
+                        $storedOption = trim(strval($storedOption));
+                        if ($storedOption === '') continue;
+                        $fields[$fieldKey]['options'][strtolower($storedOption)] = $storedOption;
+                    }
+                }
+            }
+        }
+    }
+    foreach ($fields as $fieldKey => $field) {
+        $options = array_values($field['options']);
+        natcasesort($options);
+        $fields[$fieldKey]['options'] = array_values($options);
+    }
+    uasort($fields, function($a, $b) {
+        return strcasecmp(isset($a['label']) ? $a['label'] : '', isset($b['label']) ? $b['label'] : '');
+    });
+    return array_values($fields);
+}
+
 function normalize_personal_target($value)
 {
     $target = intval($value);
@@ -176,7 +221,14 @@ function normalize_group_name($value)
 if (!function_exists('allowed_avatars_list')) {
     function allowed_avatars_list()
     {
-        return array('🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦄','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸');
+        return array(
+            '🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺',
+            '🦝','🦄','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷',
+            '🦸','🐵','🐰','🐹','🐭','🦓','🦒','🦔','🦥','🦦',
+            '🐘','🐷','🐮','🐗','🐴','🦚','🦜','🐢','🐬','🦈',
+            '🐧','🦭','🦇','🐞','🦂','🐉','🛸','👾','🧙','🦹',
+            '🐻‍❄️','🕵️'
+        );
     }
 }
 
@@ -319,6 +371,16 @@ function resolve_ticket_incident_name($db, $incidentId, $customIncidentName)
     $custom = trim(strval($customIncidentName));
     if ($custom === '') return '';
     return $custom;
+}
+
+function remove_pinned_ticket_by_id(&$db, $ticketId)
+{
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $kept = array();
+    foreach ($pins as $p) {
+        if (intval(isset($p['id']) ? $p['id'] : 0) !== intval($ticketId)) $kept[] = $p;
+    }
+    $db['pinned_tickets'] = $kept;
 }
 
 function default_ui_colors()
@@ -953,6 +1015,24 @@ function mysql_load_db($defaultUsers)
             );
         }
         mysqli_free_result($ru);
+    }
+
+    // last_login e' una colonna opzionale (presente solo su alcuni server, vedi
+    // update in fase di login). Query tollerante: se la colonna manca non rompe
+    // il caricamento degli utenti.
+    $rll = @mysqli_query($conn, "SELECT id, last_login FROM app_users");
+    if ($rll) {
+        $llMap = array();
+        while ($rowLL = mysqli_fetch_assoc($rll)) {
+            $llMap[intval($rowLL['id'])] = $rowLL['last_login'];
+        }
+        mysqli_free_result($rll);
+        foreach ($db['users'] as $llIdx => $llUser) {
+            $llUid = intval($llUser['id']);
+            if (isset($llMap[$llUid]) && $llMap[$llUid] !== null && $llMap[$llUid] !== '') {
+                $db['users'][$llIdx]['last_login'] = strval($llMap[$llUid]);
+            }
+        }
     }
 
     $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','disabled_users')");
@@ -1839,6 +1919,15 @@ if ($path === '/api/login' && $method === 'POST') {
             if (isset($conn) && $conn) {
                 $ip = isset($_SERVER['REMOTE_ADDR']) ? @mysqli_real_escape_string($conn, $_SERVER['REMOTE_ADDR']) : '';
                 @mysqli_query($conn, "UPDATE app_users SET last_login=NOW(), last_login_ip='" . $ip . "' WHERE id=" . intval($u['id']));
+            } else if (!supabase_enabled()) {
+                // Modalita JSON (dev/fallback): persisti last_login su db.json.
+                foreach ($db['users'] as $luIdx => $luUser) {
+                    if (intval($luUser['id']) === intval($u['id'])) {
+                        $db['users'][$luIdx]['last_login'] = date('Y-m-d H:i:s');
+                        break;
+                    }
+                }
+                save_db($db);
             }
             set_auth_cookie($u);
             $redirectTo = app_url('/index.html');
@@ -1972,11 +2061,11 @@ if ($path === '/api/users' && $method === 'GET') {
     if (supabase_enabled()) {
         $resp = sb_select('app_users', 'id,username,role,team,group_name,personal_target,group_target', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList));
+            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null);
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList));
+    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null);
     json_response($out, 200);
 }
 
@@ -2137,6 +2226,34 @@ if ($path === '/api/preset-options' && $method === 'GET') {
     }
     natcasesort($pending);
     json_response(array('field_key' => $fieldKey, 'options' => array_values($options), 'pending' => array_values($pending), 'format_mode' => get_preset_format_mode($db, $fieldKey)), 200);
+}
+
+if ($path === '/api/search-filter-options' && $method === 'GET') {
+    $users = array();
+    $teams = array();
+    if (isset($db['users']) && is_array($db['users'])) {
+        foreach ($db['users'] as $entry) {
+            $username = isset($entry['username']) ? trim(strval($entry['username'])) : '';
+            if ($username !== '') $users[strtolower($username)] = $username;
+            $team = normalize_team(isset($entry['team']) ? $entry['team'] : '');
+            if ($team !== '') $teams[strtolower($team)] = $team;
+        }
+    }
+    if (isset($db['tickets']) && is_array($db['tickets'])) {
+        foreach ($db['tickets'] as $ticket) {
+            $team = normalize_team(isset($ticket['owner_team']) ? $ticket['owner_team'] : '');
+            if ($team !== '') $teams[strtolower($team)] = $team;
+        }
+    }
+    $userList = array_values($users);
+    $teamList = array_values($teams);
+    natcasesort($userList);
+    natcasesort($teamList);
+    json_response(array(
+        'users' => array_values($userList),
+        'teams' => array_values($teamList),
+        'preset_fields' => collect_search_filter_preset_fields($db)
+    ), 200);
 }
 
 if ($path === '/api/preset-option-requests' && $method === 'POST') {
@@ -2696,6 +2813,7 @@ if ($path === '/api/tickets/clear' && $method === 'DELETE') {
     $deletedCount = count($db['tickets']);
     $db['tickets'] = array();
     $db['counters']['ticket'] = 0;
+    $db['pinned_tickets'] = array();
     save_db($db);
     json_response(array('ok' => true, 'deleted' => $deletedCount), 200);
 }
@@ -2733,6 +2851,7 @@ if (preg_match('#^/api/tickets/(\d+)$#', $path, $m)) {
         json_response(array('ok' => true, 'ticket' => ticket_with_permissions($db['tickets'][$idx], $user)), 200);
     }
     if ($method === 'DELETE') {
+        remove_pinned_ticket_by_id($db, $id);
         array_splice($db['tickets'], $idx, 1);
         save_db($db);
         json_response(array('ok' => true), 200);

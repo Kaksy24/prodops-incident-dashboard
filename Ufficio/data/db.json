@@ -978,6 +978,39 @@
             "owner_user_id": 1,
             "owner_team": "A",
             "created_at": "2026-07-06T07:40:00+00:00"
+        },
+        {
+            "id": 74,
+            "incident_id": 12,
+            "incident_name": "Restart ISL47 (SARA)",
+            "description": "Richiesto reset Robot SARA per: \u00e3\u20ac\u02c6bho\u00e3\u20ac\u2030",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-09T18:56:00+00:00"
+        },
+        {
+            "id": 75,
+            "incident_id": 12,
+            "incident_name": "Restart ISL47 (SARA)",
+            "description": "Test pin multi ticketRichiesto reset Robot SARA per: \u00e3\u20ac\u02c6Busy test\u00e3\u20ac\u2030",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-09T19:56:00+00:00"
+        },
+        {
+            "id": 76,
+            "incident_id": 12,
+            "incident_name": "Restart ISL47 (SARA)",
+            "description": "Test pin multi ticket extraTest pin multi ticketRichiesto reset Robot SARA per: [Causa reset]",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-09T19:56:00+00:00"
         }
     ],
     "users": [
@@ -990,7 +1023,8 @@
             "group_name": "ProdOps",
             "personal_target": 200,
             "group_target": 20,
-            "avatar": "\ud83d\udc3c"
+            "avatar": "\ud83d\udc3c",
+            "last_login": "2026-07-09 19:56:27"
         },
         {
             "id": 5,
@@ -1000,7 +1034,9 @@
             "team": "B",
             "group_name": "ProdOps",
             "personal_target": 200,
-            "group_target": 20
+            "group_target": 20,
+            "avatar": "\ud83d\udc19",
+            "last_login": "2026-07-09 19:35:48"
         },
         {
             "id": 6,
@@ -1010,7 +1046,8 @@
             "team": "B",
             "group_name": "ProdOps",
             "personal_target": 200,
-            "group_target": 20
+            "group_target": 20,
+            "avatar": "\ud83d\udc3b"
         },
         {
             "id": 7,
@@ -1020,7 +1057,8 @@
             "team": "A",
             "group_name": "ProdOps",
             "personal_target": 20,
-            "group_target": 20
+            "group_target": 20,
+            "avatar": "\ud83e\udd9d"
         }
     ],
     "group_targets": {
@@ -1056,7 +1094,7 @@
                 "light": "#D97706",
                 "dark": "#F59E0B"
             },
-            "severityYear": {
+            "incidentYear": {
                 "light": "#BE185D",
                 "dark": "#EC4899"
             }
@@ -1125,6 +1163,10 @@
             "severities": {
                 "light": [],
                 "dark": []
+            },
+            "users": {
+                "light": [],
+                "dark": []
             }
         },
         "titles": {
@@ -1133,7 +1175,7 @@
             "fabYear": "Ticket per FAB",
             "catYear": "Ticket per categoria",
             "teamYear": "Ticket per Team",
-            "severityYear": "Severity Ticket"
+            "incidentYear": "Ticket per Incident"
         },
         "settings": {
             "personal_axis_max": 5000,
@@ -1192,34 +1234,42 @@
                 "chartPanelCat",
                 "chartPanelUser",
                 "chartPanelPersonalGroup",
-                "chartPanelSeverity",
                 "chartPanelFab",
                 "chartPanelTeam",
                 "chartPanelCustom_cmqviijqbbp90",
-                "chartPanelCustom_cmqviixrh4mos"
+                "chartPanelCustom_cmqviixrh4mos",
+                "chartPanelIncident"
             ],
             "panel_titles": [],
             "chart_modes": {
-                "fabYear": "day",
-                "catYear": "day",
-                "teamYear": "day",
-                "severityYear": "day",
+                "fabYear": "months",
+                "catYear": "months",
+                "teamYear": "months",
+                "incidentYear": "months",
                 "userYear": "months"
             },
             "chart_custom_ranges": [],
-            "chart_spans": [],
+            "chart_spans": {
+                "chartPanelPersonalMine": 6,
+                "chartPanelPersonalGroup": 3,
+                "chartPanelCat": 6,
+                "chartPanelTeam": 3,
+                "chartPanelIncident": 6,
+                "chartPanelUser": 3
+            },
             "chart_types": {
                 "fabDay": "column",
                 "catDay": "column",
-                "fabYear": "donut",
-                "catYear": "column",
+                "fabYear": "bar",
+                "catYear": "bar",
                 "personalMineChart": "column",
                 "personalGroupChart": "column",
                 "teamYear": "donut",
-                "severityYear": "donut"
+                "incidentYear": "bar",
+                "userYear": "column"
             },
             "palette": "blu",
-            "dark_mode": false
+            "dark_mode": true
         },
         "5": {
             "charts": [],
@@ -1305,10 +1355,39 @@
     "counters": {
         "category": 6,
         "incident": 19,
-        "ticket": 70,
+        "ticket": 78,
         "user": 7,
         "preset_option_request": 4
     },
     "preset_option_formats": [],
-    "pinned_tickets": []
+    "pinned_tickets": [
+        {
+            "id": 75,
+            "incidentId": 12,
+            "incidentName": "Restart ISL47 (SARA)",
+            "description": "Test pin multi ticketRichiesto reset Robot SARA per: Busy test",
+            "fab": "M5",
+            "createdAt": "2026-07-09T19:56:00.000Z",
+            "severity": 1,
+            "category": "",
+            "pinUntil": "2026-07-31"
+        },
+        {
+            "id": 76,
+            "incidentId": 12,
+            "incidentName": "Restart ISL47 (SARA)",
+            "description": "Test pin multi ticket extraTest pin multi ticketRichiesto reset Robot SARA per: [Causa reset]",
+            "fab": "M5",
+            "createdAt": "2026-07-09T19:56:00.000Z",
+            "severity": 1,
+            "category": "",
+            "pinUntil": "2026-07-31"
+        }
+    ],
+    "user_avatars": {
+        "admin": "\ud83d\udc3c",
+        "DibellaA": "\ud83d\udc19",
+        "FaillaV": "\ud83d\udc3b",
+        "testmod": "\ud83e\udd9d"
+    }
 }

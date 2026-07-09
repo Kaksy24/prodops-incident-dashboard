@@ -22,6 +22,7 @@ const adminFabDefaultSelect = document.getElementById('adminFabDefault');
 const adminNameModeCheckbox = document.getElementById('adminNameMode');
 const addPresetTextFieldBtn = document.getElementById('addPresetTextFieldBtn');
 const addPresetSelectFieldBtn = document.getElementById('addPresetSelectFieldBtn');
+const addPresetMultiFieldBtn = document.getElementById('addPresetMultiFieldBtn');
 const addPresetTimestampBtn = document.getElementById('addPresetTimestampBtn');
 const userCreateForm = document.getElementById('userCreateForm');
 const usersList = document.getElementById('usersList');
@@ -952,6 +953,17 @@ function normalizeGroupName(value) {
   return name || 'ProdOps';
 }
 
+// Formatta un last_login (datetime MySQL "YYYY-MM-DD HH:MM:SS") in dd/mm/yyyy HH:MM.
+function formatLastLogin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '<span class="user-lastlogin-never">Mai</span>';
+  // Sostituisce lo spazio con 'T' per un parsing piu affidabile cross-browser.
+  const d = new Date(raw.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return escapeHtml(raw);
+  const pad = (n) => String(n).padStart(2, '0');
+  return escapeHtml(`${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1047,6 +1059,7 @@ function renderUsers() {
             <span class="user-disable-label">${isDisabled ? 'Disab.' : 'Attivo'}</span>
           </label>
         </td>
+        <td class="user-lastlogin-cell">${formatLastLogin(user.last_login)}</td>
         <td>
           <div class="user-actions-cell">
             <button type="button" class="save-user-btn primary" data-user-id="${Number(user.id)}">Salva</button>
@@ -1066,7 +1079,7 @@ function renderUsers() {
     <div class="users-table-wrap">
       <table class="users-table">
         <thead>
-          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Stato</th><th>Azioni</th></tr>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Stato</th><th>Ultimo accesso</th><th>Azioni</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -2417,6 +2430,21 @@ addPresetSelectFieldBtn?.addEventListener('click', async () => {
   const label = await pickPresetDropdownField();
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[dbselect:${label.trim()}]]`);
+});
+
+addPresetMultiFieldBtn?.addEventListener('click', async () => {
+  const label = await showPrompt('Assegna un nome alla scelta multipla da inserire nel ticket precompilato.', { title: 'Scelta multipla', placeholder: 'Es. Azioni svolte', confirmText: 'Avanti' });
+  if (!label || !label.trim()) return;
+  const rawWords = await showPrompt('Elenca le parole/opzioni selezionabili, separate da virgola (almeno 2). L\'operatore potra sceglierne una o piu.', { title: 'Scelta multipla', placeholder: 'Es. Reboot, Reset, Sostituzione', confirmText: 'Inserisci' });
+  if (!rawWords || !rawWords.trim()) return;
+  // Ripulisce da caratteri che romperebbero il token [[multi:label|opzioni]].
+  const cleanLabel = label.trim().replace(/[\[\]|]/g, '').trim();
+  const words = rawWords.split(',')
+    .map((w) => w.replace(/[\[\]|]/g, '').trim())
+    .filter(Boolean)
+    .filter((w, i, arr) => arr.indexOf(w) === i);
+  if (words.length < 2) { showToast('Servono almeno 2 opzioni distinte per una scelta multipla.', 'warning', 'Opzioni insufficienti'); return; }
+  insertAtCursor(adminIncidentPresetInput, `[[multi:${cleanLabel}|${words.join(',')}]]`);
 });
 
 addPresetTimestampBtn?.addEventListener('click', async () => {

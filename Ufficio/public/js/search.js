@@ -27,6 +27,12 @@ const ticketSearchResults = document.getElementById('ticketSearchResults');
 const ticketSearchFabSelect = document.getElementById('ticketSearchFab');
 const ticketSearchCategorySelect = document.getElementById('ticketSearchCategory');
 const ticketSearchIncidentSelect = document.getElementById('ticketSearchIncident');
+const ticketSearchAdvancedDetails = document.getElementById('ticketSearchAdvanced');
+const ticketSearchAdvancedGrid = document.getElementById('ticketSearchAdvancedGrid');
+const ticketSearchUserSelect = document.getElementById('ticketSearchUser');
+const ticketSearchTeamSelect = document.getElementById('ticketSearchTeam');
+const searchPinnedCount = document.getElementById('searchPinnedCount');
+const searchPinnedList = document.getElementById('searchPinnedList');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const searchModal = document.getElementById('searchModal');
 const searchModalTitle = document.getElementById('searchModalTitle');
@@ -44,6 +50,10 @@ let searchModalCloseTimer = null;
 let categorySelectHandle = null;
 let categoriesData = [];
 let activeSearchModalTicketId = '';
+let ticketSearchUserHandle = null;
+let ticketSearchTeamHandle = null;
+let incidentIdToPresetTemplateMap = {};
+let advancedPresetFilterControls = [];
 
 function releaseThemeSyncPending() {
   document.documentElement.classList.remove('theme-sync-pending');
@@ -198,6 +208,141 @@ function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function normalizePresetFieldKey(label) {
+  return String(label || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function parsePresetTokens(template) {
+  const regex = /\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const tokens = [];
+  let match;
+  while ((match = regex.exec(String(template || ''))) !== null) {
+    tokens.push({
+      type: match[1],
+      label: String(match[2] || '').trim(),
+      raw: match[0]
+    });
+  }
+  return tokens;
+}
+
+function extractPresetMarkerValues(description) {
+  const values = [];
+  const source = String(description || '');
+  source.replace(/《([^》]*)》|ã€ˆ([^ã€‰]*)ã€‰/g, function(_, valueA, valueB) {
+    values.push(String(valueA != null ? valueA : valueB || '').trim());
+    return _;
+  });
+  return values;
+}
+
+function extractTicketPresetFieldMap(ticket) {
+  const template = incidentIdToPresetTemplateMap[String(ticket?.incident_id || '')] || '';
+  const tokens = parsePresetTokens(template);
+  if (!tokens.length) return {};
+  const markerValues = extractPresetMarkerValues(ticket?.description || '');
+  const fieldMap = {};
+  tokens.forEach((token, index) => {
+    if (token.type !== 'select' && token.type !== 'dbselect') return;
+    const key = normalizePresetFieldKey(token.label);
+    if (!key) return;
+    fieldMap[key] = markerValues[index] || '';
+  });
+  return fieldMap;
+}
+
+function syncSearchableSelect(select, handleRef) {
+  if (!select) return handleRef || null;
+  if (select._sdSyncTrigger) select._sdSyncTrigger();
+  if (handleRef && typeof handleRef.update === 'function') {
+    handleRef.update();
+    return handleRef;
+  }
+  return makeSearchableSelect(select) || handleRef || null;
+}
+
+function refillSelect(select, placeholderText, values) {
+  if (!select) return;
+  while (select.options.length > 1) select.remove(1);
+  if (select.options[0]) select.options[0].textContent = placeholderText;
+  (values || []).forEach((value) => {
+    const option = document.createElement('option');
+    option.value = String(value || '');
+    option.textContent = String(value || '');
+    select.appendChild(option);
+  });
+}
+
+function formatPinnedDate(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatPinnedDateTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function shortPinnedDescription(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function renderSearchPinnedList(pins) {
+  if (!searchPinnedList) return;
+  const list = Array.isArray(pins) ? pins : [];
+  if (searchPinnedCount) searchPinnedCount.textContent = String(list.length);
+  if (!list.length) {
+    searchPinnedList.innerHTML = '<p class="sidebar-pinned-empty">Nessun ticket pinnato.</p>';
+    return;
+  }
+  searchPinnedList.innerHTML = '';
+  list.forEach((pin) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'sidebar-pinned-item';
+    card.innerHTML =
+      '<div class="sidebar-pinned-item-top">' +
+        '<span class="sidebar-pinned-item-title">' + escapeHtml(pin.incidentName || ('Ticket #' + pin.id)) + '</span>' +
+        (pin.fab ? '<span class="sidebar-pinned-item-fab">' + escapeHtml(pin.fab) + '</span>' : '') +
+      '</div>' +
+      (pin.description ? '<div class="sidebar-pinned-item-desc">' + escapeHtml(shortPinnedDescription(pin.description)) + '</div>' : '') +
+      '<div class="sidebar-pinned-item-meta">' +
+        '<span>' + escapeHtml(pin.category || 'Senza categoria') + '</span>' +
+        '<span>' + escapeHtml(pin.pinUntil ? ('fino al ' + formatPinnedDate(pin.pinUntil)) : formatPinnedDateTime(pin.createdAt)) + '</span>' +
+      '</div>';
+    card.addEventListener('click', function() {
+      openSearchModal({
+        ticketId: pin.id,
+        incidentId: pin.incidentId,
+        incidentName: pin.incidentName,
+        description: pin.description || '',
+        fab: pin.fab || '',
+        createdAt: pin.createdAt || '',
+        severity: pin.severity || '',
+        category: pin.category || '',
+        ownerUsername: pin.ownerUsername || ''
+      });
+    });
+    searchPinnedList.appendChild(card);
+  });
+}
+
+async function refreshSearchPinnedTickets() {
+  if (!searchPinnedList) return;
+  try {
+    if (searchPinnedList.children.length === 0) {
+      searchPinnedList.innerHTML = '<p class="sidebar-pinned-empty">Caricamento...</p>';
+    }
+    const pins = await fetchJson('/api/pinned-tickets');
+    renderSearchPinnedList(pins);
+  } catch (error) {
+    if (searchPinnedCount) searchPinnedCount.textContent = '0';
+    searchPinnedList.innerHTML = '<p class="sidebar-pinned-empty">Errore caricamento.</p>';
+  }
 }
 
 function presetValueSearchUrl(value) {
@@ -410,6 +555,7 @@ async function deleteSearchTicket(ticketId, triggerBtn) {
       empty.textContent = 'Nessun ticket trovato con questi filtri.';
       ticketSearchResults.appendChild(empty);
     }
+    refreshSearchPinnedTickets();
     return true;
   } catch (err) {
     showToast('Impossibile eliminare il ticket: ' + (err.message || err), 'error', 'Errore eliminazione');
@@ -495,11 +641,13 @@ async function loadCategories() {
   Object.keys(incidentCategoryMap).forEach((k) => delete incidentCategoryMap[k]);
   Object.keys(incidentIdToCategoryMap).forEach((k) => delete incidentIdToCategoryMap[k]);
   Object.keys(incidentIdToNameMap).forEach((k) => delete incidentIdToNameMap[k]);
+  Object.keys(incidentIdToPresetTemplateMap).forEach((k) => delete incidentIdToPresetTemplateMap[k]);
   data.forEach((cat) => {
     cat.incidents.forEach((inc) => {
       incidentCategoryMap[inc.name] = cat.name;
       incidentIdToCategoryMap[String(inc.id)] = cat.name;
       incidentIdToNameMap[String(inc.id)] = inc.name;
+      incidentIdToPresetTemplateMap[String(inc.id)] = Array.isArray(inc.presets) && inc.presets.length ? String(inc.presets[0] || '') : '';
     });
   });
 
@@ -523,6 +671,59 @@ async function loadCategories() {
     });
   }
   populateIncidentsForCategory(ticketSearchCategorySelect ? ticketSearchCategorySelect.value : '');
+}
+
+function populateAdvancedSearchFilters(meta) {
+  const users = Array.isArray(meta?.users) ? meta.users.slice() : [];
+  const teams = Array.isArray(meta?.teams) ? meta.teams.slice() : [];
+  refillSelect(ticketSearchUserSelect, 'Tutti', users);
+  refillSelect(ticketSearchTeamSelect, 'Tutti', teams);
+  ticketSearchUserHandle = syncSearchableSelect(ticketSearchUserSelect, ticketSearchUserHandle);
+  ticketSearchTeamHandle = syncSearchableSelect(ticketSearchTeamSelect, ticketSearchTeamHandle);
+
+  advancedPresetFilterControls.forEach((entry) => {
+    if (entry?.wrap?.parentNode) entry.wrap.parentNode.removeChild(entry.wrap);
+  });
+  advancedPresetFilterControls = [];
+
+  const fields = Array.isArray(meta?.preset_fields) ? meta.preset_fields : [];
+  fields.forEach((field) => {
+    const key = normalizePresetFieldKey(field?.key || field?.label || '');
+    const label = String(field?.label || key || '').trim();
+    if (!ticketSearchAdvancedGrid || !key || !label) return;
+    const wrap = document.createElement('div');
+    const labelEl = document.createElement('label');
+    const select = document.createElement('select');
+    labelEl.setAttribute('for', 'ticketSearchPreset_' + key);
+    labelEl.textContent = label;
+    select.id = 'ticketSearchPreset_' + key;
+    select.dataset.presetFieldKey = key;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Tutti';
+    select.appendChild(placeholder);
+    (Array.isArray(field.options) ? field.options : []).forEach((optionValue) => {
+      const option = document.createElement('option');
+      option.value = String(optionValue || '');
+      option.textContent = String(optionValue || '');
+      select.appendChild(option);
+    });
+    wrap.appendChild(labelEl);
+    wrap.appendChild(select);
+    ticketSearchAdvancedGrid.appendChild(wrap);
+    advancedPresetFilterControls.push({
+      key,
+      label,
+      wrap,
+      select,
+      handle: makeSearchableSelect(select) || null
+    });
+  });
+}
+
+async function loadSearchFilterOptions() {
+  const data = await fetchJson('/api/search-filter-options');
+  populateAdvancedSearchFilters(data || {});
 }
 
 // Popola (e abilita/disabilita) il select Incident in base alla categoria scelta.
@@ -559,6 +760,12 @@ async function runTicketSearch() {
   const filterFab = ticketSearchFabSelect?.value || '';
   const filterCategory = ticketSearchCategorySelect?.value || '';
   const filterIncidentId = ticketSearchIncidentSelect?.value || '';
+  const filterOwner = ticketSearchUserSelect?.value || '';
+  const filterTeam = ticketSearchTeamSelect?.value || '';
+  const activePresetFilters = advancedPresetFilterControls
+    .map((entry) => ({ key: entry.key, label: entry.label, value: entry.select?.value || '' }))
+    .filter((entry) => entry.value);
+  if (ticketSearchAdvancedDetails && (filterOwner || filterTeam || activePresetFilters.length)) ticketSearchAdvancedDetails.open = true;
   const params = new URLSearchParams();
   if (query) params.set('query', query);
   if (from) params.set('from', from);
@@ -574,6 +781,9 @@ async function runTicketSearch() {
       const incName = incidentIdToNameMap[filterIncidentId] || `incident #${filterIncidentId}`;
       parts.push(`incident: ${incName}`);
     }
+    if (filterOwner) parts.push(`utente: ${filterOwner}`);
+    if (filterTeam) parts.push(`team: ${filterTeam}`);
+    activePresetFilters.forEach((entry) => parts.push(`${entry.label}: ${entry.value}`));
     ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   let data = await fetchJson(`/api/tickets/search${suffix}`);
@@ -607,15 +817,24 @@ async function runTicketSearch() {
     usedLocalFallback = true;
   }
 
-  if (filterFab || filterCategory || filterIncidentId) {
+  if (filterFab || filterCategory || filterIncidentId || filterOwner || filterTeam || activePresetFilters.length) {
     results = results.filter((ticket) => {
       if (filterFab && String(ticket.fab || '') !== filterFab) return false;
       if (filterIncidentId && String(ticket.incident_id || '') !== filterIncidentId) return false;
+      if (filterOwner && String(ticket.owner_username || '') !== filterOwner) return false;
+      if (filterTeam && String(ticket.owner_team || '') !== filterTeam) return false;
       if (filterCategory) {
         const incidentId = Number(ticket.incident_id || 0);
         const incidentName = String(incidentIdToNameMap[String(incidentId)] || ticket.incident_name || '');
         const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || '';
         if (category !== filterCategory) return false;
+      }
+      if (activePresetFilters.length) {
+        const presetFieldMap = extractTicketPresetFieldMap(ticket);
+        for (let i = 0; i < activePresetFilters.length; i += 1) {
+          const entry = activePresetFilters[i];
+          if (String(presetFieldMap[entry.key] || '') !== entry.value) return false;
+        }
       }
       return true;
     });
@@ -704,7 +923,16 @@ function applyTicketSearchListeners() {
     if (ticketSearchToInput) ticketSearchToInput.value = '';
     if (ticketSearchFabSelect) ticketSearchFabSelect.value = '';
     if (ticketSearchCategorySelect) ticketSearchCategorySelect.value = '';
+    if (ticketSearchUserSelect) ticketSearchUserSelect.value = '';
+    if (ticketSearchTeamSelect) ticketSearchTeamSelect.value = '';
+    advancedPresetFilterControls.forEach((entry) => {
+      if (entry.select) entry.select.value = '';
+      if (entry.handle && typeof entry.handle.update === 'function') entry.handle.update();
+      else if (entry.select && entry.select._sdSyncTrigger) entry.select._sdSyncTrigger();
+    });
     if (categorySelectHandle) categorySelectHandle.update();
+    if (ticketSearchUserHandle) ticketSearchUserHandle.update();
+    if (ticketSearchTeamHandle) ticketSearchTeamHandle.update();
     populateIncidentsForCategory('');
     if (ticketSearchSummary) ticketSearchSummary.textContent = 'Nessuna ricerca avviata.';
     if (ticketSearchResults) ticketSearchResults.innerHTML = '';
@@ -799,6 +1027,7 @@ function applyTicketSearchListeners() {
   const me = await fetchJson('/api/me');
   currentUser = me.user;
   if (openAdminBtn) openAdminBtn.style.display = currentUser?.role === 'admin' ? '' : 'none';
+  refreshSearchPinnedTickets();
   // Idrata la cache locale con gli avatar (dal server) per i badge nei ticket, cross-browser.
   try {
     const av = await fetchJson('/api/user-avatars');
@@ -808,6 +1037,7 @@ function applyTicketSearchListeners() {
     localStorage.setItem('prodops_avatars_v1', JSON.stringify(all));
   } catch (error) {}
   await loadCategories();
+  await loadSearchFilterOptions();
   const _today = new Date();
   const _pad = function(n) { return String(n).padStart(2, '0'); };
   const _monthStart = _today.getFullYear() + '-' + _pad(_today.getMonth() + 1) + '-01';

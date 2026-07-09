@@ -21,6 +21,21 @@ async function redirectIfLoggedIn() {
   window.location.replace(appUrl('/index.html'));
 }
 
+const capsWarning = document.getElementById('capsWarning');
+function updateCapsWarning(evt) {
+  if (!capsWarning || !evt || typeof evt.getModifierState !== 'function') return;
+  capsWarning.hidden = !evt.getModifierState('CapsLock');
+}
+['keydown', 'keyup'].forEach(function (type) {
+  loginForm.addEventListener(type, updateCapsWarning);
+});
+const passwordInput = document.getElementById('password');
+if (passwordInput) {
+  passwordInput.addEventListener('blur', function () {
+    if (capsWarning) capsWarning.hidden = true;
+  });
+}
+
 if (new URLSearchParams(window.location.search).get('error') === '1') {
   loginError.textContent = 'Credenziali non valide';
 }

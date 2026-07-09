@@ -465,24 +465,39 @@ function isGenericIncidentId(incidentId) {
   return isGenericIncidentName(getIncidentBaseName(incidentId));
 }
 
+function hasCustomTicketIncidentName(incidentId, currentName) {
+  const baseName = getIncidentBaseName(incidentId);
+  const name = String(currentName || '').trim();
+  if (!name) return false;
+  if (!baseName) return false;
+  return name.toLowerCase() !== baseName.toLowerCase();
+}
+
 function updateTicketModalHeading(incidentId, customName) {
   const baseName = getIncidentBaseName(incidentId);
+  const customLabel = String(customName || '').trim();
   if (!ticketModalTitle) return;
-  if (isGenericIncidentId(incidentId)) {
-    ticketModalTitle.textContent = String(customName || '').trim() || baseName || 'Nuovo Ticket';
+  if (hasCustomTicketIncidentName(incidentId, customLabel)) {
+    ticketModalTitle.textContent = customLabel;
     return;
   }
-  ticketModalTitle.textContent = baseName || String(customName || '').trim() || 'Nuovo Ticket';
+  if (isGenericIncidentId(incidentId)) {
+    ticketModalTitle.textContent = customLabel || baseName || 'Nuovo Ticket';
+    return;
+  }
+  ticketModalTitle.textContent = baseName || customLabel || 'Nuovo Ticket';
 }
 
 function syncCustomIncidentNameField(incidentId, currentName, readOnly) {
   const baseName = getIncidentBaseName(incidentId);
   const isGeneric = isGenericIncidentId(incidentId);
+  const keepCustomName = hasCustomTicketIncidentName(incidentId, currentName);
+  const showCustomField = isGeneric || keepCustomName;
   if (!customIncidentNameGroup || !customIncidentNameInput) {
     updateTicketModalHeading(incidentId, currentName);
     return;
   }
-  if (!isGeneric) {
+  if (!showCustomField) {
     customIncidentNameGroup.style.display = 'none';
     customIncidentNameInput.required = false;
     customIncidentNameInput.readOnly = false;
@@ -491,7 +506,7 @@ function syncCustomIncidentNameField(incidentId, currentName, readOnly) {
     return;
   }
   customIncidentNameGroup.style.display = '';
-  customIncidentNameInput.required = true;
+  customIncidentNameInput.required = isGeneric;
   customIncidentNameInput.readOnly = Boolean(readOnly);
   customIncidentNameInput.value = isGenericIncidentName(currentName) ? '' : String(currentName || '').trim();
   updateTicketModalHeading(incidentId, customIncidentNameInput.value || baseName);
@@ -521,17 +536,30 @@ var descToolbarEl = document.getElementById('descriptionToolbar');
 // "mojibake" (doppia codifica) e non con i veri caratteri U+3008/U+3009: per
 // restare coerenti (regex di render, extractPresetValuesFromMarkup, ecc.)
 // deriviamo le sequenze esatte da buildMarkupDescription invece di codificarle.
-var DESC_TOKEN_OPEN, DESC_TOKEN_CLOSE;
-(function () {
-  try {
-    var probe = buildMarkupDescription('', [{ raw: '', type: 'text', label: 'x', options: [], value: '' }]);
-    var idx = probe.indexOf('');
-    if (idx >= 0) { DESC_TOKEN_OPEN = probe.slice(0, idx); DESC_TOKEN_CLOSE = probe.slice(idx + 1); }
-  } catch (e) {}
-  if (!DESC_TOKEN_OPEN || !DESC_TOKEN_CLOSE) { DESC_TOKEN_OPEN = String.fromCharCode(0x3008); DESC_TOKEN_CLOSE = String.fromCharCode(0x3009); }
-})();
+// I marker dei token sono memorizzati (e resi da renderDescriptionHtmlText e
+// buildMarkupDescription) come sequenza "mojibake" a 3 caratteri, NON come i
+// veri U+3008/U+3009. Le definiamo esattamente uguali a quei literal cosi che
+// costruzione chip (descTokenRe), serializzazione (descSerializeNode),
+// estrazione valori ed etichette combacino con i dati gia salvati.
+//   apertura -> [U+00E3, U+20AC, U+02C6]   chiusura -> [U+00E3, U+20AC, U+2030]
+var DESC_TOKEN_OPEN = String.fromCharCode(0x00e3, 0x20ac, 0x02c6);
+var DESC_TOKEN_CLOSE = String.fromCharCode(0x00e3, 0x20ac, 0x2030);
 var DESC_INLINE_TAGS = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li' };
 var DESC_TOOLBAR_CMDS = ['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList'];
+
+function descResolveContext(target) {
+  if (target && target.editorEl) return target;
+  if (target && target.nodeType === 1 && target.tagName === 'TEXTAREA') {
+    if (target === descTextareaEl) return { editorEl: descEditorEl, textareaEl: descTextareaEl, toolbarEl: descToolbarEl };
+    var root = target.closest('.ticket-form') || target.parentElement;
+    return {
+      editorEl: root ? root.querySelector('.extra-description-editor') : null,
+      textareaEl: target,
+      toolbarEl: root ? root.querySelector('.extra-description-toolbar') : null
+    };
+  }
+  return { editorEl: descEditorEl, textareaEl: descTextareaEl, toolbarEl: descToolbarEl };
+}
 
 function descTokenRe() { return new RegExp(DESC_TOKEN_OPEN + '([^' + DESC_TOKEN_CLOSE + ']*)' + DESC_TOKEN_CLOSE, 'g'); }
 
@@ -606,64 +634,72 @@ function descSerializeNode(node, out) {
   }
 }
 
-function descGetStorage() {
-  if (!descEditorEl) return descTextareaEl ? descTextareaEl.value : '';
+function descGetStorage(target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl) return ctx.textareaEl ? ctx.textareaEl.value : '';
   var out = [];
-  descSerializeNode(descEditorEl, out);
+  descSerializeNode(ctx.editorEl, out);
   var s = out.join('');
   s = s.replace(/\n{3,}/g, '\n\n').replace(/\n/g, '<br>');
   s = s.replace(/(?:<br>){3,}/g, '<br><br>').replace(/^(?:<br>)+|(?:<br>)+$/g, '');
   return s.trim();
 }
 
-function descGetText() {
-  if (!descEditorEl) return descTextareaEl ? descTextareaEl.value : '';
-  return String(descEditorEl.textContent || '').replace(/ /g, ' ').trim();
+function descGetText(target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl) return ctx.textareaEl ? ctx.textareaEl.value : '';
+  return String(ctx.editorEl.textContent || '').replace(/ /g, ' ').trim();
 }
 
-function descSyncFromEditor() {
-  if (descTextareaEl) descTextareaEl.value = descGetStorage();
+function descSyncFromEditor(target) {
+  var ctx = descResolveContext(target);
+  if (ctx.textareaEl) ctx.textareaEl.value = descGetStorage(ctx);
   if (typeof syncSubmitBtnState === 'function') syncSubmitBtnState();
 }
 
 // Imposta il contenuto dell'editor da una stringa di storage. tokens opzionale
 // per trasformare i marker 〈…〉 in chip (modalità preset).
-function descSetContent(storage, tokens) {
-  if (!descEditorEl) { if (descTextareaEl) descTextareaEl.value = String(storage || ''); return; }
-  descEditorEl.innerHTML = descBuildEditorHtml(storage, tokens);
-  descSyncFromEditor();
+function descSetContent(storage, tokens, target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl) { if (ctx.textareaEl) ctx.textareaEl.value = String(storage || ''); return; }
+  ctx.editorEl.innerHTML = descBuildEditorHtml(storage, tokens);
+  descSyncFromEditor(ctx);
 }
 
 // Contenuto libero (nessun token): strip degli eventuali marker 〈v〉 → v.
-function descSetPlain(storage) {
-  descSetContent(String(storage == null ? '' : storage).replace(descTokenRe(), '$1'), null);
+function descSetPlain(storage, target) {
+  descSetContent(String(storage == null ? '' : storage).replace(descTokenRe(), '$1'), null, target);
 }
 
-function descSetChipValue(index, value) {
-  if (!descEditorEl) return;
-  var chip = descEditorEl.querySelector('.preset-chip[data-token-index="' + index + '"]');
+function descSetChipValue(index, value, target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl) return;
+  var chip = ctx.editorEl.querySelector('.preset-chip[data-token-index="' + index + '"]');
   if (!chip) return;
   var label = chip.getAttribute('data-token-label') || 'campo';
   var empty = String(value == null ? '' : value).trim() === '';
   chip.setAttribute('data-token-empty', empty ? '1' : '0');
   chip.textContent = empty ? '[' + label + ']' : String(value);
-  descSyncFromEditor();
+  descSyncFromEditor(ctx);
 }
 
-function descSetReadOnly(readOnly) {
-  if (!descEditorEl) return;
-  descEditorEl.setAttribute('contenteditable', readOnly ? 'false' : 'true');
-  if (descToolbarEl) descToolbarEl.style.display = readOnly ? 'none' : '';
+function descSetReadOnly(readOnly, target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl) return;
+  ctx.editorEl.setAttribute('contenteditable', readOnly ? 'false' : 'true');
+  if (ctx.toolbarEl) ctx.toolbarEl.style.display = readOnly ? 'none' : '';
 }
 
-function descShow(visible) {
-  if (descEditorEl) descEditorEl.style.display = visible ? '' : 'none';
-  if (descToolbarEl) descToolbarEl.style.display = (visible && descEditorEl && descEditorEl.getAttribute('contenteditable') !== 'false') ? '' : 'none';
+function descShow(visible, target) {
+  var ctx = descResolveContext(target);
+  if (ctx.editorEl) ctx.editorEl.style.display = visible ? '' : 'none';
+  if (ctx.toolbarEl) ctx.toolbarEl.style.display = (visible && ctx.editorEl && ctx.editorEl.getAttribute('contenteditable') !== 'false') ? '' : 'none';
 }
 
-function descUpdateToolbarState() {
-  if (!descToolbarEl) return;
-  var buttons = descToolbarEl.querySelectorAll('.desc-tool');
+function descUpdateToolbarState(target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.toolbarEl) return;
+  var buttons = ctx.toolbarEl.querySelectorAll('.desc-tool');
   Array.prototype.forEach.call(buttons, function (btn) {
     var cmd = btn.getAttribute('data-cmd');
     if (DESC_TOOLBAR_CMDS.indexOf(cmd) === -1) return;
@@ -673,23 +709,25 @@ function descUpdateToolbarState() {
   });
 }
 
-function descInitEditor() {
-  if (!descEditorEl) return;
+function descInitEditor(target) {
+  var ctx = descResolveContext(target);
+  if (!ctx.editorEl || ctx.editorEl.dataset.descInit === '1') return;
+  ctx.editorEl.dataset.descInit = '1';
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) {}
-  descEditorEl.addEventListener('input', descSyncFromEditor);
-  descEditorEl.addEventListener('keyup', descUpdateToolbarState);
-  descEditorEl.addEventListener('mouseup', descUpdateToolbarState);
-  descEditorEl.addEventListener('focus', descUpdateToolbarState);
-  if (descToolbarEl) {
+  ctx.editorEl.addEventListener('input', function () { descSyncFromEditor(ctx); });
+  ctx.editorEl.addEventListener('keyup', function () { descUpdateToolbarState(ctx); });
+  ctx.editorEl.addEventListener('mouseup', function () { descUpdateToolbarState(ctx); });
+  ctx.editorEl.addEventListener('focus', function () { descUpdateToolbarState(ctx); });
+  if (ctx.toolbarEl) {
     // mousedown preventDefault: non perdere la selezione nell'editor
-    descToolbarEl.addEventListener('mousedown', function (e) { if (e.target.closest('.desc-tool')) e.preventDefault(); });
-    descToolbarEl.addEventListener('click', function (e) {
+    ctx.toolbarEl.addEventListener('mousedown', function (e) { if (e.target.closest('.desc-tool')) e.preventDefault(); });
+    ctx.toolbarEl.addEventListener('click', function (e) {
       var btn = e.target.closest('.desc-tool');
       if (!btn) return;
-      descEditorEl.focus();
+      ctx.editorEl.focus();
       try { document.execCommand(btn.getAttribute('data-cmd'), false, null); } catch (err) {}
-      descSyncFromEditor();
-      descUpdateToolbarState();
+      descSyncFromEditor(ctx);
+      descUpdateToolbarState(ctx);
     });
   }
 }
@@ -2234,6 +2272,8 @@ async function loadDbPresetOptions(token, select, initialValue) {
 }
 
 function renderPresetForTargets(template, descriptionInput, composerContainer, incidentId = 0, savedDescription) {
+  const descCtx = descResolveContext(descriptionInput);
+  descInitEditor(descCtx);
   const tokens = parsePresetTokens(template);
   if (!tokens.length) {
     presetTokenState = [];
@@ -2248,11 +2288,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     descriptionInput.dataset.presetGeneratedBase = '';
     descriptionInput.dataset.presetMarkupBase = '';
     descriptionInput.dataset.presetManualText = '';
-    descSetReadOnly(false);
-    descShow(true);
+    descSetReadOnly(false, descCtx);
+    descShow(true, descCtx);
     // Nessun token: contenuto libero. In edit riusa la descrizione salvata
     // (preserva la formattazione), altrimenti parte dal template come testo.
-    descSetPlain((savedDescription != null && savedDescription !== '') ? savedDescription : (template || ''));
+    descSetPlain((savedDescription != null && savedDescription !== '') ? savedDescription : (template || ''), descCtx);
     return;
   }
 
@@ -2294,6 +2334,37 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         input.appendChild(option);
       });
       loadDbPresetOptions(token, input, tokenState[tokenIndex].value || '');
+    } else if (token.type === 'multi') {
+      // Blocco "scelta multipla": checkbox tra le parole definite dall'admin.
+      // Le selezionate (unite da ", ") finiscono nello slot. Un input di riepilogo
+      // readonly fa da portatore del valore (per validazione e chip).
+      input = document.createElement('input');
+      input.type = 'text';
+      input.readOnly = true;
+      input.placeholder = 'Seleziona una o piu opzioni';
+      const multiWrap = document.createElement('div');
+      multiWrap.className = 'preset-multi-options';
+      const preselected = String(tokenState[tokenIndex].value || '').split(',').map((s) => s.trim()).filter(Boolean);
+      (token.options || []).forEach((opt) => {
+        const optLabel = document.createElement('label');
+        optLabel.className = 'preset-multi-option';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = opt;
+        if (preselected.indexOf(opt) !== -1) cb.checked = true;
+        cb.addEventListener('change', () => {
+          const chosen = [].slice.call(multiWrap.querySelectorAll('input[type="checkbox"]'))
+            .filter((c) => c.checked).map((c) => c.value);
+          input.value = chosen.join(', ');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        const span = document.createElement('span');
+        span.textContent = opt;
+        optLabel.appendChild(cb);
+        optLabel.appendChild(span);
+        multiWrap.appendChild(optLabel);
+      });
+      fieldWrap.appendChild(multiWrap);
     } else if (token.type === 'timestamp') {
       input = document.createElement('input');
       input.type = 'time';
@@ -2330,7 +2401,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Questo elemento esiste gia: "' + duplicateOption.value + '".', 'warning', 'Elemento duplicato');
           tokenState[tokenIndex].value = input.value || '';
-          descSetChipValue(tokenIndex, input.value || '');
+          descSetChipValue(tokenIndex, input.value || '', descCtx);
           syncSubmitBtnState();
           return;
         }
@@ -2364,7 +2435,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
         }
       }
       tokenState[tokenIndex].value = input.value || '';
-      descSetChipValue(tokenIndex, input.value || '');
+      descSetChipValue(tokenIndex, input.value || '', descCtx);
       syncSubmitBtnState();
     };
     input.addEventListener('input', syncPresetFieldValue);
@@ -2383,7 +2454,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     buildStr = template || '';
     tokenState.forEach(function (t) { buildStr = buildStr.replace(t.raw, DESC_TOKEN_OPEN + (t.value || '') + DESC_TOKEN_CLOSE); });
   }
-  descSetContent(buildStr, tokenState);
+  descSetContent(buildStr, tokenState, descCtx);
   syncSubmitBtnState();
 }
 
@@ -2412,17 +2483,38 @@ function createExtraTicketCard(incidentId) {
   if (!extraTicketModals) return;
   extraTicketCounter += 1;
   const incidentName = incidentIdToNameMap[String(incidentId)] || '';
+  const mainPinCheck = document.getElementById('ticketPinCheck');
+  const mainPinUntil = document.getElementById('ticketPinUntil');
+  const inheritPinned = !!(mainPinCheck && mainPinCheck.checked);
+  const inheritPinUntil = mainPinUntil && mainPinUntil.value ? mainPinUntil.value : '';
   const panel = document.createElement('section');
   panel.className = 'modal-panel extra-ticket-modal';
   panel.dataset.extraTicket = String(extraTicketCounter);
   panel.innerHTML = `
     <div class="modal-header">
       <h3>${incidentName}</h3>
+      <div class="ticket-pin-wrap extra-ticket-pin-wrap">
+        <label class="ticket-pin-label">
+          <input type="checkbox" class="extra-ticket-pin-check"${inheritPinned ? ' checked' : ''}> 📌 PIN
+        </label>
+        <input type="date" class="ticket-pin-date extra-ticket-pin-date"${inheritPinUntil ? ` value="${inheritPinUntil}"` : ''} style="display:${inheritPinned ? '' : 'none'}">
+      </div>
       <button type="button" class="close-extra-modal-btn">x</button>
     </div>
     <div class="ticket-form">
       <label>Descrizione problema</label>
-      <textarea class="extra-description" rows="7"></textarea>
+      <div class="desc-toolbar extra-description-toolbar" role="toolbar" aria-label="Formattazione descrizione">
+        <button type="button" class="desc-tool" data-cmd="bold" aria-label="Grassetto"><b>B</b></button>
+        <button type="button" class="desc-tool" data-cmd="italic" aria-label="Corsivo"><i>I</i></button>
+        <button type="button" class="desc-tool" data-cmd="underline" aria-label="Sottolineato"><u>U</u></button>
+        <span class="desc-tool-sep" aria-hidden="true"></span>
+        <button type="button" class="desc-tool" data-cmd="insertUnorderedList" aria-label="Elenco puntato">&#8226;</button>
+        <button type="button" class="desc-tool" data-cmd="insertOrderedList" aria-label="Elenco numerato">1.</button>
+        <span class="desc-tool-sep" aria-hidden="true"></span>
+        <button type="button" class="desc-tool" data-cmd="removeFormat" aria-label="Rimuovi formattazione">T&#215;</button>
+      </div>
+      <div class="desc-editor extra-description-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Descrizione problema" data-placeholder="Inserisci descrizione problema..."></div>
+      <textarea class="extra-description" rows="7" hidden aria-hidden="true"></textarea>
       <div class="panel preset-inline-composer extra-composer" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
 
       <div class="fab-severity-row">
@@ -2496,8 +2588,18 @@ function createExtraTicketCard(incidentId) {
   const presetTemplate = (incidentIdToPresetMap[String(incidentId)] || [])[0] || '';
   const desc = panel.querySelector('.extra-description');
   const composer = panel.querySelector('.extra-composer');
+  const extraPinCheck = panel.querySelector('.extra-ticket-pin-check');
+  const extraPinDate = panel.querySelector('.extra-ticket-pin-date');
   if (desc && composer) {
-    renderPresetForTargets(presetTemplate, desc, composer, Number(incidentId || 0));
+    descInitEditor(desc);
+    renderPresetForTargets(presetTemplate, desc, composer, Number(incidentId || 0), descGetStorage(descTextareaEl));
+  }
+  if (extraPinCheck && extraPinDate) {
+    extraPinCheck.addEventListener('change', function() {
+      extraPinDate.style.display = extraPinCheck.checked ? '' : 'none';
+      if (!extraPinCheck.checked) extraPinDate.value = '';
+      else if (!extraPinDate.value && inheritPinUntil) extraPinDate.value = inheritPinUntil;
+    });
   }
 
   panel.querySelector('.close-extra-modal-btn')?.addEventListener('click', () => {
@@ -2524,15 +2626,20 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     const extraDescEl = panel.querySelector('.extra-description');
     const extraComposer = panel.querySelector('.extra-composer');
     const extraTokens = collectPresetStateFromComposer(extraComposer ? extraComposer.dataset.presetTemplate : '', extraComposer);
+    const extraDescStorage = extraDescEl ? descGetStorage(extraDescEl) : '';
     const extraDesc = extraDescEl
       ? (((extraDescEl.dataset.presetAutoSync !== 'off') && extraTokens.length)
-        ? buildMarkupFromCurrentDescription(extraDescEl.value || '', extraTokens)
-        : (extraDescEl.value || '').trim())
+        ? buildMarkupFromCurrentDescription(extraDescStorage || '', extraTokens)
+        : (extraDescStorage || '').trim())
       : '';
     const extraFab = panel.querySelector('.extra-fab')?.value || '';
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
     const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || defaultSeverity || 1);
+    const extraPinCheck = panel.querySelector('.extra-ticket-pin-check');
+    const extraPinDate = panel.querySelector('.extra-ticket-pin-date');
+    const extraPinned = !!(extraPinCheck && extraPinCheck.checked && extraPinDate && extraPinDate.value);
+    const extraPinUntil = extraPinned ? String(extraPinDate.value || '') : '';
     const missingPresetFields = focusFirstIncompletePresetField(extraComposer);
     if (missingPresetFields.length) {
       throw new Error(`Ticket extra ${index + 1}: compila tutti i campi obbligatori del template (${buildMissingPresetFieldsMessage(extraComposer)}).`);
@@ -2550,7 +2657,9 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
       description: extraDesc,
       fab: extraFab,
       ticket_time: new Date(extraDt).toISOString(),
-      severity: extraSeverity
+      severity: extraSeverity,
+      pin_enabled: extraPinned,
+      pin_until: extraPinUntil
     });
   }
   return payloads;
@@ -2600,13 +2709,13 @@ function openModal(incidentId) {
 }
 
 function parsePresetTokens(template) {
-  const regex = /\[\[(text|select|dbselect|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const regex = /\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const tokens = [];
   let match;
   while ((match = regex.exec(template)) !== null) {
     const type = match[1];
     const label = (match[2] || '').trim();
-    const options = type === 'select' || type === 'dbselect' ? (match[3] || '').split(',').map((x) => x.trim()).filter(Boolean) : [];
+    const options = type === 'select' || type === 'dbselect' || type === 'multi' ? (match[3] || '').split(',').map((x) => x.trim()).filter(Boolean) : [];
     tokens.push({ key: `t${tokens.length}`, raw: match[0], type, label, options, value: '' });
   }
   return tokens;
@@ -2693,21 +2802,30 @@ function extractPresetValuesFromMarkup(template, savedDescription) {
   const tokens = parsePresetTokens(template);
   const source = String(savedDescription || '');
   if (!tokens.length || !source) return tokens.map(function(token) { return { key: token.key, value: '' }; });
+  // I marker 〈 〉 sono memorizzati come sequenza "mojibake" multi-carattere:
+  // usiamo la lunghezza REALE dei marker (DESC_TOKEN_OPEN/CLOSE), non offset fissi.
+  // Con offset fissi (+2) restava attaccato al valore l'ultimo carattere del
+  // marker di apertura (un accento tipo apice), che rompeva anche il match delle
+  // tendine in fase di modifica ticket.
+  const open = DESC_TOKEN_OPEN;
+  const close = DESC_TOKEN_CLOSE;
+  const openLen = open.length;
+  const closeLen = close.length;
   const values = [];
   let searchFrom = 0;
   tokens.forEach(function(token) {
-    const start = source.indexOf('ã€ˆ', searchFrom);
+    const start = source.indexOf(open, searchFrom);
     if (start < 0) {
       values.push({ key: token.key, value: '' });
       return;
     }
-    const end = source.indexOf('ã€‰', start + 2);
+    const end = source.indexOf(close, start + openLen);
     if (end < 0) {
       values.push({ key: token.key, value: '' });
       return;
     }
-    values.push({ key: token.key, value: source.slice(start + 2, end) });
-    searchFrom = end + 2;
+    values.push({ key: token.key, value: source.slice(start + openLen, end) });
+    searchFrom = end + closeLen;
   });
   return values;
 }
@@ -2857,13 +2975,20 @@ function renderColumnChart(target, stats) {
   barsWrap.className = 'chart-bars-wrap';
 
   sortedStats.forEach((s) => {
-    const h = Math.round((s.total / max) * 180);
+    // Altezza in percentuale dell'area di plot (non px fissi): cosi le colonne
+    // restano ancorate alle righe della griglia anche quando il panel si allunga.
+    const hPct = max > 0 ? (s.total / max) * 100 : 0;
     const pct = totalAll > 0 ? Math.round((s.total / totalAll) * 100) : 0;
     const row = document.createElement('div');
     row.className = 'bar chart-clickable';
     row.setAttribute('data-chart-label', s.label);
+    // L'altezza della colonna è esposta come CSS var: il numero sopra la colonna
+    // è posizionato in assoluto ancorato alla cima del riempimento, cosi NON
+    // sottrae spazio alla barra (niente flex-shrink) e la colonna al 100% arriva
+    // esattamente alla riga del valore massimo.
+    row.style.setProperty('--bar-fill-h', hPct + '%');
     const color = getBarColor(target.id, s.label);
-    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${h}px;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(chartItemLabel(s))}</span>`;
+    row.innerHTML = `<span class="bar-value">${s.total}</span><div class="bar-fill" style="height:${hPct}%;background:${color}"><span class="bar-pct">${pct}%</span></div><span class="bar-label">${escapeHtml(chartItemLabel(s))}</span>`;
     barsWrap.appendChild(row);
   });
 
@@ -3093,10 +3218,12 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
     return '<text x="' + p.x.toFixed(1) + '" y="' + (height - padB + 18) + '" text-anchor="middle" data-month="' + (i + 1) + '" class="personal-chart-label personal-chart-month-hit">' + escapeHtml(p.m.label) + '</text>';
   }).join('');
 
-  // Aree cliccabili trasparenti sui punti: aprono la lista ticket del periodo.
+  // Aree cliccabili trasparenti sui punti: in vista anno aprono il dettaglio del
+  // mese; in vista mese aprono Cerca ticket sul giorno cliccato.
   var colW = n > 1 ? (usableW / (n - 1)) : usableW;
   var hitRects = points.map(function(p, i) {
-    return '<rect class="personal-point-hit" data-idx="' + i + '" x="' + (p.x - colW / 2).toFixed(1) + '" y="' + padT + '" width="' + colW.toFixed(1) + '" height="' + usableH + '" fill="transparent" style="cursor:pointer"><title>Mostra ticket</title></rect>';
+    var dayAttr = drillMonth ? (' data-day="' + escapeHtml(String(p.m.label || '')) + '"') : '';
+    return '<rect class="personal-point-hit" data-idx="' + i + '"' + dayAttr + ' x="' + (p.x - colW / 2).toFixed(1) + '" y="' + padT + '" width="' + colW.toFixed(1) + '" height="' + usableH + '" fill="transparent" style="cursor:pointer"><title>Mostra ticket</title></rect>';
   }).join('');
 
   var targetLines = '';
@@ -3107,7 +3234,6 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'personal-chart-svg');
   svg.innerHTML =
     '<defs>' +
@@ -3137,13 +3263,16 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
   target.appendChild(svg);
 
   // Click su un punto dei grafici "Ticket personali"/"Ticket gruppo":
-  // NIENTE redirect a "Cerca ticket". In vista annuale il click entra nel
-  // dettaglio del mese (come le etichette); in vista mensile non fa nulla.
+  // in vista annuale entra nel dettaglio del mese; in vista mensile apre
+  // Cerca ticket sul giorno cliccato nello scope corretto.
   var pointHits = svg.querySelectorAll('.personal-point-hit');
   for (var phi = 0; phi < pointHits.length; phi++) {
     (function (el) {
       el.addEventListener('click', function () {
-        if (drillMonth) return;
+        if (drillMonth) {
+          personalChartOpenDaySearch(target.id, drillMonth, el.getAttribute('data-day'));
+          return;
+        }
         personalChartDrillToMonth(target.id, parseInt(el.getAttribute('data-idx'), 10) + 1);
       });
     })(pointHits[phi]);
@@ -3210,6 +3339,20 @@ function personalChartDrillToMonth(targetId, month) {
   if (!target || !(month >= 1 && month <= 12)) return;
   personalChartMonthView[targetId] = month;
   loadPersonalChartData(target).catch(console.error);
+}
+
+function personalChartOpenDaySearch(targetId, month, day) {
+  var year = (new Date()).getUTCFullYear();
+  var monthNum = parseInt(month, 10);
+  var dayNum = parseInt(day, 10);
+  if (!(monthNum >= 1 && monthNum <= 12) || !(dayNum >= 1 && dayNum <= 31)) return;
+  var startUtc = new Date(Date.UTC(year, monthNum - 1, dayNum, 0, 0, 0, 0));
+  var endUtc = new Date(Date.UTC(year, monthNum - 1, dayNum + 1, 0, 0, 0, 0));
+  var params = new URLSearchParams();
+  params.set('start', startUtc.toISOString());
+  params.set('end', endUtc.toISOString());
+  params.set('scope', personalChartIsGroup(targetId) ? 'group' : 'mine');
+  goToSearchWithParams(params);
 }
 
 function personalChartBackToYear(targetId) {
@@ -3419,10 +3562,18 @@ function getAvatarBadge(username) {
   } catch { return ''; }
 }
 
+function resolveTicketDisplayIncidentName(ticket) {
+  const item = ticket || {};
+  const incidentId = Number(item.incident_id || item.incidentId || 0);
+  const storedName = String(item.incident_name || item.incidentName || '').trim();
+  if (storedName) return storedName;
+  return String(incidentIdToNameMap[String(incidentId)] || '');
+}
+
 function createTicketRowElement(t, isAnimated) {
   const pad = (v) => String(v).padStart(2, '0');
   const incidentId = Number(t.incident_id || 0);
-  const incidentName = String(incidentIdToNameMap[String(incidentId)] || t.incident_name || '');
+  const incidentName = resolveTicketDisplayIncidentName(t);
   const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
   const categoryColor = getLabelColor('categories', category);
   const fabColor = getLabelColor('fabs', t.fab);
@@ -3764,7 +3915,7 @@ function renderSearchTickets(tickets) {
   const grouped = new Map();
   tickets.forEach((ticket) => {
     const incidentId = Number(ticket.incident_id || 0);
-    const incidentName = String(incidentIdToNameMap[String(incidentId)] || ticket.incident_name || '');
+    const incidentName = resolveTicketDisplayIncidentName(ticket);
     const category = incidentIdToCategoryMap[String(incidentId)] || incidentCategoryMap[incidentName] || 'Categoria non definita';
     const key = `${category}|||${ticket.fab}`;
     if (!grouped.has(key)) grouped.set(key, { category, fab: ticket.fab, incidents: [] });
@@ -5410,7 +5561,18 @@ ticketForm.addEventListener('submit', async (e) => {
         body: JSON.stringify({ incident_id, incident_name: customIncidentName, description, fab, ticket_time, severity })
       });
     } else {
-      const payloads = [{ incident_id, incident_name: customIncidentName, description, fab, ticket_time, severity }];
+      const _newPinCheck = document.getElementById('ticketPinCheck');
+      const _newPinUntil = document.getElementById('ticketPinUntil');
+      const payloads = [{
+        incident_id,
+        incident_name: customIncidentName,
+        description,
+        fab,
+        ticket_time,
+        severity,
+        pin_enabled: !!(_newPinCheck && _newPinCheck.checked && _newPinUntil && _newPinUntil.value),
+        pin_until: (_newPinUntil && _newPinUntil.value) ? String(_newPinUntil.value) : ''
+      }];
       const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
       payloads.push.apply(payloads, collectExtraTicketPayloads(incident_id, severityCfg.severity_default));
 
@@ -5424,27 +5586,34 @@ ticketForm.addEventListener('submit', async (e) => {
         createdTickets.push(ticket);
       }
       createdTicketIds = createdTickets.map((ticket) => ticket?.id).filter(Boolean);
-      const _newPinCheck = document.getElementById('ticketPinCheck');
-      const _newPinUntil = document.getElementById('ticketPinUntil');
-      if (_newPinCheck && _newPinCheck.checked && _newPinUntil && _newPinUntil.value && createdTicketIds.length) {
-        const _newTid = createdTicketIds[0];
-        const _newPinVal = _newPinUntil.value;
-        fetchJson('/api/pinned-tickets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: _newTid,
-            incidentId: incident_id,
-            incidentName: customIncidentName || (incidentIdToNameMap[String(incident_id)] || ''),
-            description: sanitizePinText(description),
-            fab: fab,
-            createdAt: ticket_time,
-            severity: severity,
-            category: '',
-            pinUntil: _newPinVal
-          })
-        }).then(function() {
-          showToast('Ticket pinnato fino al ' + formatPinDate(_newPinVal), 'success', 'PIN salvato');
+      const pinPayloads = createdTickets.map(function(createdTicket, ticketIndex) {
+        var sourcePayload = payloads[ticketIndex] || payloads[0] || {};
+        if (!createdTicket || !createdTicket.id || !sourcePayload.pin_enabled || !sourcePayload.pin_until) return null;
+        return {
+          id: createdTicket.id,
+          incidentId: sourcePayload.incident_id || incident_id,
+          incidentName: sourcePayload.incident_name || (incidentIdToNameMap[String(sourcePayload.incident_id || incident_id)] || ''),
+          description: sanitizePinText(sourcePayload.description || ''),
+          fab: sourcePayload.fab || '',
+          createdAt: sourcePayload.ticket_time || ticket_time,
+          severity: Number(sourcePayload.severity || severity || 1),
+          category: '',
+          pinUntil: sourcePayload.pin_until
+        };
+      }).filter(Boolean);
+      if (pinPayloads.length) {
+        Promise.all(pinPayloads.map(function(pinPayload) {
+          return fetchJson('/api/pinned-tickets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pinPayload)
+          });
+        })).then(function() {
+          var toastTitle = pinPayloads.length > 1 ? 'PIN salvati' : 'PIN salvato';
+          var toastMessage = pinPayloads.length > 1
+            ? 'I ticket selezionati sono stati pinnati fino al ' + formatPinDate(pinPayloads[0].pinUntil)
+            : 'Ticket pinnato fino al ' + formatPinDate(pinPayloads[0].pinUntil);
+          showToast(toastMessage, 'success', toastTitle);
           updateImportantTicketsBadge();
         }).catch(function() {});
       }
@@ -5492,6 +5661,11 @@ const chartOrderStorageKey = 'prodops_chart_order';
 const chartSpanSteps = [3, 6, 9, 12];
 let chartSpans = {};
 
+function allowedChartSpanSteps(panelId) {
+  if (panelId === 'chartPanelPersonalMine' || panelId === 'chartPanelPersonalGroup') return [6, 9, 12];
+  return chartSpanSteps;
+}
+
 // Il backend serializza una mappa vuota come `[]` (json_encode PHP) e anche
 // localStorage può contenere "[]": in quel caso chartSpans diventerebbe un
 // Array. Impostare chiavi-stringa su un Array funziona in memoria ma
@@ -5527,8 +5701,9 @@ function saveChartSpans() {
 }
 
 function getChartSpan(panelId) {
+  var allowed = allowedChartSpanSteps(panelId);
   const v = Number(chartSpans[panelId]);
-  return chartSpanSteps.indexOf(v) !== -1 ? v : defaultChartSpan(panelId);
+  return allowed.indexOf(v) !== -1 ? v : defaultChartSpan(panelId);
 }
 
 function chartGridColumnCount(grid) {
@@ -5551,23 +5726,28 @@ function chartSpanToGridColumns(span, columnCount) {
   return 4;
 }
 
+function chartLayoutColumns(panel, span, columnCount) {
+  return chartSpanToGridColumns(span, columnCount);
+}
+
 // Prossimo step di resize che cambia DAVVERO la larghezza mostrata: quando la
 // griglia ha meno di 12 colonne piu span logici mappano sulle stesse colonne
 // (es. a 2 colonne 3 e 6 sono entrambi "meta"), quindi salta gli step che non
 // cambierebbero nulla, cosi ogni click sulle frecce ha un effetto visibile.
 function nextResizeSpan(panel, current, dir) {
+  var allowed = allowedChartSpanSteps(panel ? panel.id : '');
   var grid = document.getElementById('chartsGrid');
   var cols = chartGridColumnCount(grid);
-  var curCols = chartSpanToGridColumns(current, cols);
-  var idx = chartSpanSteps.indexOf(current);
-  if (idx === -1) idx = chartSpanSteps.indexOf(getChartSpan(panel ? panel.id : ''));
-  for (var i = idx + dir; i >= 0 && i < chartSpanSteps.length; i += dir) {
-    if (chartSpanToGridColumns(chartSpanSteps[i], cols) !== curCols) return chartSpanSteps[i];
+  var curCols = chartLayoutColumns(panel, current, cols);
+  var idx = allowed.indexOf(current);
+  if (idx === -1) idx = allowed.indexOf(getChartSpan(panel ? panel.id : ''));
+  for (var i = idx + dir; i >= 0 && i < allowed.length; i += dir) {
+    if (chartLayoutColumns(panel, allowed[i], cols) !== curCols) return allowed[i];
   }
   return null;
 }
 
-function estimatedPanelWidthForSpan(grid, span) {
+function estimatedPanelWidthForSpan(grid, span, panel) {
   if (!grid) return 0;
   var columns = chartGridColumnCount(grid);
   var gridRect = grid.getBoundingClientRect();
@@ -5575,7 +5755,7 @@ function estimatedPanelWidthForSpan(grid, span) {
   var gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
   if (columns <= 1) return gridRect.width;
   var oneColWidth = (gridRect.width - (gap * (columns - 1))) / columns;
-  var usedColumns = chartSpanToGridColumns(span, columns);
+  var usedColumns = chartLayoutColumns(panel, span, columns);
   return (oneColWidth * usedColumns) + (gap * Math.max(0, usedColumns - 1));
 }
 
@@ -5599,7 +5779,7 @@ function getEffectiveChartSpan(panel, baseSpan) {
   if (panel && Object.prototype.hasOwnProperty.call(chartSpans, panel.id)) return effective;
   var minWidth = minReadableChartWidth(panel);
   if (!grid || !minWidth || window.matchMedia('(max-width: 640px)').matches) return effective;
-  while (effective < chartSpanSteps[chartSpanSteps.length - 1] && estimatedPanelWidthForSpan(grid, effective) < minWidth) {
+  while (effective < chartSpanSteps[chartSpanSteps.length - 1] && estimatedPanelWidthForSpan(grid, effective, panel) < minWidth) {
     var idx = chartSpanSteps.indexOf(effective);
     if (idx === -1 || idx >= chartSpanSteps.length - 1) break;
     effective = chartSpanSteps[idx + 1];
@@ -5610,9 +5790,14 @@ function getEffectiveChartSpan(panel, baseSpan) {
 function applyChartSpan(panel, span) {
   chartSpanSteps.forEach(function (s) { panel.classList.remove('chart-span-' + s); });
   var effectiveSpan = getEffectiveChartSpan(panel, span);
+  var grid = document.getElementById('chartsGrid');
+  var columnCount = chartGridColumnCount(grid);
+  var usedColumns = chartLayoutColumns(panel, effectiveSpan, columnCount);
   panel.classList.add('chart-span-' + effectiveSpan);
+  panel.style.gridColumn = 'span ' + usedColumns;
   panel.dataset.chartSpan = String(span);
   panel.dataset.chartEffectiveSpan = String(effectiveSpan);
+  panel.dataset.chartDisplayColumns = String(usedColumns);
 }
 
 // Larghezza da cui partono i pulsanti di resize: se l'utente ha già scelto
@@ -5620,9 +5805,10 @@ function applyChartSpan(panel, span) {
 // video (auto-allargata) così le frecce continuano dal valore visibile.
 function currentDisplaySpan(panel) {
   if (!panel) return chartSpanSteps[0];
+  var allowed = allowedChartSpanSteps(panel.id);
   if (Object.prototype.hasOwnProperty.call(chartSpans, panel.id)) return getChartSpan(panel.id);
   var eff = Number(panel.dataset.chartEffectiveSpan);
-  return chartSpanSteps.indexOf(eff) !== -1 ? eff : getChartSpan(panel.id);
+  return allowed.indexOf(eff) !== -1 ? eff : getChartSpan(panel.id);
 }
 
 function refreshChartResizeControls(panel) {
@@ -5947,7 +6133,14 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
 
 /* ── Avatar picker ───────────────────────────────────── */
 (function () {
-  var AVATARS = ['🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸'];
+  var AVATAR_PREVIEW_COUNT = 10;
+  var AVATARS = [
+    '🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺',
+    '🦝','🦄','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷',
+    '🦸','🐵','🐰','🐹','🐭','🦓','🦒','🦔','🦥','🦦',
+    '🐘','🐷','🐮','🐗','🐴','🦚','🦜','🐢','🐬','🦈',
+    '🐧','🦭','🦇','🐞','🦂','🐉','🛸','👾','🧙','🦹'
+  ];
   var STORAGE_KEY = 'prodops_avatars_v1';
   var DEFAULT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>';
 
@@ -6035,6 +6228,13 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
     var grid = document.createElement('div');
     grid.className = 'avatar-picker-grid';
 
+    var extraWrap = document.createElement('div');
+    extraWrap.className = 'avatar-picker-extra';
+    extraWrap.hidden = true;
+    var extraGrid = document.createElement('div');
+    extraGrid.className = 'avatar-picker-grid avatar-picker-grid-extra';
+    extraWrap.appendChild(extraGrid);
+
     var defaultOpt = document.createElement('button');
     defaultOpt.type = 'button';
     defaultOpt.className = 'avatar-option avatar-option-default' + (!current ? ' selected' : '');
@@ -6046,7 +6246,7 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
     });
     grid.appendChild(defaultOpt);
 
-    AVATARS.forEach(function (emoji) {
+    AVATARS.forEach(function (emoji, index) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'avatar-option' + (current === emoji ? ' selected' : '');
@@ -6054,8 +6254,24 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
       btn.setAttribute('aria-label', emoji);
       btn.textContent = emoji;
       btn.addEventListener('click', function () { choose(emoji); });
-      grid.appendChild(btn);
+      (index < AVATAR_PREVIEW_COUNT ? grid : extraGrid).appendChild(btn);
     });
+
+    var toggleMoreBtn = null;
+    if (AVATARS.length > AVATAR_PREVIEW_COUNT) {
+      toggleMoreBtn = document.createElement('button');
+      toggleMoreBtn.type = 'button';
+      toggleMoreBtn.className = 'avatar-picker-expand-btn';
+      toggleMoreBtn.setAttribute('aria-expanded', 'false');
+      toggleMoreBtn.innerHTML = '<span class="avatar-picker-expand-copy">Mostra altre icone avatar</span><span class="avatar-picker-expand-arrow" aria-hidden="true">▾</span>';
+      toggleMoreBtn.addEventListener('click', function () {
+        var expanded = toggleMoreBtn.getAttribute('aria-expanded') === 'true';
+        toggleMoreBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        var copy = toggleMoreBtn.querySelector('.avatar-picker-expand-copy');
+        if (copy) copy.textContent = expanded ? 'Mostra altre icone avatar' : 'Nascondi icone aggiuntive';
+        extraWrap.hidden = expanded;
+      });
+    }
 
     var footer = document.createElement('div');
     footer.className = 'avatar-picker-footer';
@@ -6071,6 +6287,8 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
 
     panel.appendChild(header);
     panel.appendChild(grid);
+    if (toggleMoreBtn) panel.appendChild(toggleMoreBtn);
+    panel.appendChild(extraWrap);
     panel.appendChild(footer);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
