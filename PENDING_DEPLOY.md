@@ -6,7 +6,13 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
-_Nessun file in attesa di deploy._
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **Fix marker duplicati descrizione multi-ticket (v1.12.6)**: nei ticket creati con "stesso incident" comparivano i caratteri `ã€ˆ … ã€‰` (i marker interni dei token) attorno ai valori. Causa: `collectExtraTicketPayloads` passava lo storage dell'editor extra — che dopo il fix v1.12.4 contiene già le chip serializzate come `ã€ˆvaloreã€‰` — a `buildMarkupFromCurrentDescription`, che cercava il valore in chiaro *dentro* i marker esistenti e lo ri-avvolgeva → `ã€ˆã€ˆvaloreã€‰ã€‰`; il renderer evidenziava la coppia interna e lasciava a video quella esterna come testo. Ora il ticket extra usa direttamente `descGetStorage(extraDescEl)` come fa il ticket principale (nessun ri-wrapping). |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Cache-busting e badge versione **v1.12.6** |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting e badge versione **v1.12.6** |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting e badge versione **v1.12.6** |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Cache-busting e badge versione **v1.12.6** |
 
 ## Gia deployato
 

@@ -2619,13 +2619,11 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     const panel = panels[index];
     const extraDescEl = panel.querySelector('.extra-description');
     const extraComposer = panel.querySelector('.extra-composer');
-    const extraTokens = collectPresetStateFromComposer(extraComposer ? extraComposer.dataset.presetTemplate : '', extraComposer);
-    const extraDescStorage = extraDescEl ? descGetStorage(extraDescEl) : '';
-    const extraDesc = extraDescEl
-      ? (((extraDescEl.dataset.presetAutoSync !== 'off') && extraTokens.length)
-        ? buildMarkupFromCurrentDescription(extraDescStorage || '', extraTokens)
-        : (extraDescStorage || '').trim())
-      : '';
+    // Come il ticket principale: l'editor extra tiene già i valori dei token come
+    // chip → 〈valore〉 nello storage. Usiamo direttamente lo storage, senza
+    // ri-applicare buildMarkupFromCurrentDescription (che raddoppierebbe i marker
+    // trasformando 〈valore〉 in 〈〈valore〉〉 e lasciandoli a video come testo).
+    const extraDesc = extraDescEl ? descGetStorage(extraDescEl) : '';
     const extraFab = panel.querySelector('.extra-fab')?.value || '';
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
