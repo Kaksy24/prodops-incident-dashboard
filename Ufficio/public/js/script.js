@@ -5503,6 +5503,18 @@ document.getElementById('addChartCard')?.addEventListener('click', openAddChartM
 
 document.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeModal));
 // La modale del ticket si chiude solo con la X / Annulla, non cliccando fuori.
+// Tasto ESC: chiude la modale del ticket in creazione/modifica. Non agisce se
+// e' aperto un overlay a priorita' maggiore (dialog conferma/prompt o un menu a
+// tendina ricercabile): in quei casi l'ESC serve a chiudere quello, non tutto il
+// ticket.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!modal || (!modal.classList.contains('show') && !modal.classList.contains('active'))) return;
+  if (document.querySelector('.prodops-confirm-overlay')) return;
+  if (modal.querySelector('.sd-panel:not([hidden])')) return;
+  e.preventDefault();
+  closeModal();
+});
 openAdminBtn.addEventListener('click', () => { window.location.href = appUrl('/admin.html'); });
 logoutBtn?.addEventListener('click', async () => {
   await fetch(appUrl('/api/logout'), { method: 'POST' });
