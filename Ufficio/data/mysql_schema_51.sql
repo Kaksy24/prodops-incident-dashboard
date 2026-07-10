@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS app_users (
   group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps',
   personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20,
   group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20,
+  last_login DATETIME NULL DEFAULT NULL,
+  last_login_ip VARCHAR(45) NULL DEFAULT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_app_users_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

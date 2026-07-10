@@ -892,6 +892,8 @@ function mysql_ensure_schema($conn)
         "ALTER TABLE app_users ADD COLUMN group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps' AFTER team",
         "ALTER TABLE app_users ADD COLUMN personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER group_name",
         "ALTER TABLE app_users ADD COLUMN group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER personal_target",
+        "ALTER TABLE app_users ADD COLUMN last_login DATETIME NULL DEFAULT NULL AFTER group_target",
+        "ALTER TABLE app_users ADD COLUMN last_login_ip VARCHAR(45) NULL DEFAULT NULL AFTER last_login",
         "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
         "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
@@ -1020,18 +1022,20 @@ function mysql_load_db($defaultUsers)
     // last_login e' una colonna opzionale (presente solo su alcuni server, vedi
     // update in fase di login). Query tollerante: se la colonna manca non rompe
     // il caricamento degli utenti.
-    $rll = @mysqli_query($conn, "SELECT id, last_login FROM app_users");
+    $rll = @mysqli_query($conn, "SELECT id, last_login, last_login_ip FROM app_users");
     if ($rll) {
         $llMap = array();
         while ($rowLL = mysqli_fetch_assoc($rll)) {
-            $llMap[intval($rowLL['id'])] = $rowLL['last_login'];
+            $llMap[intval($rowLL['id'])] = $rowLL;
         }
         mysqli_free_result($rll);
         foreach ($db['users'] as $llIdx => $llUser) {
             $llUid = intval($llUser['id']);
-            if (isset($llMap[$llUid]) && $llMap[$llUid] !== null && $llMap[$llUid] !== '') {
-                $db['users'][$llIdx]['last_login'] = strval($llMap[$llUid]);
-            }
+            if (!isset($llMap[$llUid])) continue;
+            $ll = isset($llMap[$llUid]['last_login']) ? $llMap[$llUid]['last_login'] : null;
+            if ($ll !== null && $ll !== '') $db['users'][$llIdx]['last_login'] = strval($ll);
+            $lip = isset($llMap[$llUid]['last_login_ip']) ? $llMap[$llUid]['last_login_ip'] : null;
+            if ($lip !== null && $lip !== '') $db['users'][$llIdx]['last_login_ip'] = strval($lip);
         }
     }
 
@@ -1178,7 +1182,11 @@ function mysql_save_db($db)
             $gn = mysql_escape($conn, isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps');
             $pt = normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20);
             $gt = normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20);
-            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team,group_name,personal_target,group_target) VALUES ($id,'$un','$pw','$rl','$tm','$gn',$pt,$gt)")) { $ok = false; break; }
+            // Preserva last_login/last_login_ip: senza questo il DELETE+INSERT di
+            // save_db azzererebbe l'ultimo accesso ad ogni salvataggio.
+            $ll = (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? "'" . mysql_escape($conn, $u['last_login']) . "'" : "NULL";
+            $lip = (isset($u['last_login_ip']) && $u['last_login_ip'] !== null && $u['last_login_ip'] !== '') ? "'" . mysql_escape($conn, $u['last_login_ip']) . "'" : "NULL";
+            if (!mysqli_query($conn, "INSERT INTO app_users (id,username,password,role,team,group_name,personal_target,group_target,last_login,last_login_ip) VALUES ($id,'$un','$pw','$rl','$tm','$gn',$pt,$gt,$ll,$lip)")) { $ok = false; break; }
         }
     }
 
@@ -1915,10 +1923,13 @@ if ($path === '/api/login' && $method === 'POST') {
         $role = isset($u['role']) ? strval($u['role']) : 'user';
         $authenticated = ldap_auth_user($username, $password);
         if ($authenticated) {
-            // Aggiorna last_login e last_login_ip se le colonne esistono
-            if (isset($conn) && $conn) {
-                $ip = isset($_SERVER['REMOTE_ADDR']) ? @mysqli_real_escape_string($conn, $_SERVER['REMOTE_ADDR']) : '';
-                @mysqli_query($conn, "UPDATE app_users SET last_login=NOW(), last_login_ip='" . $ip . "' WHERE id=" . intval($u['id']));
+            // Aggiorna last_login e last_login_ip se le colonne esistono.
+            // Nota: $conn non e' nello scope di questo handler; recupero la
+            // connessione con mysql_conn() (statica, gia' aperta da load_db).
+            $loginConn = mysql_enabled() ? mysql_conn() : null;
+            if ($loginConn) {
+                $ip = isset($_SERVER['REMOTE_ADDR']) ? @mysqli_real_escape_string($loginConn, $_SERVER['REMOTE_ADDR']) : '';
+                @mysqli_query($loginConn, "UPDATE app_users SET last_login=NOW(), last_login_ip='" . $ip . "' WHERE id=" . intval($u['id']));
             } else if (!supabase_enabled()) {
                 // Modalita JSON (dev/fallback): persisti last_login su db.json.
                 foreach ($db['users'] as $luIdx => $luUser) {
@@ -3615,6 +3626,19 @@ if ($path === '/api/events' && $method === 'GET') {
     // Send an immediate ping so the browser confirms the connection is live
     echo ": ping\n\n";
     flush();
+    // Sul server PHP dev locale (`php -S`, single-thread) tenere lo stream
+    // aperto 25s bloccherebbe l'unico worker e accoderebbe TUTTE le altre
+    // richieste (lentezza estrema). In dev rispondiamo subito con il ts
+    // corrente e lasciamo che l'EventSource si riconnetta dopo `retry` ms:
+    // la sincronizzazione resta attiva via polling breve, senza bloccare.
+    if (is_local_dev_host()) {
+        echo "retry: 3000\n";
+        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
+        echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+        echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+        flush();
+        exit;
+    }
     $deadline = time() + 25;
     while (time() < $deadline) {
         $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;

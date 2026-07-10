@@ -2435,7 +2435,7 @@ addPresetSelectFieldBtn?.addEventListener('click', async () => {
 addPresetMultiFieldBtn?.addEventListener('click', async () => {
   const label = await showPrompt('Assegna un nome alla scelta multipla da inserire nel ticket precompilato.', { title: 'Scelta multipla', placeholder: 'Es. Azioni svolte', confirmText: 'Avanti' });
   if (!label || !label.trim()) return;
-  const rawWords = await showPrompt('Elenca le parole/opzioni selezionabili, separate da virgola (almeno 2). L\'operatore potra sceglierne una o piu.', { title: 'Scelta multipla', placeholder: 'Es. Reboot, Reset, Sostituzione', confirmText: 'Inserisci' });
+  const rawWords = await showPrompt('Elenca le opzioni del menu a tendina, separate da virgola (almeno 2). L\'operatore potra sceglierne una sola.', { title: 'Scelta multipla', placeholder: 'Es. Reboot, Reset, Sostituzione', confirmText: 'Inserisci' });
   if (!rawWords || !rawWords.trim()) return;
   // Ripulisce da caratteri che romperebbero il token [[multi:label|opzioni]].
   const cleanLabel = label.trim().replace(/[\[\]|]/g, '').trim();

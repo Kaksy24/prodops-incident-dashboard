@@ -2335,36 +2335,21 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       });
       loadDbPresetOptions(token, input, tokenState[tokenIndex].value || '');
     } else if (token.type === 'multi') {
-      // Blocco "scelta multipla": checkbox tra le parole definite dall'admin.
-      // Le selezionate (unite da ", ") finiscono nello slot. Un input di riepilogo
-      // readonly fa da portatore del valore (per validazione e chip).
-      input = document.createElement('input');
-      input.type = 'text';
-      input.readOnly = true;
-      input.placeholder = 'Seleziona una o piu opzioni';
-      const multiWrap = document.createElement('div');
-      multiWrap.className = 'preset-multi-options';
-      const preselected = String(tokenState[tokenIndex].value || '').split(',').map((s) => s.trim()).filter(Boolean);
+      // Blocco "scelta multipla": menu a tendina a scelta SINGOLA tra le parole
+      // definite dall'admin. L'operatore puo selezionarne esattamente una.
+      input = document.createElement('select');
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Seleziona un\'opzione';
+      input.appendChild(empty);
+      const savedMulti = String(tokenState[tokenIndex].value || '').split(',')[0].trim();
       (token.options || []).forEach((opt) => {
-        const optLabel = document.createElement('label');
-        optLabel.className = 'preset-multi-option';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = opt;
-        if (preselected.indexOf(opt) !== -1) cb.checked = true;
-        cb.addEventListener('change', () => {
-          const chosen = [].slice.call(multiWrap.querySelectorAll('input[type="checkbox"]'))
-            .filter((c) => c.checked).map((c) => c.value);
-          input.value = chosen.join(', ');
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        });
-        const span = document.createElement('span');
-        span.textContent = opt;
-        optLabel.appendChild(cb);
-        optLabel.appendChild(span);
-        multiWrap.appendChild(optLabel);
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt;
+        input.appendChild(option);
       });
-      fieldWrap.appendChild(multiWrap);
+      if (savedMulti && (token.options || []).indexOf(savedMulti) !== -1) input.value = savedMulti;
     } else if (token.type === 'timestamp') {
       input = document.createElement('input');
       input.type = 'time';
@@ -2375,7 +2360,9 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       input.placeholder = token.label || '';
     }
     input.required = true;
-    if (tokenState[tokenIndex].value) input.value = tokenState[tokenIndex].value;
+    // I select (select/dbselect/multi) impostano gia da soli l'opzione salvata;
+    // riassegnare qui un valore multi-valore vecchio azzererebbe la selezione.
+    if (tokenState[tokenIndex].value && input.tagName !== 'SELECT') input.value = tokenState[tokenIndex].value;
     input.dataset.presetField = '1';
     input.dataset.presetLabel = token.label || `Campo ${tokenIndex + 1}`;
     input.style.width = '100%';
@@ -2441,6 +2428,9 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     input.addEventListener('input', syncPresetFieldValue);
     input.addEventListener('change', syncPresetFieldValue);
     fieldWrap.appendChild(input);
+    // "scelta multipla" -> menu a tendina ricercabile (scelta singola), coerente
+    // con gli altri select. Va inizializzato dopo l'append (serve il parentNode).
+    if (token.type === 'multi') makeSearchableSelect(input);
     composerContainer.appendChild(fieldWrap);
   });
 
@@ -2592,7 +2582,11 @@ function createExtraTicketCard(incidentId) {
   const extraPinDate = panel.querySelector('.extra-ticket-pin-date');
   if (desc && composer) {
     descInitEditor(desc);
-    renderPresetForTargets(presetTemplate, desc, composer, Number(incidentId || 0), descGetStorage(descTextareaEl));
+    // Ticket nuovo: renderizza il preset FRESCO dal template (chip vuote ma
+    // funzionanti). NON ereditare la descrizione del pannello principale: le sue
+    // chip vuote si serializzano come testo "[Label]" senza i marker 〈…〉, quindi
+    // non tornerebbero chip qui e i campi compilabili non aggiornerebbero nulla.
+    renderPresetForTargets(presetTemplate, desc, composer, Number(incidentId || 0), '');
   }
   if (extraPinCheck && extraPinDate) {
     extraPinCheck.addEventListener('change', function() {
@@ -3059,9 +3053,16 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     visual.appendChild(center);
   }
 
+  // Con troppe voci la legenda faceva crescere il pannello a dismisura: ne
+  // mostriamo solo le prime 6 (per numero di ticket), le altre restano
+  // consultabili passando il mouse sugli spicchi della ciambella.
+  const LEGEND_MAX = 6;
+  const legendStats = sortedStats.length > LEGEND_MAX ? sortedStats.slice(0, LEGEND_MAX) : sortedStats;
+  const hiddenCount = sortedStats.length - legendStats.length;
+
   const legend = document.createElement('div');
   legend.className = 'chart-pie-legend';
-  sortedStats.forEach((item) => {
+  legendStats.forEach((item) => {
     const row = document.createElement('div');
     row.className = 'chart-pie-legend-row chart-clickable';
     row.setAttribute('data-chart-label', item.label);
@@ -3073,10 +3074,77 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     `;
     legend.appendChild(row);
   });
+  if (hiddenCount > 0) {
+    const more = document.createElement('div');
+    more.className = 'chart-pie-legend-more';
+    more.textContent = '+' + hiddenCount + ' altri — passa il mouse sul grafico';
+    legend.appendChild(more);
+  }
+
+  // Tooltip degli spicchi: ricostruiamo gli intervalli angolari (in %) di ogni
+  // voce e, al passaggio del mouse sulla ciambella, individuiamo lo spicchio
+  // sotto il cursore in base all'angolo dal centro (0% = ore 12, orario).
+  if (slices.length) {
+    let acc = 0;
+    const sliceRanges = slices.map((slice, i) => {
+      const start = acc;
+      acc += slice.pct;
+      const item = sortedStats[i];
+      const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
+      return { start, end: acc, color: slice.color, label: chartItemLabel(item), value: item.total, pct: pct };
+    });
+    attachPieTooltip(visual, sliceRanges, hideLegendValue);
+  }
 
   layout.appendChild(visual);
   layout.appendChild(legend);
   target.appendChild(layout);
+}
+
+// Tooltip riutilizzabile per gli spicchi di torta/ciambella.
+function getPieTooltipEl() {
+  let el = document.getElementById('chartPieTooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chartPieTooltip';
+    el.className = 'chart-pie-tooltip';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function attachPieTooltip(visual, sliceRanges, valueIsPercentOnly) {
+  const tip = getPieTooltipEl();
+  function pctForEvent(e) {
+    const rect = visual.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    // Fuori dal cerchio (o dentro il "buco" della ciambella) → nessuno spicchio.
+    const r = Math.sqrt(dx * dx + dy * dy);
+    const outer = rect.width / 2;
+    if (r > outer) return null;
+    if (visual.classList.contains('donut') && r < outer * 0.30) return null;
+    let deg = Math.atan2(dx, -dy) * 180 / Math.PI; // 0 = alto, orario
+    if (deg < 0) deg += 360;
+    return (deg / 360) * 100;
+  }
+  function onMove(e) {
+    const pct = pctForEvent(e);
+    if (pct == null) { tip.classList.remove('visible'); return; }
+    const slice = sliceRanges.find((s) => pct >= s.start && pct < s.end) || sliceRanges[sliceRanges.length - 1];
+    if (!slice) { tip.classList.remove('visible'); return; }
+    const valTxt = valueIsPercentOnly ? (slice.pct + '%') : (slice.value + ' (' + slice.pct + '%)');
+    tip.innerHTML = '<span class="chart-pie-tooltip-swatch" style="background:' + slice.color + '"></span>' +
+      '<span class="chart-pie-tooltip-label">' + escapeHtml(slice.label) + '</span>' +
+      '<strong class="chart-pie-tooltip-value">' + escapeHtml(valTxt) + '</strong>';
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+    tip.classList.add('visible');
+  }
+  visual.addEventListener('mousemove', onMove);
+  visual.addEventListener('mouseleave', function() { tip.classList.remove('visible'); });
 }
 
 function renderLineChart(target, stats) {
@@ -3234,6 +3302,9 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  // Riempi tutta l'altezza del pannello (evita le bande bianche sopra/sotto
+  // dovute al preserveAspectRatio di default "meet").
+  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'personal-chart-svg');
   svg.innerHTML =
     '<defs>' +
@@ -4358,7 +4429,7 @@ async function loadUserCharts() {
     panelOrder = Array.isArray(data.panel_order) ? data.panel_order : [];
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
     chartSpans = (data.chart_spans && typeof data.chart_spans === 'object') ? normalizeSpanMap(data.chart_spans) : chartSpans;
-    chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? data.chart_types : chartTypes;
+    chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? normalizeTypeMap(data.chart_types) : chartTypes;
     currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : currentPaletteId;
     currentDarkMode = !!data.dark_mode;
     try {
@@ -4422,7 +4493,7 @@ async function saveUserCharts() {
     if (Array.isArray(data.panel_order)) panelOrder = data.panel_order;
     if (data.panel_titles && typeof data.panel_titles === 'object') panelTitles = data.panel_titles;
     if (data.chart_spans && typeof data.chart_spans === 'object') chartSpans = normalizeSpanMap(data.chart_spans);
-    if (data.chart_types && typeof data.chart_types === 'object') chartTypes = data.chart_types;
+    if (data.chart_types && typeof data.chart_types === 'object') chartTypes = normalizeTypeMap(data.chart_types);
     if (typeof data.palette === 'string' && data.palette) currentPaletteId = data.palette;
     currentDarkMode = !!data.dark_mode;
     applyAllChartSpans();
@@ -5680,6 +5751,22 @@ function normalizeSpanMap(value) {
   }
   return out;
 }
+
+// Come normalizeSpanMap: forza sempre un oggetto piano. Il backend PHP
+// serializza una mappa vuota come `[]` (Array JSON); se `chartTypes` resta un
+// Array, impostare chiavi-stringa (es. `chartTypes['catYear']='donut'`) e poi
+// `JSON.stringify`-arlo le scarta → il tipo scelto non viene mai salvato e a
+// ogni round-trip torna al default. Coercizzando sempre a oggetto il problema
+// sparisce (stesso bug già risolto per chartSpans).
+function normalizeTypeMap(value) {
+  var out = {};
+  if (value && typeof value === 'object') {
+    Object.keys(value).forEach(function (k) {
+      if (!/^\d+$/.test(k)) out[k] = value[k];
+    });
+  }
+  return out;
+}
 let dragSrcPanel = null;
 let saveUserChartsRequestSeq = 0;
 let saveUserChartsAppliedSeq = 0;
@@ -6402,7 +6489,7 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
             '<span class="itc-expires">' + expiryHtml + '</span>' +
             '<button class="itc-unpin" title="Rimuovi PIN" data-id="' + Number(pin.id) + '">✕</button>' +
           '</div>' +
-          (pin.description ? '<div class="itc-desc">' + escapeHtml(sanitizePinText(pin.description)) + '</div>' : '') +
+          (pin.description ? '<div class="itc-desc">' + renderDescriptionHtml(sanitizePinText(pin.description)) + '</div>' : '') +
           (pin.category || pin.createdAt
             ? '<div class="itc-meta">' +
                 escapeHtml(pin.category || '') +
