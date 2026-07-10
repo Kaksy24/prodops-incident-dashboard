@@ -2281,6 +2281,63 @@ async function loadDbPresetOptions(token, select, initialValue) {
   }
 }
 
+// Aggiunge un pulsante "+" a un campo di testo del preset per accodare altri box
+// di testo. Il valore del token diventa l'unione (", ") di tutti i box non vuoti.
+// onChange è syncPresetFieldValue del campo (aggiorna chip/descrizione/validazione).
+function setupPresetTextMulti(primary, fieldWrap, onChange) {
+  const extras = [];
+  primary._presetValueGetter = function () {
+    return [primary].concat(extras)
+      .map(function (i) { return String(i.value || '').trim(); })
+      .filter(Boolean)
+      .join(', ');
+  };
+
+  // Mette il campo principale e il "+" sulla stessa riga.
+  const mainRow = document.createElement('div');
+  mainRow.className = 'preset-text-row';
+  fieldWrap.insertBefore(mainRow, primary);
+  mainRow.appendChild(primary);
+  primary.style.width = ''; // il layout flex della riga gestisce la larghezza
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'preset-text-add';
+  addBtn.textContent = '+';
+  addBtn.title = 'Aggiungi un altro valore';
+  addBtn.setAttribute('aria-label', 'Aggiungi un altro valore');
+  mainRow.appendChild(addBtn);
+
+  addBtn.addEventListener('click', function () {
+    const row = document.createElement('div');
+    row.className = 'preset-text-row preset-text-extra-row';
+    const extra = document.createElement('input');
+    extra.type = 'text';
+    extra.className = 'preset-text-extra';
+    extra.placeholder = primary.placeholder || '';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'preset-text-remove';
+    rm.textContent = '×';
+    rm.title = 'Rimuovi questo valore';
+    rm.setAttribute('aria-label', 'Rimuovi questo valore');
+    rm.addEventListener('click', function () {
+      const idx = extras.indexOf(extra);
+      if (idx >= 0) extras.splice(idx, 1);
+      row.remove();
+      onChange();
+    });
+    extra.addEventListener('input', onChange);
+    extra.addEventListener('change', onChange);
+    row.appendChild(extra);
+    row.appendChild(rm);
+    fieldWrap.appendChild(row);
+    extras.push(extra);
+    extra.focus();
+    onChange();
+  });
+}
+
 function renderPresetForTargets(template, descriptionInput, composerContainer, incidentId = 0, savedDescription) {
   const descCtx = descResolveContext(descriptionInput);
   descInitEditor(descCtx);
@@ -2368,6 +2425,8 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       input = document.createElement('input');
       input.type = 'text';
       input.placeholder = token.label || '';
+      // Campo di testo semplice: supporta l'aggiunta di più box accodati (+).
+      input.dataset.presetTextMulti = '1';
     }
     input.required = true;
     // I select (select/dbselect/multi) impostano gia da soli l'opzione salvata;
@@ -2431,8 +2490,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           return;
         }
       }
-      tokenState[tokenIndex].value = input.value || '';
-      descSetChipValue(tokenIndex, input.value || '', descCtx);
+      // Con i box di testo accodati (+) il valore del token è l'unione di tutti
+      // i box; altrimenti è semplicemente il valore del campo.
+      const fieldValue = (typeof input._presetValueGetter === 'function') ? input._presetValueGetter() : (input.value || '');
+      tokenState[tokenIndex].value = fieldValue;
+      descSetChipValue(tokenIndex, fieldValue, descCtx);
       syncSubmitBtnState();
     };
     input.addEventListener('input', syncPresetFieldValue);
@@ -2441,6 +2503,8 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     // "scelta multipla" -> menu a tendina ricercabile (scelta singola), coerente
     // con gli altri select. Va inizializzato dopo l'append (serve il parentNode).
     if (token.type === 'multi') makeSearchableSelect(input);
+    // Campo di testo: aggiunge il pulsante "+" per accodare altri box di testo.
+    if (input.dataset.presetTextMulti === '1') setupPresetTextMulti(input, fieldWrap, syncPresetFieldValue);
     composerContainer.appendChild(fieldWrap);
   });
 
