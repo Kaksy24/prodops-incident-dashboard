@@ -6,6 +6,12 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
+_Nessun file in attesa di deploy._
+
+## Gia deployato
+
+Deploy confermato in data `2026-07-10` (v1.12.5 — fix grafici dashboard [altezza uniforme, ciambella top-6+tooltip, persistenza tipo grafico], fix campi preset multi-ticket, scelta multipla a tendina singola, chiusura ticket con ESC) per i seguenti file:
+
 | File locale | Path produzione | Note |
 |------|------|------|
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | **Fix lentezza dev locale (SSE)**: l'endpoint `GET /api/events` (SSE) teneva la connessione aperta ~25s; sul server PHP `-S` single-thread di Windows quel long-poll occupava l'unico worker e accodava tutte le altre richieste (lentezza estrema in locale). Ora, solo su `is_local_dev_host()` (localhost:5500), l'endpoint risponde subito col ts corrente + `retry: 3000` e lascia riconnettere l'EventSource. **In produzione il comportamento è invariato** (il ramo dev non si attiva: multi-worker Apache/php-fpm gestisce lo stream lungo senza bloccare) |
@@ -16,8 +22,6 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 | `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting e badge versione **v1.12.5** |
 | `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting e badge versione **v1.12.5** |
 | `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Cache-busting e badge versione **v1.12.5** |
-
-## Gia deployato
 
 Deploy confermato in data `2026-07-10` (v1.12.1 — editor descrizione rich-text, range T1/T2/T3, last_login, resize/altezza grafici, multi-ticket PIN/descrizione, filtri ricerca avanzati, Caps Lock, multi-select preset) per i seguenti file:
 
