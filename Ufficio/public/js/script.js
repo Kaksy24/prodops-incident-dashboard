@@ -749,8 +749,18 @@ function syncSubmitBtnState() {
 if (customIncidentNameInput) {
   customIncidentNameInput.addEventListener('input', function () {
     updateTicketModalHeading(incidentTypeInput.value, customIncidentNameInput.value);
+    syncExtraTicketTitles();
     syncSubmitBtnState();
   });
+}
+
+// Allinea l'intestazione dei pannelli multi-ticket al titolo custom del ticket
+// principale (che i ticket extra ereditano anche al salvataggio).
+function syncExtraTicketTitles() {
+  if (!extraTicketModals) return;
+  const baseIncidentName = incidentIdToNameMap[String(Number(incidentTypeInput.value || 0))] || '';
+  const title = getCustomIncidentNameForSubmit() || baseIncidentName;
+  extraTicketModals.querySelectorAll('.extra-ticket-title').forEach(function (h) { h.textContent = title; });
 }
 
 if (ticketTimestampInput) ticketTimestampInput.addEventListener('input', syncSubmitBtnState);
@@ -2472,7 +2482,11 @@ function buildMissingPresetFieldsMessage(composerContainer, prefix) {
 function createExtraTicketCard(incidentId) {
   if (!extraTicketModals) return;
   extraTicketCounter += 1;
-  const incidentName = incidentIdToNameMap[String(incidentId)] || '';
+  // Se il ticket principale ha un titolo custom (incident generico o name_mode
+  // "custom"), i ticket extra ne ereditano l'intestazione. Il valore reale viene
+  // comunque applicato al salvataggio in collectExtraTicketPayloads.
+  const baseIncidentName = incidentIdToNameMap[String(incidentId)] || '';
+  const incidentName = getCustomIncidentNameForSubmit() || baseIncidentName;
   const mainPinCheck = document.getElementById('ticketPinCheck');
   const mainPinUntil = document.getElementById('ticketPinUntil');
   const inheritPinned = !!(mainPinCheck && mainPinCheck.checked);
@@ -2482,7 +2496,7 @@ function createExtraTicketCard(incidentId) {
   panel.dataset.extraTicket = String(extraTicketCounter);
   panel.innerHTML = `
     <div class="modal-header">
-      <h3>${incidentName}</h3>
+      <h3 class="extra-ticket-title">${escapeHtml(incidentName)}</h3>
       <div class="ticket-pin-wrap extra-ticket-pin-wrap">
         <label class="ticket-pin-label">
           <input type="checkbox" class="extra-ticket-pin-check"${inheritPinned ? ' checked' : ''}> 📌 PIN
