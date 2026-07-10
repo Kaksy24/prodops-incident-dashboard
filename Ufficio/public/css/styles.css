@@ -2618,9 +2618,13 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   min-width: 0;
 }
 .chart-pie-layout.donut {
-  gap: 14px;
+  gap: 10px;
   width: 100%;
   overflow: hidden;
+  justify-content: center;
+  /* container-type size (l'altezza del pannello è fissa) così il donut può
+     essere dimensionato anche in base all'altezza disponibile (cqh). */
+  container-type: size;
 }
 .chart-pie-visual {
   position: relative;
@@ -2669,19 +2673,23 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   order: -1;
   align-self: stretch;
-  gap: 6px 14px;
+  gap: 5px 14px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  /* La legenda ha priorità: non collassa mai (prima si riduce il donut). */
+  flex: 0 0 auto;
 }
 .chart-pie-layout.donut .chart-pie-visual {
   order: 0;
   align-self: center;
-  margin-top: auto;
-  width: min(100%, clamp(180px, 62cqi, 320px));
-  max-width: 320px;
+  margin: 2px auto 0;
+  /* Limitato SIA dalla larghezza SIA dall'altezza disponibile del corpo grafico
+     (cqh): non sfora mai il pannello ad altezza fissa né schiaccia la legenda. */
+  width: min(100%, 180px, 60cqh);
+  max-width: 180px;
   min-width: 0;
+  flex: 0 0 auto;
 }
 .chart-pie-legend-row {
   display: grid;
@@ -2691,26 +2699,24 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   font-size: .9rem;
 }
 .chart-pie-layout.donut .chart-pie-legend-row {
-  grid-template-columns: 12px minmax(0, 1fr);
-  grid-template-areas:
-    "swatch label"
-    "swatch value";
-  gap: 4px 8px;
-  min-height: 24px;
-  padding: 2px 0;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  grid-template-areas: none;
+  gap: 8px;
+  min-height: 20px;
+  padding: 1px 0;
   font-size: .82rem;
-  align-items: start;
+  align-items: center;
 }
 .chart-pie-layout.donut .chart-pie-swatch {
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  grid-area: swatch;
-  align-self: start;
+  grid-area: auto;
+  align-self: center;
 }
 .chart-pie-layout.donut .chart-pie-label {
-  grid-area: label;
-  line-height: 1.05;
+  grid-area: auto;
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2718,10 +2724,10 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 }
 .chart-pie-layout.donut .chart-pie-value,
 .chart-pie-layout.donut .chart-pie-percent {
-  grid-area: value;
-  font-size: .8rem;
+  grid-area: auto;
+  font-size: .78rem;
   white-space: nowrap;
-  justify-self: start;
+  justify-self: end;
 }
 .chart-pie-layout.donut .chart-pie-center strong {
   font-size: 1.6rem;
@@ -2730,8 +2736,10 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   font-size: .78rem;
 }
 @media (max-width: 900px) {
+  /* Manteniamo 2 colonne (con ellissi) così la legenda resta compatta e
+     mostra sempre ≥6 voci senza allungarsi e schiacciare il donut. */
   .chart-pie-layout.donut .chart-pie-legend {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 720px) {
@@ -2750,17 +2758,17 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   .chart-pie-layout.donut .chart-pie-visual {
     order: -1;
     justify-self: center;
-    width: min(100%, clamp(170px, 56cqi, 240px));
-    max-width: 240px;
+    width: min(100%, 170px, 52cqh);
+    max-width: 170px;
   }
   .chart-pie-layout.donut .chart-pie-legend-row {
-    min-height: 22px;
+    min-height: 20px;
     font-size: .78rem;
   }
 }
 @media (min-width: 1200px) {
   .chart-pie-layout.donut .chart-pie-legend {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .chart-pie-swatch {
