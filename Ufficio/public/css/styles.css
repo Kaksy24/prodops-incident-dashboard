@@ -607,49 +607,31 @@ body.theme-dark .switch-thumb {
 .charts-grid.charts-edit-mode > .panel.chart-editable-card .personal-chart {
   cursor: grab;
 }
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .panel-heading-row,
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .chart-controls-row:first-of-type {
+.charts-grid.charts-edit-mode > .panel.chart-editable-card {
   position: relative;
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--brand) 14%, rgba(255,255,255,.82)) 0%, color-mix(in srgb, var(--brand) 6%, transparent) 100%);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brand) 18%, transparent),
-    0 10px 24px color-mix(in srgb, var(--brand) 12%, transparent),
-    inset 0 1px 0 rgba(255,255,255,.45);
-  transition: background .16s ease, box-shadow .16s ease, transform .16s ease;
 }
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .panel-heading-row::before,
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .chart-controls-row:first-of-type::before {
-  content: 'Trascina da qui';
+/* Retroilluminazione sul bordo alto del pannello: segnala che è trascinabile
+   (sostituisce la vecchia scritta "Trascina da qui" e l'highlight dell'header). */
+.charts-grid.charts-edit-mode > .panel.chart-editable-card::before {
+  content: '';
   position: absolute;
-  top: -10px;
+  left: 12px;
   right: 12px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--brand) 88%, white 12%);
-  color: #fff;
-  font-size: .64rem;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--brand) 26%, transparent);
-  pointer-events: none;
-}
-.charts-grid.charts-edit-mode > .panel.chart-editable-card:hover .panel-heading-row,
-.charts-grid.charts-edit-mode > .panel.chart-editable-card:hover .chart-controls-row:first-of-type {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--brand) 24%, rgba(255,255,255,.92)) 0%, color-mix(in srgb, var(--brand) 10%, transparent) 100%);
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--brand);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brand) 26%, transparent),
-    0 14px 30px color-mix(in srgb, var(--brand) 18%, transparent),
-    inset 0 1px 0 rgba(255,255,255,.62);
-  transform: translateY(-1px);
+    0 0 10px 1px color-mix(in srgb, var(--brand) 72%, transparent),
+    0 0 20px 4px color-mix(in srgb, var(--brand) 42%, transparent);
+  pointer-events: none;
+  z-index: 3;
+  transition: box-shadow .16s ease;
 }
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .panel-heading-row h3,
-.charts-grid.charts-edit-mode > .panel.chart-editable-card .chart-controls-row:first-of-type {
-  position: relative;
-  z-index: 1;
+.charts-grid.charts-edit-mode > .panel.chart-editable-card:hover::before {
+  box-shadow:
+    0 0 14px 2px color-mix(in srgb, var(--brand) 90%, transparent),
+    0 0 30px 7px color-mix(in srgb, var(--brand) 58%, transparent);
 }
 @keyframes chart-edit-wiggle {
   0%, 100% { transform: rotate(0deg) translateY(0); }
@@ -5145,7 +5127,29 @@ body.theme-dark .app-version-badge {
   flex-shrink: 0;
   cursor: pointer;
   margin: 0;
+  /* Il popup non è dentro .ticket-list, quindi le card clonate non ereditavano
+     bordo/sfondo e si confondevano tra loro: qui le rendiamo card distinte. */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(155deg, rgba(255,255,255,.99) 0%, rgba(243,249,255,.96) 100%);
+  box-shadow: 0 2px 6px rgba(20,44,74,.07);
+  overflow: hidden;
+  transition: transform .13s ease, box-shadow .13s ease;
 }
+.ticket-stack-popup .ticket-row:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(20,44,74,.20);
+}
+body.theme-dark .ticket-stack-popup .ticket-row {
+  border-color: rgba(20,44,74,.14);
+  box-shadow: 0 2px 8px rgba(4,10,19,.35);
+}
+/* Testo leggibile sulle card chiare anche in dark mode (come nella lista) */
+body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-title { color: #17202f; }
+body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-desc,
+body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-owner,
+body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-datetime,
+body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-sep { color: #5c6b7d; }
 
 body.theme-dark .ticket-stack:not(.single)::before,
 body.theme-dark .ticket-stack:not(.single)::after {
