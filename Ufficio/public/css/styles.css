@@ -3036,6 +3036,10 @@ body.modal-open main { pointer-events: none; }
 .extra-ticket-modal {
   width: 100%;
 }
+/* Campo "Nome incident" per-clone nei pannelli multi-ticket */
+.extra-custom-name-group { margin: 0 0 10px; }
+.extra-custom-name-group label { display: block; margin-bottom: 4px; font-size: .85rem; font-weight: 600; }
+.extra-custom-name { width: 100%; }
 .extra-ticket-grid {
   display: block;
 }

@@ -749,18 +749,8 @@ function syncSubmitBtnState() {
 if (customIncidentNameInput) {
   customIncidentNameInput.addEventListener('input', function () {
     updateTicketModalHeading(incidentTypeInput.value, customIncidentNameInput.value);
-    syncExtraTicketTitles();
     syncSubmitBtnState();
   });
-}
-
-// Allinea l'intestazione dei pannelli multi-ticket al titolo custom del ticket
-// principale (che i ticket extra ereditano anche al salvataggio).
-function syncExtraTicketTitles() {
-  if (!extraTicketModals) return;
-  const baseIncidentName = incidentIdToNameMap[String(Number(incidentTypeInput.value || 0))] || '';
-  const title = getCustomIncidentNameForSubmit() || baseIncidentName;
-  extraTicketModals.querySelectorAll('.extra-ticket-title').forEach(function (h) { h.textContent = title; });
 }
 
 if (ticketTimestampInput) ticketTimestampInput.addEventListener('input', syncSubmitBtnState);
@@ -2546,11 +2536,16 @@ function buildMissingPresetFieldsMessage(composerContainer, prefix) {
 function createExtraTicketCard(incidentId) {
   if (!extraTicketModals) return;
   extraTicketCounter += 1;
-  // Se il ticket principale ha un titolo custom (incident generico o name_mode
-  // "custom"), i ticket extra ne ereditano l'intestazione. Il valore reale viene
-  // comunque applicato al salvataggio in collectExtraTicketPayloads.
+  // Se l'incident supporta il nome custom (generico o name_mode "custom") ogni
+  // ticket extra ha il PROPRIO campo "Nome incident" editabile, così puoi dare
+  // un nome diverso a ciascun clone. Viene precompilato col nome del principale
+  // come default, ma resta modificabile in modo indipendente.
   const baseIncidentName = incidentIdToNameMap[String(incidentId)] || '';
-  const incidentName = getCustomIncidentNameForSubmit() || baseIncidentName;
+  const supportsCustomName = isGenericIncidentId(incidentId);
+  const initialCustomName = supportsCustomName
+    ? (getCustomIncidentNameForSubmit() || (isGenericIncidentName(baseIncidentName) ? '' : baseIncidentName))
+    : '';
+  const incidentName = (supportsCustomName && initialCustomName) ? initialCustomName : baseIncidentName;
   const mainPinCheck = document.getElementById('ticketPinCheck');
   const mainPinUntil = document.getElementById('ticketPinUntil');
   const inheritPinned = !!(mainPinCheck && mainPinCheck.checked);
@@ -2570,6 +2565,11 @@ function createExtraTicketCard(incidentId) {
       <button type="button" class="close-extra-modal-btn">x</button>
     </div>
     <div class="ticket-form">
+      ${supportsCustomName ? `
+      <div class="extra-custom-name-group">
+        <label>Nome incident</label>
+        <input type="text" class="extra-custom-name" placeholder="Inserisci nome incident personalizzato" value="${escapeHtml(initialCustomName)}" />
+      </div>` : ''}
       <label>Descrizione problema</label>
       <div class="desc-toolbar extra-description-toolbar" role="toolbar" aria-label="Formattazione descrizione">
         <button type="button" class="desc-tool" data-cmd="bold" aria-label="Grassetto"><b>B</b></button>
@@ -2674,6 +2674,16 @@ function createExtraTicketCard(incidentId) {
     });
   }
 
+  // Nome incident per-clone: aggiorna l'intestazione del pannello in tempo reale.
+  const extraCustomNameInput = panel.querySelector('.extra-custom-name');
+  const extraTitleEl = panel.querySelector('.extra-ticket-title');
+  if (extraCustomNameInput && extraTitleEl) {
+    extraCustomNameInput.addEventListener('input', function () {
+      const v = String(extraCustomNameInput.value || '').trim();
+      extraTitleEl.textContent = v || baseIncidentName;
+    });
+  }
+
   panel.querySelector('.close-extra-modal-btn')?.addEventListener('click', () => {
     panel.remove();
     applyMultiModalLayout();
@@ -2691,12 +2701,18 @@ function createExtraTicketCard(incidentId) {
 
 function collectExtraTicketPayloads(incidentId, defaultSeverity) {
   const payloads = [];
-  const customIncidentName = getCustomIncidentNameForSubmit();
+  const mainCustomName = getCustomIncidentNameForSubmit();
+  const baseIncidentName = incidentIdToNameMap[String(incidentId)] || '';
+  const requiresCustomName = isGenericIncidentName(baseIncidentName);
   const panels = [...document.querySelectorAll('.extra-ticket-modal')];
   for (let index = 0; index < panels.length; index += 1) {
     const panel = panels[index];
     const extraDescEl = panel.querySelector('.extra-description');
     const extraComposer = panel.querySelector('.extra-composer');
+    // Nome incident PER-clone: ogni pannello ha il proprio campo editabile;
+    // se assente (incident senza nome custom) si usa quello del principale.
+    const extraCustomInput = panel.querySelector('.extra-custom-name');
+    const customIncidentName = extraCustomInput ? String(extraCustomInput.value || '').trim() : mainCustomName;
     // Come il ticket principale: l'editor extra tiene già i valori dei token come
     // chip → 〈valore〉 nello storage. Usiamo direttamente lo storage, senza
     // ri-applicare buildMarkupFromCurrentDescription (che raddoppierebbe i marker
@@ -2714,8 +2730,9 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     if (missingPresetFields.length) {
       throw new Error(`Ticket extra ${index + 1}: compila tutti i campi obbligatori del template (${buildMissingPresetFieldsMessage(extraComposer)}).`);
     }
-    if (!extraDesc || !extraFab || !extraDt) {
+    if (!extraDesc || !extraFab || !extraDt || (requiresCustomName && !customIncidentName)) {
       const missing = [];
+      if (requiresCustomName && !customIncidentName) missing.push('nome incident');
       if (!extraDesc) missing.push('descrizione');
       if (!extraFab) missing.push('FAB');
       if (!extraDt) missing.push('data/ora');
