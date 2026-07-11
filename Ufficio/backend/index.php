@@ -360,17 +360,27 @@ function normalize_group_targets($groupTargets, $users)
 function resolve_ticket_incident_name($db, $incidentId, $customIncidentName)
 {
     $baseIncidentName = '';
+    $nameMode = 'default';
     foreach ($db['incidents'] as $inc) {
         if (intval($inc['id']) === intval($incidentId)) {
             $baseIncidentName = isset($inc['name']) ? trim(strval($inc['name'])) : '';
+            $nameMode = (isset($inc['name_mode']) && $inc['name_mode'] === 'custom') ? 'custom' : 'default';
             break;
         }
     }
     if ($baseIncidentName === '') return '';
-    if (strtolower($baseIncidentName) !== 'generic') return $baseIncidentName;
+    // Il titolo custom è ammesso quando l'incident è in modalità "custom" (scelta
+    // dall'admin) oppure — retro-compatibilità — quando si chiama letteralmente
+    // "Generic". Prima veniva onorato SOLO per i "Generic", quindi i ticket (e i
+    // relativi cloni multi-ticket) di incident custom perdevano il nome scelto.
+    $isGenericName = (strtolower($baseIncidentName) === 'generic');
+    $allowsCustom = ($nameMode === 'custom') || $isGenericName;
+    if (!$allowsCustom) return $baseIncidentName;
     $custom = trim(strval($customIncidentName));
-    if ($custom === '') return '';
-    return $custom;
+    if ($custom !== '') return $custom;
+    // Custom vuoto: per i "Generic" resta '' (comportamento storico), per gli
+    // altri incident custom si usa il nome base.
+    return $isGenericName ? '' : $baseIncidentName;
 }
 
 function remove_pinned_ticket_by_id(&$db, $ticketId)
