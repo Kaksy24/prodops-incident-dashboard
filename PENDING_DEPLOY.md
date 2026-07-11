@@ -6,6 +6,12 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
+_Nessun file in attesa di deploy._
+
+## Gia deployato
+
+Deploy confermato in data `2026-07-11` (v1.12.6 → v1.12.12 — multi-ticket: fix marker descrizione, nome incident per-clone, titolo custom cloni + fix backend `resolve_ticket_incident_name`; box di testo preset accodabili con "+"; scelta multipla a tendina singola; chiusura ticket con ESC; fix layout grafico a ciambella; retroilluminazione drag "Modifica grafici"; separatori popup ticket raggruppati; fix grafici fuori dal panel su schermi stretti) per i seguenti file:
+
 | File locale | Path produzione | Note |
 |------|------|------|
 | `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | **Fix titolo custom non salvato per incident non-"Generic" (v1.12.11)**: `resolve_ticket_incident_name()` onorava il nome custom SOLO se l'incident si chiamava letteralmente "Generic", scartandolo per tutti gli altri incident impostati dall'admin in `name_mode: custom` (il titolo scelto veniva perso al salvataggio, sia sul ticket principale sia sui cloni multi-ticket). Ora il custom è ammesso quando `name_mode === 'custom'` **oppure** il nome è "Generic" (retro-compat); custom vuoto → per i "Generic" resta `''` come prima, per gli altri usa il nome base. Nessuna modifica di schema (colonna `name_mode` già esistente); vale sia in MySQL sia nel fallback JSON. |
@@ -15,8 +21,6 @@ Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inse
 | `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting e badge versione **v1.12.12** |
 | `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting e badge versione **v1.12.12** |
 | `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Cache-busting e badge versione **v1.12.12** |
-
-## Gia deployato
 
 Deploy confermato in data `2026-07-10` (v1.12.5 — fix grafici dashboard [altezza uniforme, ciambella top-6+tooltip, persistenza tipo grafico], fix campi preset multi-ticket, scelta multipla a tendina singola, chiusura ticket con ESC) per i seguenti file:
 
