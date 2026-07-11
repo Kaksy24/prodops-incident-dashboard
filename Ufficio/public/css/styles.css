@@ -2505,7 +2505,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   min-width: 0;
 }
 .vertical-chart { min-height: 232px; padding-top: 6px; }
-.chart-inner { display: grid; grid-template-columns: 34px 1fr; column-gap: 8px; align-items: stretch; min-height: 232px; }
+.chart-inner { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 8px; align-items: stretch; min-height: 232px; }
 .chart-y-axis {
   display: flex;
   flex-direction: column;
@@ -2529,6 +2529,9 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   padding: 24px 2px 38px;
   overflow-x: auto;
   overflow-y: visible;
+  /* Necessario perché overflow-x:auto scrolli davvero invece di allargare la
+     colonna 1fr (che altrimenti si espande fino a far uscire le barre dal panel). */
+  min-width: 0;
 }
 .chart-bars-wrap::before {
   content: "";
@@ -3200,6 +3203,14 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
   .admin-grid,
   .charts-grid {
     grid-template-columns: 1fr;
+  }
+  /* La griglia grafici qui è a 1 colonna: le classi chart-span-N (base: span 3)
+     restano però attive e, in una griglia a 1 colonna esplicita, forzano 3
+     colonne IMPLICITE schiacciando i pannelli a pochi px (barre a 0px, contenuto
+     fuori dal panel). Forziamo ogni pannello a occupare l'intera colonna. */
+  .charts-grid > .panel,
+  .charts-grid > .add-chart-card {
+    grid-column: 1 / -1;
   }
   .sidebar-inner {
     position: static;
