@@ -164,7 +164,7 @@ function collect_search_filter_preset_fields($db)
         foreach ($incident['presets'] as $template) {
             $template = strval($template);
             if ($template === '') continue;
-            if (!preg_match_all('/\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/', $template, $matches, PREG_SET_ORDER)) continue;
+            if (!preg_match_all('/\[\[(texts?|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/', $template, $matches, PREG_SET_ORDER)) continue;
             foreach ($matches as $match) {
                 $type = isset($match[1]) ? strval($match[1]) : '';
                 if ($type !== 'select' && $type !== 'dbselect') continue;
@@ -1871,6 +1871,11 @@ if ($path === '/admin.html') {
 if ($path === '/search.html') {
     require_page_auth('user');
     readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'search.html');
+    exit;
+}
+if ($path === '/quickbar.html') {
+    require_page_auth('user');
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'quickbar.html');
     exit;
 }
 if ($path === '/login.html') {

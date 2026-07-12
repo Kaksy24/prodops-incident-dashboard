@@ -215,7 +215,7 @@ function normalizePresetFieldKey(label) {
 }
 
 function parsePresetTokens(template) {
-  const regex = /\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const regex = /\[\[(texts?|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const tokens = [];
   let match;
   while ((match = regex.exec(String(template || ''))) !== null) {

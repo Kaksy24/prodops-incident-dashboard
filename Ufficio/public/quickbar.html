@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProdOps</title>
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.15" />
+  <script>document.documentElement.classList.add('theme-sync-pending');
+    try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.15" />
+</head>
+<body class="quickbar-page">
+  <div class="quickbar-shell">
+    <nav class="menu quickbar-menu" id="menu"></nav>
+  </div>
+
+  <div class="quickbar-support" hidden aria-hidden="true">
+    <input id="currentShiftFilter" type="text" value="" />
+    <p id="currentShiftFilterEmpty" hidden></p>
+    <select id="currentShiftSort">
+      <option value="time">Orario</option>
+    </select>
+    <button id="currentShiftSortDir" type="button"></button>
+    <div id="currentShiftCounters"></div>
+    <span id="currentShiftTotalCount"></span>
+    <span id="currentShiftMineCount"></span>
+    <span id="currentShiftTeamCount"></span>
+    <span id="previousShiftTotalCount"></span>
+    <div id="previousShiftsContent" hidden></div>
+    <ul id="ticketList"></ul>
+    <div id="tsPopup" class="ticket-stack-popup" hidden></div>
+    <select id="compactModeSelect">
+      <option value=""></option>
+    </select>
+  </div>
+
+  <div class="modal" id="ticketModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="ticketModalTitle">Nuovo Ticket</h3>
+        <div id="ticketPinWrap" class="ticket-pin-wrap" style="display:none">
+          <label class="ticket-pin-label">
+            <input type="checkbox" id="ticketPinCheck"> 📌 PIN
+          </label>
+          <input type="date" id="ticketPinUntil" class="ticket-pin-date" style="display:none">
+        </div>
+        <button class="close-modal" type="button">x</button>
+      </div>
+
+      <form id="ticketForm" class="ticket-form">
+        <input id="incidentType" name="incidentType" type="hidden" />
+
+        <div id="customIncidentNameGroup" style="display:none">
+          <label for="customIncidentName">Nome incident</label>
+          <input id="customIncidentName" name="customIncidentName" type="text" placeholder="Inserisci nome incident personalizzato" />
+        </div>
+
+        <label for="descriptionEditor">Descrizione problema</label>
+        <div id="descriptionToolbar" class="desc-toolbar" role="toolbar" aria-label="Formattazione descrizione">
+          <button type="button" class="desc-tool" data-cmd="bold" title="Grassetto (Ctrl+B)" aria-label="Grassetto"><b>B</b></button>
+          <button type="button" class="desc-tool" data-cmd="italic" title="Corsivo (Ctrl+I)" aria-label="Corsivo"><i>I</i></button>
+          <button type="button" class="desc-tool" data-cmd="underline" title="Sottolineato (Ctrl+U)" aria-label="Sottolineato"><u>U</u></button>
+          <span class="desc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="desc-tool" data-cmd="insertUnorderedList" title="Elenco puntato" aria-label="Elenco puntato">&#8226;</button>
+          <button type="button" class="desc-tool" data-cmd="insertOrderedList" title="Elenco numerato" aria-label="Elenco numerato">1.</button>
+          <span class="desc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="desc-tool" data-cmd="removeFormat" title="Rimuovi formattazione" aria-label="Rimuovi formattazione">T&#215;</button>
+        </div>
+        <div id="descriptionEditor" class="desc-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Descrizione problema" data-placeholder="Inserisci descrizione problema..."></div>
+        <textarea id="description" name="description" required hidden aria-hidden="true"></textarea>
+        <div id="descriptionRead" class="ticket-read-desc" style="display:none"></div>
+        <div id="presetInlineComposer" class="panel" style="display:none; margin:8px 0 10px; padding:10px 12px;"></div>
+
+        <div class="fab-severity-row">
+          <div class="fab-section">
+            <p class="muted">Seleziona FAB:</p>
+            <div id="fabButtons" class="fab-buttons"></div>
+          </div>
+          <div id="ticketSeverityGroup" class="severity-inline-group">
+            <label for="ticketSeverity">Severity</label>
+            <select id="ticketSeverity" name="ticketSeverity" required>
+              <option value="1">1 - Low</option>
+              <option value="2">2 - Medium</option>
+              <option value="3">3 - High</option>
+              <option value="4">4 - Extreme</option>
+            </select>
+            <p id="ticketSeverityHint" class="muted"></p>
+          </div>
+        </div>
+
+        <input id="fabValue" name="fab" type="hidden" required />
+        <div class="datetime-actions-row">
+          <div class="datetime-block">
+            <label for="ticketTimestamp" class="ticket-timestamp-label">Datetime</label>
+            <input id="ticketTimestamp" class="ticket-timestamp-input" name="ticketTimestamp" type="datetime-local" required />
+          </div>
+          <div class="form-actions inline-actions">
+            <button type="button" id="deleteTicketBtn" class="danger" style="display:none">Elimina</button>
+            <button type="button" id="editFromReadBtn" class="secondary" style="display:none">Modifica</button>
+            <button type="button" class="secondary close-modal">Annulla</button>
+            <button type="submit" id="ticketSubmitBtn" class="primary">Crea Ticket</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div id="extraTicketModals" class="extra-ticket-modals"></div>
+    <button id="addSameIncidentBtn" class="add-same-incident-btn" type="button" title="Aggiungi ticket stesso incident">+</button>
+  </div>
+
+  <div class="modal" id="userSettingsModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel user-settings-panel">
+      <div class="modal-header">
+        <h3>Impostazioni utente</h3>
+        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">x</button>
+      </div>
+      <div class="user-settings-body">
+        <div class="user-settings-section">
+          <p class="user-settings-label">Tema</p>
+          <div id="themeSwatches" class="theme-swatches"></div>
+        </div>
+        <div class="user-settings-section">
+          <p class="user-settings-label">Dimensione grafici</p>
+          <div class="panel-scale-control">
+            <button type="button" id="panelScaleDown" class="panel-scale-btn" aria-label="Rimpicciolisci">&minus;</button>
+            <input type="range" id="panelScaleSlider" class="panel-scale-slider" min="70" max="150" step="5" value="100" aria-label="Dimensione pannelli e grafici">
+            <button type="button" id="panelScaleUp" class="panel-scale-btn" aria-label="Ingrandisci">&plus;</button>
+            <span id="panelScaleValue" class="panel-scale-value">100%</span>
+          </div>
+          <p class="user-settings-hint">Ingrandisce o rimpicciolisce i pannelli e i grafici al loro interno.</p>
+        </div>
+      </div>
+      <div class="user-settings-footer">
+        <button type="button" id="saveUserSettingsBtn" class="primary">Salva</button>
+        <button type="button" id="cancelUserSettingsBtn" class="secondary">Annulla</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.15"></script>
+  <script src="./public/js/toast.js?v=1.13.15"></script>
+  <script src="./public/js/script.js?v=1.13.15"></script>
+</body>
+</html>

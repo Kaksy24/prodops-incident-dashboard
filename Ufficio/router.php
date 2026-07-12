@@ -8,7 +8,7 @@ if (strpos($assetPath, '/public/') === 0) {
 }
 $file = $publicRoot . $assetPath;
 
-if ($path === '/' || $path === '/index.html' || $path === '/admin.html' || $path === '/search.html' || $path === '/login.html' || strpos($path, '/api/') === 0 || $path === '/index.php') {
+if ($path === '/' || $path === '/index.html' || $path === '/admin.html' || $path === '/search.html' || $path === '/quickbar.html' || $path === '/login.html' || strpos($path, '/api/') === 0 || $path === '/index.php') {
     require __DIR__ . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'index.php';
     return true;
 }

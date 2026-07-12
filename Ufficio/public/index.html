@@ -4,8 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps Ticket Manager</title>
-  <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.12.12" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.15" />
+  <script>document.documentElement.classList.add('theme-sync-pending');
+    try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.15" />
 </head>
 <body>
   <div class="app-layout">
@@ -14,6 +16,7 @@
       <div class="sidebar-top"><button id="userPill" class="user-pill" type="button" style="display:none" title="Impostazioni utente" aria-label="Impostazioni utente"><span class="user-pill-icon" id="userPillAvatarWrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span class="user-pill-info"><span id="userPillName"></span><span class="user-pill-sep"></span><span class="user-pill-meta"><span id="userPillTeam"></span><span class="user-pill-dot" aria-hidden="true">·</span><span id="userPillRole"></span></span></span></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <nav class="menu" id="menu"></nav>
       <div class="sidebar-actions">
+        <button id="openQuickbarBtn" class="sidebar-link-btn quickbar-launch-btn" type="button">Apri Quickbar</button>
         <button id="openAdminBtn" class="admin-toggle-btn" type="button">Admin Panel</button>
         <a class="sidebar-link-btn" href="./search.html">Cerca ticket</a>
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
@@ -372,25 +375,48 @@
 
   <div class="modal" id="userSettingsModal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-panel user-settings-panel">
-      <div class="modal-header">
-        <h3>Impostazioni utente</h3>
-        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">x</button>
+      <div class="modal-header user-settings-header">
+        <div>
+          <h3>Impostazioni profilo</h3>
+          <p class="user-settings-subtitle">Personalizza l'aspetto della dashboard</p>
+        </div>
+        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">×</button>
       </div>
-      <div class="user-settings-body">
-        <div class="user-settings-section">
-          <p class="user-settings-label">Tema</p>
-          <div id="themeSwatches" class="theme-swatches"></div>
+      <div class="user-settings-body user-settings-two-col">
+        <div class="user-settings-col-left">
+          <div class="user-settings-field">
+            <label class="user-settings-label" for="themeSelect">Tema</label>
+            <div class="user-settings-select-wrap">
+              <select id="themeSelect" class="user-settings-select"></select>
+              <span class="user-settings-select-caret" aria-hidden="true">▾</span>
+            </div>
+            <p class="user-settings-hint">Cambia colori, font e stile della dashboard.</p>
+          </div>
+          <div class="user-settings-field">
+            <label class="user-settings-label" for="panelScaleSlider">Dimensione grafici</label>
+            <div class="panel-scale-control">
+              <button type="button" id="panelScaleDown" class="panel-scale-btn" aria-label="Rimpicciolisci">−</button>
+              <input type="range" id="panelScaleSlider" class="panel-scale-slider" min="70" max="150" step="5" value="100" aria-label="Dimensione pannelli e grafici">
+              <button type="button" id="panelScaleUp" class="panel-scale-btn" aria-label="Ingrandisci">+</button>
+              <span id="panelScaleValue" class="panel-scale-value">100%</span>
+            </div>
+            <p class="user-settings-hint">Ingrandisce o rimpicciolisce pannelli e grafici.</p>
+          </div>
+        </div>
+        <div class="user-settings-col-right">
+          <label class="user-settings-label">Anteprima tema</label>
+          <div id="themePreview" class="theme-preview-canvas" aria-live="polite"></div>
         </div>
       </div>
       <div class="user-settings-footer">
-        <button type="button" id="saveUserSettingsBtn" class="primary">Salva</button>
         <button type="button" id="cancelUserSettingsBtn" class="secondary">Annulla</button>
+        <button type="button" id="saveUserSettingsBtn" class="primary">Salva modifiche</button>
       </div>
     </div>
   </div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.12.12"></script>
-  <script src="./public/js/toast.js?v=1.12.12"></script>
-  <script src="./public/js/script.js?v=1.12.12"></script>
-  <div class="app-version-badge">v1.12.12</div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.15"></script>
+  <script src="./public/js/toast.js?v=1.13.15"></script>
+  <script src="./public/js/script.js?v=1.13.15"></script>
+  <div class="app-version-badge">v1.13.15</div>
 </body>
 </html>

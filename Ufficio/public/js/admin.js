@@ -21,6 +21,7 @@ const adminSeverityModeSelect = document.getElementById('adminSeverityMode');
 const adminFabDefaultSelect = document.getElementById('adminFabDefault');
 const adminNameModeCheckbox = document.getElementById('adminNameMode');
 const addPresetTextFieldBtn = document.getElementById('addPresetTextFieldBtn');
+const addPresetTextMultiFieldBtn = document.getElementById('addPresetTextMultiFieldBtn');
 const addPresetSelectFieldBtn = document.getElementById('addPresetSelectFieldBtn');
 const addPresetMultiFieldBtn = document.getElementById('addPresetMultiFieldBtn');
 const addPresetTimestampBtn = document.getElementById('addPresetTimestampBtn');
@@ -2310,6 +2311,14 @@ addPresetTextFieldBtn?.addEventListener('click', async () => {
   const label = await showPrompt('Assegna un nome al campo di testo libero da inserire nel ticket precompilato.', { title: 'Campo di testo', placeholder: 'Es. Entity', confirmText: 'Inserisci' });
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[text:${label.trim()}]]`);
+});
+
+// Box testo multiplo: come "+ Box testo" ma nel ticket compare col pulsante "+"
+// per accodare altri box (i valori si uniscono con ", ").
+addPresetTextMultiFieldBtn?.addEventListener('click', async () => {
+  const label = await showPrompt('Assegna un nome al campo di testo multiplo. Nel ticket l\'operatore potrà accodare più box e i valori saranno uniti con ", ".', { title: 'Campo di testo multiplo', placeholder: 'Es. Entity', confirmText: 'Inserisci' });
+  if (!label || !label.trim()) return;
+  insertAtCursor(adminIncidentPresetInput, `[[texts:${label.trim()}]]`);
 });
 
 // Mostra un dialog che permette di riutilizzare un menu a tendina gia esistente

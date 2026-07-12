@@ -25,6 +25,7 @@ const currentShiftFilterEmpty = document.getElementById('currentShiftFilterEmpty
 const currentShiftSort = document.getElementById('currentShiftSort');
 const currentShiftSortDirBtn = document.getElementById('currentShiftSortDir');
 const openAdminBtn = document.getElementById('openAdminBtn');
+const openQuickbarBtn = document.getElementById('openQuickbarBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const deleteTicketBtn = document.getElementById('deleteTicketBtn');
 const editFromReadBtn = document.getElementById('editFromReadBtn');
@@ -79,6 +80,32 @@ const THEMES = [
   { id: 'verde',      label: 'Verde',      sidebar: '#0c261a', brand: '#1a6e3e' },
   { id: 'blu',        label: 'Blu',        sidebar: '#172b45', brand: '#0c5f8c' },
   { id: 'giallo',     label: 'Giallo',     sidebar: '#2a2000', brand: '#b89200' },
+  { id: 'neon',       label: 'Neon Nights', sidebar: '#0d0219', brand: '#ff71ce',
+    previewStyle: 'background:linear-gradient(135deg,#0d0219 30%,#ff71ce 70%,#01cdfe 100%);box-shadow:inset 0 0 10px rgba(255,113,206,.6),0 0 8px rgba(1,205,254,.4);font-family:Consolas,monospace;' },
+  { id: 'papiro',     label: 'Papiro',     sidebar: '#3d2818', brand: '#7a4a2a',
+    previewStyle: 'background:linear-gradient(135deg,#3d2818 30%,#a06848 100%);box-shadow:2px 2px 0 rgba(0,0,0,.25);font-family:Georgia,serif;border-radius:2px;' },
+  { id: 'terminale',  label: 'Terminale',  sidebar: '#000000', brand: '#33ff33',
+    previewStyle: 'background:linear-gradient(135deg,#000 30%,#004400 70%,#33ff33 100%);box-shadow:inset 0 0 8px rgba(51,255,51,.5);font-family:Consolas,monospace;border-radius:0;border:1px solid #33ff33;' },
+  { id: 'aurora',     label: 'Aurora',     sidebar: '#4b2d78', brand: '#8b5cf6',
+    previewStyle: 'background:linear-gradient(135deg,#a8edea 0%,#fed6e3 45%,#d4a5f9 100%);box-shadow:0 4px 16px rgba(139,92,246,.3);border-radius:14px;' },
+  { id: 'blueprint',  label: 'Blueprint',  sidebar: '#0a2540', brand: '#5eead4',
+    previewStyle: 'background:repeating-linear-gradient(0deg,#0a3a6b 0,#0a3a6b 4px,#0e4680 4px,#0e4680 5px),repeating-linear-gradient(90deg,transparent 0,transparent 4px,rgba(94,234,212,.25) 4px,rgba(94,234,212,.25) 5px);border:1px dashed #5eead4;font-family:Consolas,monospace;border-radius:0;' },
+  { id: 'sakura',     label: 'Sakura',     sidebar: '#7a2d4e', brand: '#e86ba0',
+    previewStyle: 'background:linear-gradient(135deg,#ffe4ec 30%,#fbc4d4 65%,#f9a8b8 100%);box-shadow:0 6px 20px rgba(232,107,160,.4),inset 0 1px 0 #fff5;border-radius:22px;' },
+  { id: 'brutalista', label: 'Brutalista', sidebar: '#000000', brand: '#facc15',
+    previewStyle: 'background:#facc15;border:3px solid #000;box-shadow:6px 6px 0 #000;font-family:Impact,"Arial Black",sans-serif;border-radius:0;color:#000;text-transform:uppercase;font-weight:900;' },
+  { id: 'oceano',     label: 'Oceano',     sidebar: '#001824', brand: '#22d3ee',
+    previewStyle: 'background:linear-gradient(180deg,#0e7490 0%,#0891b2 45%,#001824 100%);box-shadow:0 6px 24px rgba(34,211,238,.35),inset 0 1px 0 rgba(255,255,255,.15);border-radius:10px;' },
+  { id: 'nordico',    label: 'Nordico',    sidebar: '#4c566a', brand: '#5e81ac' },
+  { id: 'dracula',    label: 'Dracula',    sidebar: '#282a36', brand: '#bd93f9' },
+  { id: 'monokai',    label: 'Monokai',    sidebar: '#272822', brand: '#a6e22e' },
+  { id: 'vaporwave',  label: 'Vaporwave',  sidebar: '#2d1b52', brand: '#ff71ce' },
+  { id: 'foresta',    label: 'Foresta',    sidebar: '#0f2a1a', brand: '#f59e0b' },
+  { id: 'marmo',      label: 'Marmo',      sidebar: '#3a3128', brand: '#b8860b' },
+  { id: 'solarpunk',  label: 'Solarpunk',  sidebar: '#2d4a2b', brand: '#84cc16' },
+  { id: 'piombo',     label: 'Piombo',     sidebar: '#37474f', brand: '#ff6f00' },
+  { id: 'manoscritto',label: 'Manoscritto',sidebar: '#1e3a5f', brand: '#1e3a5f' },
+  { id: 'cyber2077',  label: 'Cyber 2077', sidebar: '#0a0a0a', brand: '#fcee0a' },
 ];
 let fabYearMode = 'day';
 let catYearMode = 'day';
@@ -121,6 +148,15 @@ let ticketSubmitBusy = false;
 const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 let currentPaletteId = 'blu';
 let currentDarkMode = false;
+let quickbarWindowRef = null;
+const quickbarStateKey = 'prodops_quickbar_window_state';
+const quickbarHeartbeatKey = 'prodops_quickbar_heartbeat';
+const quickbarChannelName = 'prodops_quickbar_channel';
+const isQuickbarPage = !!document.body && document.body.classList.contains('quickbar-page');
+let quickbarChannel = null;
+let quickbarRefocusTimer = null;
+let quickbarCompactWidthBeforeModal = 0;
+let quickbarIsClosing = false;
 function releaseThemeSyncPending() {
   document.documentElement.classList.remove('theme-sync-pending');
 }
@@ -146,6 +182,253 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function canUseBroadcastChannel() {
+  return typeof BroadcastChannel !== 'undefined';
+}
+
+function getQuickbarChannel() {
+  if (!canUseBroadcastChannel()) return null;
+  if (!quickbarChannel) quickbarChannel = new BroadcastChannel(quickbarChannelName);
+  return quickbarChannel;
+}
+
+function readQuickbarWindowState() {
+  try {
+    const raw = localStorage.getItem(quickbarStateKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeQuickbarWindowState(state) {
+  try {
+    localStorage.setItem(quickbarStateKey, JSON.stringify(state || {}));
+  } catch (error) {}
+}
+
+function getQuickbarPopupFeatures() {
+  const saved = readQuickbarWindowState() || {};
+  const width = Math.max(280, Math.min(520, parseInt(saved.width, 10) || 320));
+  const height = Math.max(520, Math.min(1100, parseInt(saved.height, 10) || 760));
+  const left = parseInt(saved.left, 10);
+  const top = parseInt(saved.top, 10);
+  const features = [
+    'popup=yes',
+    'width=' + width,
+    'height=' + height,
+    'left=' + (isNaN(left) ? 80 : left),
+    'top=' + (isNaN(top) ? 80 : top),
+    'toolbar=no',
+    'location=no',
+    'menubar=no',
+    'status=no',
+    'resizable=yes',
+    'scrollbars=yes'
+  ];
+  return features.join(',');
+}
+
+function quickbarHeartbeatAgeMs() {
+  try {
+    const raw = parseInt(localStorage.getItem(quickbarHeartbeatKey) || '0', 10);
+    if (!raw) return Number.POSITIVE_INFINITY;
+    return Date.now() - raw;
+  } catch (error) {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function isQuickbarProbablyAlive() {
+  return quickbarHeartbeatAgeMs() < 15000;
+}
+
+function touchQuickbarHeartbeat() {
+  try { localStorage.setItem(quickbarHeartbeatKey, String(Date.now())); } catch (error) {}
+}
+
+function clearQuickbarHeartbeat() {
+  try { localStorage.removeItem(quickbarHeartbeatKey); } catch (error) {}
+}
+
+function openOrFocusQuickbar(forceOpen) {
+  const features = getQuickbarPopupFeatures();
+  if (quickbarWindowRef && !quickbarWindowRef.closed) {
+    try { quickbarWindowRef.focus(); } catch (error) {}
+    return quickbarWindowRef;
+  }
+  if (!forceOpen && isQuickbarProbablyAlive()) {
+    const channel = getQuickbarChannel();
+    if (channel) {
+      channel.postMessage({ type: 'focus-request', ts: Date.now() });
+      return null;
+    }
+  }
+  quickbarWindowRef = window.open(appUrl('/quickbar.html'), 'prodopsQuickbar', features);
+  if (quickbarWindowRef) {
+    try { quickbarWindowRef.focus(); } catch (error) {}
+  }
+  return quickbarWindowRef;
+}
+
+function requestQuickbarFront() {
+  let usedChannel = false;
+  if (quickbarWindowRef && !quickbarWindowRef.closed) {
+    try {
+      quickbarWindowRef.focus();
+      return;
+    } catch (error) {}
+  }
+  const channel = getQuickbarChannel();
+  if (channel) {
+    channel.postMessage({ type: 'focus-request', ts: Date.now() });
+    usedChannel = true;
+  }
+  if (!isQuickbarProbablyAlive()) {
+    openOrFocusQuickbar(true);
+    return;
+  }
+  if (!usedChannel) openOrFocusQuickbar(false);
+}
+
+function attemptQuickbarRefocus() {
+  if (!isQuickbarPage || quickbarIsClosing) return;
+  try { window.focus(); } catch (error) {}
+  if (quickbarRefocusTimer) clearTimeout(quickbarRefocusTimer);
+  quickbarRefocusTimer = setTimeout(function () {
+    if (quickbarIsClosing) return;
+    try { window.focus(); } catch (error) {}
+  }, 180);
+}
+
+function initQuickbarLockMode() {
+  if (!isQuickbarPage) return;
+  window.addEventListener('blur', function () {
+    attemptQuickbarRefocus();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) attemptQuickbarRefocus();
+  });
+  window.addEventListener('beforeunload', function () {
+    quickbarIsClosing = true;
+    clearQuickbarHeartbeat();
+    saveCurrentQuickbarWindowState();
+  });
+  window.addEventListener('pagehide', function () {
+    quickbarIsClosing = true;
+    clearQuickbarHeartbeat();
+    saveCurrentQuickbarWindowState();
+  });
+}
+
+function saveCurrentQuickbarWindowState() {
+  if (!isQuickbarPage || typeof window.outerWidth === 'undefined') return;
+  writeQuickbarWindowState({
+    width: window.outerWidth || 320,
+    height: window.outerHeight || 760,
+    left: typeof window.screenX === 'number' ? window.screenX : 80,
+    top: typeof window.screenY === 'number' ? window.screenY : 80,
+    updatedAt: Date.now()
+  });
+  if (quickbarIsClosing) {
+    clearQuickbarHeartbeat();
+  } else {
+    touchQuickbarHeartbeat();
+  }
+}
+
+function initQuickbarWindowBridge() {
+  if (!isQuickbarPage) return;
+  saveCurrentQuickbarWindowState();
+  const channel = getQuickbarChannel();
+  if (channel) {
+    channel.onmessage = function (event) {
+      const data = event && event.data ? event.data : {};
+      if (data.type === 'focus-request') {
+        try { window.focus(); } catch (error) {}
+        touchQuickbarHeartbeat();
+      }
+      if (data.type === 'ping') {
+        touchQuickbarHeartbeat();
+        channel.postMessage({ type: 'pong', ts: Date.now() });
+      }
+    };
+  }
+  setTimeout(function () {
+    try {
+      const saved = readQuickbarWindowState();
+      if (!saved) return;
+      if (typeof window.resizeTo === 'function' && saved.width && saved.height) window.resizeTo(saved.width, saved.height);
+      if (typeof window.moveTo === 'function' && saved.left !== undefined && saved.top !== undefined) window.moveTo(saved.left, saved.top);
+    } catch (error) {}
+  }, 120);
+  window.addEventListener('resize', saveCurrentQuickbarWindowState);
+  window.addEventListener('beforeunload', saveCurrentQuickbarWindowState);
+  window.addEventListener('pagehide', saveCurrentQuickbarWindowState);
+  window.addEventListener('focus', touchQuickbarHeartbeat);
+  setInterval(touchQuickbarHeartbeat, 5000);
+}
+
+let quickbarAutoFitTimer = null;
+function scheduleQuickbarAutoFitHeight(delayMs) {
+  if (!isQuickbarPage) return;
+  if (quickbarAutoFitTimer) clearTimeout(quickbarAutoFitTimer);
+  const waitMs = Math.max(0, Number(delayMs || 40));
+  quickbarAutoFitTimer = setTimeout(function () {
+    quickbarAutoFitTimer = null;
+    fitQuickbarHeightToContent();
+  }, waitMs);
+}
+
+function fitQuickbarHeightToContent() {
+  if (!isQuickbarPage) return;
+  if (modal && (modal.classList.contains('show') || modal.classList.contains('active'))) return;
+  const shell = document.querySelector('.quickbar-shell');
+  if (!shell) return;
+  try {
+    const chromeDelta = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
+    const width = Math.max(280, window.outerWidth || 320);
+    const contentHeight = Math.ceil(shell.scrollHeight) + 2;
+    const maxHeight = (screen && screen.availHeight) ? Math.max(220, screen.availHeight - 60) : 900;
+    const targetHeight = Math.max(120, Math.min(maxHeight, contentHeight + chromeDelta));
+    if (typeof window.resizeTo === 'function' && Math.abs((window.outerHeight || targetHeight) - targetHeight) > 6) {
+      window.resizeTo(width, targetHeight);
+    }
+    saveCurrentQuickbarWindowState();
+  } catch (error) {}
+}
+
+function fitQuickbarToTicketModal() {
+  if (!isQuickbarPage || !modal || !mainTicketPanel) return;
+  try {
+    const chromeWidthDelta = Math.max(0, (window.outerWidth || 0) - (window.innerWidth || 0));
+    const chromeHeightDelta = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
+    const panelWidth = Math.max(mainTicketPanel.scrollWidth || 0, mainTicketPanel.offsetWidth || 0, 620);
+    const panelHeight = Math.max(mainTicketPanel.scrollHeight || 0, mainTicketPanel.offsetHeight || 0, 560);
+    const maxWidth = (screen && screen.availWidth) ? Math.max(720, screen.availWidth - 40) : 980;
+    const maxHeight = (screen && screen.availHeight) ? Math.max(620, screen.availHeight - 40) : 980;
+    const targetWidth = Math.max(700, Math.min(maxWidth, panelWidth + chromeWidthDelta + 44));
+    const targetHeight = Math.max(620, Math.min(maxHeight, panelHeight + chromeHeightDelta + 40));
+    if (!quickbarCompactWidthBeforeModal) quickbarCompactWidthBeforeModal = window.outerWidth || 320;
+    if (typeof window.resizeTo === 'function') window.resizeTo(targetWidth, targetHeight);
+    saveCurrentQuickbarWindowState();
+  } catch (error) {}
+}
+
+function restoreQuickbarAfterModalClose() {
+  if (!isQuickbarPage) return;
+  try {
+    const compactWidth = Math.max(280, quickbarCompactWidthBeforeModal || 320);
+    const currentHeight = window.outerHeight || 320;
+    if (typeof window.resizeTo === 'function') window.resizeTo(compactWidth, currentHeight);
+  } catch (error) {}
+  quickbarCompactWidthBeforeModal = 0;
+  scheduleQuickbarAutoFitHeight();
 }
 
 function setTextContent(node, value) {
@@ -1884,6 +2167,8 @@ function closeModal() {
     modal.classList.remove('show', 'closing');
     clearExtraTicketCards();
     modalCloseTimer = null;
+    if (isQuickbarPage) restoreQuickbarAfterModalClose();
+    else scheduleQuickbarAutoFitHeight();
   }, 260);
 }
 
@@ -1915,6 +2200,7 @@ function revealModal() {
     clearTimeout(modalCloseTimer);
     modalCloseTimer = null;
   }
+  if (isQuickbarPage && !quickbarCompactWidthBeforeModal) quickbarCompactWidthBeforeModal = window.outerWidth || 320;
   modal.classList.remove('closing');
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
@@ -1922,6 +2208,10 @@ function revealModal() {
   requestAnimationFrame(function() {
     modal.classList.add('active');
     updateSingleTicketModalHeight();
+    if (isQuickbarPage) {
+      setTimeout(function () { fitQuickbarToTicketModal(); }, 20);
+      setTimeout(function () { fitQuickbarToTicketModal(); }, 120);
+    }
     setTimeout(function() {
       autoResizeTextarea(document.getElementById('description'));
     }, 0);
@@ -2415,8 +2705,10 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
       input = document.createElement('input');
       input.type = 'text';
       input.placeholder = token.label || '';
-      // Campo di testo semplice: supporta l'aggiunta di più box accodati (+).
-      input.dataset.presetTextMulti = '1';
+      // Solo il tipo `texts` (box testo multiplo) offre il pulsante "+" per
+      // accodare altri box; il tipo `text` (box testo singolo) resta un campo
+      // solo, senza pulsante di aggiunta.
+      if (token.type === 'texts') input.dataset.presetTextMulti = '1';
     }
     input.required = true;
     // I select (select/dbselect/multi) impostano gia da soli l'opzione salvata;
@@ -2796,7 +3088,7 @@ function openModal(incidentId) {
 }
 
 function parsePresetTokens(template) {
-  const regex = /\[\[(text|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  const regex = /\[\[(texts?|select|dbselect|multi|timestamp):([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const tokens = [];
   let match;
   while ((match = regex.exec(template)) !== null) {
@@ -3146,32 +3438,26 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     visual.appendChild(center);
   }
 
-  // Con troppe voci la legenda faceva crescere il pannello a dismisura: ne
-  // mostriamo solo le prime 6 (per numero di ticket), le altre restano
-  // consultabili passando il mouse sugli spicchi della ciambella.
-  const LEGEND_MAX = 6;
-  const legendStats = sortedStats.length > LEGEND_MAX ? sortedStats.slice(0, LEGEND_MAX) : sortedStats;
-  const hiddenCount = sortedStats.length - legendStats.length;
-
   const legend = document.createElement('div');
   legend.className = 'chart-pie-legend';
-  legendStats.forEach((item) => {
-    const row = document.createElement('div');
-    row.className = 'chart-pie-legend-row chart-clickable';
-    row.setAttribute('data-chart-label', item.label);
-    const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
-    row.innerHTML = `
-      <span class="chart-pie-swatch" style="background:${getBarColor(target.id, item.label)}"></span>
-      <span class="chart-pie-label">${escapeHtml(chartItemLabel(item))}</span>
-      ${hideLegendValue ? `<strong class="chart-pie-value">${pct}%</strong>` : `<strong class="chart-pie-value">${formatChartValueWithPercent(item.total, pct)}</strong>`}
-    `;
-    legend.appendChild(row);
-  });
-  if (hiddenCount > 0) {
-    const more = document.createElement('div');
-    more.className = 'chart-pie-legend-more';
-    more.textContent = '+' + hiddenCount + ' altri — passa il mouse sul grafico';
-    legend.appendChild(more);
+  if (isDonut) {
+    // La ciambella riempie le voci dinamicamente in base allo spazio libero
+    // (vedi setupDonutLegendFit, richiamato dopo l'inserimento nel DOM): mostra
+    // più di 6 voci se c'è spazio, meno se le scritte coprirebbero il grafico.
+  } else {
+    // Torta: manteniamo il limite fisso alle prime 6 voci (le altre nel tooltip).
+    const LEGEND_MAX = 6;
+    const legendStats = sortedStats.length > LEGEND_MAX ? sortedStats.slice(0, LEGEND_MAX) : sortedStats;
+    const hiddenCount = sortedStats.length - legendStats.length;
+    legendStats.forEach((item) => {
+      legend.appendChild(makePieLegendRow(target.id, item, totalAll, hideLegendValue));
+    });
+    if (hiddenCount > 0) {
+      const more = document.createElement('div');
+      more.className = 'chart-pie-legend-more';
+      more.textContent = '+' + hiddenCount + ' altri — passa il mouse sul grafico';
+      legend.appendChild(more);
+    }
   }
 
   // Tooltip degli spicchi: ricostruiamo gli intervalli angolari (in %) di ogni
@@ -3192,6 +3478,117 @@ function renderPieOrDonutChart(target, stats, isDonut) {
   layout.appendChild(visual);
   layout.appendChild(legend);
   target.appendChild(layout);
+
+  if (isDonut) {
+    setupDonutLegendFit(target, layout, legend, visual, sortedStats, target.id, hideLegendValue, totalAll);
+  }
+}
+
+// Costruisce una riga della legenda torta/ciambella.
+function makePieLegendRow(targetId, item, totalAll, hideLegendValue) {
+  var row = document.createElement('div');
+  row.className = 'chart-pie-legend-row chart-clickable';
+  row.setAttribute('data-chart-label', item.label);
+  var pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
+  row.innerHTML =
+    '<span class="chart-pie-swatch" style="background:' + getBarColor(targetId, item.label) + '"></span>' +
+    '<span class="chart-pie-label">' + escapeHtml(chartItemLabel(item)) + '</span>' +
+    (hideLegendValue
+      ? '<strong class="chart-pie-value">' + pct + '%</strong>'
+      : '<strong class="chart-pie-value">' + formatChartValueWithPercent(item.total, pct) + '</strong>');
+  return row;
+}
+
+// Dimensiona la legenda della ciambella in base allo spazio libero: mostra il
+// massimo numero di voci che entrano SOPRA il grafico senza sovrapporsi/tagliarlo
+// (più di 6 se c'è spazio, meno se ce n'è poco). Le voci nascoste restano nel
+// tooltip. Si ri-adatta al variare della dimensione del pannello (ResizeObserver).
+function setupDonutLegendFit(target, layout, legend, visual, sortedStats, targetId, hideLegendValue, totalAll) {
+  var total = sortedStats.length;
+  function applyLegendScale(scale) {
+    var safeScale = Math.max(1, Math.min(scale || 1, targetId === 'teamYearChart' ? 1.75 : 1.35));
+    layout.style.setProperty('--donut-legend-font-size', (0.82 * safeScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+    layout.style.setProperty('--donut-legend-value-size', (0.78 * safeScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+    layout.style.setProperty('--donut-legend-row-gap', Math.round(8 * safeScale) + 'px');
+    layout.style.setProperty('--donut-legend-min-height', Math.round(20 * safeScale) + 'px');
+    layout.style.setProperty('--donut-swatch-size', Math.round(12 * Math.min(1.35, safeScale)) + 'px');
+    layout.style.setProperty('--donut-center-strong-size', (1.6 * Math.min(1.22, safeScale)).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+    layout.style.setProperty('--donut-center-label-size', (0.78 * Math.min(1.18, safeScale)).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+  }
+  function resetLegendScale() {
+    layout.style.removeProperty('--donut-legend-font-size');
+    layout.style.removeProperty('--donut-legend-value-size');
+    layout.style.removeProperty('--donut-legend-row-gap');
+    layout.style.removeProperty('--donut-legend-min-height');
+    layout.style.removeProperty('--donut-swatch-size');
+    layout.style.removeProperty('--donut-center-strong-size');
+    layout.style.removeProperty('--donut-center-label-size');
+  }
+  function fill(count, withMore) {
+    legend.innerHTML = '';
+    for (var i = 0; i < count && i < total; i++) {
+      legend.appendChild(makePieLegendRow(targetId, sortedStats[i], totalAll, hideLegendValue));
+    }
+    if (withMore && count < total) {
+      var more = document.createElement('div');
+      more.className = 'chart-pie-legend-more';
+      more.textContent = '+' + (total - count) + ' altri — passa il mouse sul grafico';
+      legend.appendChild(more);
+    }
+  }
+  function fit() {
+    if (!total) { legend.innerHTML = ''; return; }
+    resetLegendScale();
+    // Spazio reale per legenda + ciambella = altezza del layout (NON del .chart,
+    // che include il padding-top): altrimenti si sovrastima e la ciambella sfora.
+    var avail = layout.clientHeight;
+    if (avail <= 0) return; // pannello non ancora visibile: ci ripensa il RO
+    var layoutGap = parseFloat(getComputedStyle(layout).rowGap) || 0;
+    // La ciambella (in basso) è dimensionata dalla CSS (max 60cqh): misuriamo la
+    // sua altezza reale e riserviamo il resto alla legenda (in alto). -2px di
+    // margine anti-arrotondamento così la ciambella non viene mai tagliata.
+    fill(total, false);
+    var budget = avail - visual.offsetHeight - layoutGap - 2;
+    // Se tutte le voci entrano già, le teniamo tutte.
+    if (legend.offsetHeight <= budget) {
+      var spare = budget - legend.offsetHeight;
+      if (spare > 18 && total <= 6) {
+        var scaleBoost = 1 + Math.min(0.75, spare / 130);
+        if (targetId === 'teamYearChart') scaleBoost += Math.min(0.18, spare / 220);
+        applyLegendScale(scaleBoost);
+        fill(total, false);
+        if (legend.offsetHeight > budget) {
+          resetLegendScale();
+          fill(total, false);
+        }
+      }
+      return;
+    }
+    // Altrimenti riduciamo di una riga (cols voci) alla volta — misurando l'altezza
+    // REALE della legenda con la riga "+N altri" inclusa — finché entra sopra la
+    // ciambella senza sovrapporsi/tagliarla.
+    var cols = Math.max(1, (getComputedStyle(legend).gridTemplateColumns || '').split(' ').filter(Boolean).length);
+    var count = Math.floor((total - 1) / cols) * cols; // massimo multiplo di cols < total
+    if (count < cols) count = cols;
+    while (count > cols) {
+      fill(count, true);
+      if (legend.offsetHeight <= budget) return;
+      count -= cols;
+    }
+    // Minimo: una riga di voci + "+N altri" (la ciambella resta comunque intera,
+    // essendo limitata al 60% dell'altezza dalla CSS).
+    fill(Math.min(cols, total), true);
+  }
+  fit();
+  if (typeof ResizeObserver !== 'undefined') {
+    if (target._donutRO) target._donutRO.disconnect();
+    var raf = 0;
+    target._donutRO = new ResizeObserver(function() {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fit);
+    });
+    target._donutRO.observe(target);
+  }
 }
 
 // Tooltip riutilizzabile per gli spicchi di torta/ciambella.
@@ -3712,9 +4109,12 @@ async function loadCategories() {
     wrap.querySelector('.category-toggle').addEventListener('click', () => {
       const isOpen = wrap.classList.toggle('open');
       wrap.querySelector('.category-toggle').setAttribute('aria-expanded', String(isOpen));
+      scheduleQuickbarAutoFitHeight();
+      scheduleQuickbarAutoFitHeight(320);
     });
     menu.appendChild(wrap);
   });
+  scheduleQuickbarAutoFitHeight();
 }
 
 function getAvatarBadge(username) {
@@ -5608,7 +6008,8 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   closeModal();
 });
-openAdminBtn.addEventListener('click', () => { window.location.href = appUrl('/admin.html'); });
+openAdminBtn?.addEventListener('click', () => { window.location.href = appUrl('/admin.html'); });
+openQuickbarBtn?.addEventListener('click', () => { openOrFocusQuickbar(false); });
 logoutBtn?.addEventListener('click', async () => {
   await fetch(appUrl('/api/logout'), { method: 'POST' });
   window.location.href = appUrl('/login.html');
@@ -5700,7 +6101,7 @@ document.querySelectorAll('.range-calendar-wrap').forEach((wrap) => {
   });
 });
 
-ticketForm.addEventListener('submit', async (e) => {
+ticketForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!beginTicketSubmitLock()) return;
   const incident_id = Number(incidentTypeInput.value || 0);
@@ -6192,6 +6593,9 @@ function setupChartDragDrop() {
 }
 
 (async function init() {
+  initQuickbarWindowBridge();
+  initQuickbarLockMode();
+  if (isQuickbarPage) scheduleQuickbarAutoFitHeight();
   document.querySelectorAll('.year-btn').forEach((btn) => { btn.textContent = String(currentYear); });
   loadChartTypes();
   loadChartSpans();
@@ -6263,39 +6667,129 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
 /* --- User settings modal --- */
 (function(){
   var modal = document.getElementById('userSettingsModal');
-  var swatchesEl = document.getElementById('themeSwatches');
+  var themeSelect = document.getElementById('themeSelect');
+  var themePreview = document.getElementById('themePreview');
   var saveBtn = document.getElementById('saveUserSettingsBtn');
   var cancelBtn = document.getElementById('cancelUserSettingsBtn');
   var closeBtn = document.getElementById('closeUserSettingsBtn');
 
-  function renderSwatches() {
-    if (!swatchesEl) return;
-    swatchesEl.innerHTML = '';
+  // Metadata usato dall'anteprima live del tema (non tocca il DOM globale).
+  var THEME_PREVIEW_META = {
+    blu:        { bg:'#f5f7fb', bgImage:'radial-gradient(circle at 95% 5%, #e9f2ff 0%, transparent 45%)', panel:'#fff', text:'#17202f', muted:'#5c6b7d', brand:'#0c5f8c', brand2:'#16a0b6', border:'#d9e2ef', side:'#172b45', font:'"Segoe UI","Inter",sans-serif', pRadius:'6px', pBorder:'1px solid #d9e2ef', pShadow:'0 8px 24px rgba(16,41,68,.06)' },
+    cappuccino: { bg:'#f7f2ec', bgImage:'', panel:'#fff', text:'#2c1a0a', muted:'#8b6a50', brand:'#7c4a24', brand2:'#c47840', border:'#d4c4ac', side:'#321805', font:'"Segoe UI","Inter",sans-serif', pRadius:'6px', pBorder:'1px solid #d4c4ac', pShadow:'0 8px 24px rgba(50,24,5,.08)' },
+    bordeaux:   { bg:'#faf2f4', bgImage:'', panel:'#fff', text:'#280810', muted:'#7d4a54', brand:'#860026', brand2:'#bf2044', border:'#dfc4cc', side:'#2c0a12', font:'"Segoe UI","Inter",sans-serif', pRadius:'6px', pBorder:'1px solid #dfc4cc', pShadow:'0 8px 24px rgba(44,10,18,.08)' },
+    verde:      { bg:'#f2f8f4', bgImage:'', panel:'#fff', text:'#0a2414', muted:'#447858', brand:'#1a6e3e', brand2:'#28a860', border:'#b4d8c0', side:'#0c261a', font:'"Segoe UI","Inter",sans-serif', pRadius:'6px', pBorder:'1px solid #b4d8c0', pShadow:'0 8px 24px rgba(12,38,26,.08)' },
+    giallo:     { bg:'#fefcf0', bgImage:'', panel:'#fff', text:'#241c00', muted:'#7a6520', brand:'#b89200', brand2:'#d4b000', border:'#e8d888', side:'#2a2000', font:'"Segoe UI","Inter",sans-serif', pRadius:'6px', pBorder:'1px solid #e8d888', pShadow:'0 8px 24px rgba(42,32,0,.1)' },
+    neon:       { bg:'#0d0219', bgImage:'', panel:'#12082a', text:'#f5e6ff', muted:'#b967ff', brand:'#01cdfe', brand2:'#05ffa1', border:'#ff71ce', side:'#1a0532', font:'Consolas,"Courier New",monospace', pRadius:'4px', pBorder:'1px solid #ff71ce', pShadow:'0 0 12px rgba(255,113,206,.5), inset 0 0 10px rgba(1,205,254,.15)', shape:'crt' },
+    papiro:     { bg:'#f0e4c8', bgImage:'', panel:'#fdf6e3', text:'#3d2818', muted:'#7a5f3a', brand:'#7a4a2a', brand2:'#a06848', border:'#8b6f47', side:'#52341f', font:'Georgia,"Times New Roman",serif', pRadius:'2px', pBorder:'1px solid #8b6f47', pShadow:'3px 3px 0 rgba(61,40,24,.18)', shape:'square' },
+    terminale:  { bg:'#000', bgImage:'repeating-linear-gradient(0deg, transparent 0, transparent 2px, rgba(51,255,51,.06) 3px, transparent 4px)', panel:'#001a00', text:'#33ff33', muted:'#22aa22', brand:'#00ff00', brand2:'#55ff55', border:'#33ff33', side:'#001100', font:'Consolas,"Courier New",monospace', pRadius:'0', pBorder:'1px solid #33ff33', pShadow:'0 0 8px rgba(51,255,51,.4), inset 0 0 6px rgba(51,255,51,.1)', shape:'crt' },
+    aurora:     { bg:'#f5f0ff', bgImage:'linear-gradient(135deg,#a8edea 0%,#fed6e3 45%,#d4a5f9 100%)', panel:'rgba(255,255,255,.55)', text:'#2d1b52', muted:'#7862a8', brand:'#8b5cf6', brand2:'#ec4899', border:'rgba(139,92,246,.35)', side:'#6b3fa8', font:'"Segoe UI","Inter",sans-serif', pRadius:'20px', pBorder:'1px solid rgba(255,255,255,.55)', pShadow:'0 8px 32px rgba(139,92,246,.2), inset 0 1px 0 rgba(255,255,255,.6)', blur:'blur(10px) saturate(140%)' },
+    blueprint:  { bg:'#0a2540', bgImage:'linear-gradient(rgba(94,234,212,.14) 1px, transparent 1px) 0 0/16px 16px, linear-gradient(90deg,rgba(94,234,212,.14) 1px, transparent 1px) 0 0/16px 16px', panel:'rgba(13,53,96,.85)', text:'#e0f7ff', muted:'#7bc4e0', brand:'#5eead4', brand2:'#38bdf8', border:'#5eead4', side:'#0a2540', font:'Consolas,"Courier New",monospace', pRadius:'0', pBorder:'1px dashed #5eead4', pShadow:'0 4px 12px rgba(0,0,0,.4)', shape:'dashed' },
+    sakura:     { bg:'#fff5f8', bgImage:'radial-gradient(circle at 15% 20%, #ffe0eb 0%, transparent 60%), radial-gradient(circle at 85% 80%, #fce7f3 0%, transparent 55%)', panel:'#fff', text:'#4a1c33', muted:'#a0637e', brand:'#e86ba0', brand2:'#ec4899', border:'#f9c4d4', side:'#a03e68', font:'"Segoe UI","Inter",sans-serif', pRadius:'22px', pBorder:'1px solid #f9c4d4', pShadow:'0 8px 24px rgba(232,107,160,.2), inset 0 1px 0 #fff' },
+    brutalista: { bg:'#facc15', bgImage:'', panel:'#fff', text:'#000', muted:'#262626', brand:'#facc15', brand2:'#dc2626', border:'#000', side:'#000', font:'Impact,"Arial Black",sans-serif', pRadius:'0', pBorder:'4px solid #000', pShadow:'8px 8px 0 #000', shape:'brutal' },
+    oceano:     { bg:'#001824', bgImage:'radial-gradient(ellipse at 20% -10%, #0891b2 0%, transparent 55%), radial-gradient(ellipse at 80% 110%, #0e7490 0%, transparent 55%), linear-gradient(180deg,#003c52 0%,#001824 100%)', panel:'rgba(14,116,144,.35)', text:'#e0f7fa', muted:'#7dd3dc', brand:'#22d3ee', brand2:'#06b6d4', border:'rgba(34,211,238,.35)', side:'#001824', font:'"Segoe UI","Inter",sans-serif', pRadius:'12px', pBorder:'1px solid rgba(34,211,238,.35)', pShadow:'0 6px 24px rgba(0,24,36,.5), inset 0 1px 0 rgba(255,255,255,.08)', blur:'blur(6px)' },
+    nordico:    { bg:'#eceff4', bgImage:'', panel:'#fff', text:'#2e3440', muted:'#4c566a', brand:'#5e81ac', brand2:'#88c0d0', border:'#d8dee9', side:'#4c566a', font:'"Segoe UI","Inter",sans-serif', pRadius:'8px', pBorder:'1px solid #d8dee9', pShadow:'0 1px 2px rgba(46,52,64,.08)' },
+    dracula:    { bg:'#282a36', bgImage:'', panel:'#44475a', text:'#f8f8f2', muted:'#6272a4', brand:'#bd93f9', brand2:'#ff79c6', border:'#6272a4', side:'#21222c', font:'"Fira Code",Consolas,"Courier New",monospace', pRadius:'6px', pBorder:'1px solid #6272a4', pShadow:'0 4px 12px rgba(0,0,0,.3)' },
+    monokai:    { bg:'#272822', bgImage:'', panel:'#3e3d32', text:'#f8f8f2', muted:'#75715e', brand:'#a6e22e', brand2:'#f92672', border:'#49483e', side:'#1e1f1c', font:'Consolas,"Monaco","Courier New",monospace', pRadius:'4px', pBorder:'1px solid #49483e', pShadow:'0 4px 12px rgba(0,0,0,.4)', shape:'square' },
+    vaporwave:  { bg:'#2d1b52', bgImage:'linear-gradient(180deg,#ff71ce 0%,#01cdfe 45%,#05ffa1 100%)', panel:'rgba(255,255,255,.75)', text:'#2d1b52', muted:'#7a4a8f', brand:'#ff71ce', brand2:'#01cdfe', border:'rgba(255,113,206,.4)', side:'#2d1b52', font:'"Courier New",Consolas,monospace', pRadius:'6px', pBorder:'2px solid rgba(255,113,206,.5)', pShadow:'0 0 20px rgba(255,113,206,.4),inset 0 0 8px rgba(1,205,254,.15)' },
+    foresta:    { bg:'#0f2a1a', bgImage:'radial-gradient(circle at 30% 20%,rgba(245,158,11,.15) 0%,transparent 45%),radial-gradient(circle at 80% 80%,rgba(34,197,94,.15) 0%,transparent 45%)', panel:'#1a3625', text:'#e8f5e9', muted:'#8bb99b', brand:'#f59e0b', brand2:'#22c55e', border:'#2d5a3f', side:'#0a1f14', font:'Georgia,"Times New Roman",serif', pRadius:'8px', pBorder:'1px solid #2d5a3f', pShadow:'0 8px 20px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.03)' },
+    marmo:      { bg:'#faf7f0', bgImage:'linear-gradient(135deg,#faf7f0 0%,#f0ebe0 50%,#faf7f0 100%),radial-gradient(circle at 30% 40%,rgba(184,134,11,.05) 0%,transparent 40%)', panel:'#fff', text:'#3a3128', muted:'#8b7355', brand:'#b8860b', brand2:'#d4a017', border:'#d4c4a8', side:'#3a3128', font:'Georgia,"Playfair Display",serif', pRadius:'4px', pBorder:'1px solid #d4c4a8', pShadow:'0 4px 20px rgba(58,49,40,.12),inset 0 1px 0 #fff', shape:'square' },
+    solarpunk:  { bg:'#f5f9e8', bgImage:'radial-gradient(circle at 20% 30%,rgba(132,204,22,.18) 0%,transparent 50%),radial-gradient(circle at 85% 75%,rgba(234,179,8,.15) 0%,transparent 50%)', panel:'#fff', text:'#1a2e0f', muted:'#4d7c0f', brand:'#84cc16', brand2:'#eab308', border:'#bef264', side:'#2d4a2b', font:'"Segoe UI","Inter",sans-serif', pRadius:'16px', pBorder:'1px solid #bef264', pShadow:'0 6px 20px rgba(132,204,22,.2),inset 0 1px 0 rgba(255,255,255,.5)' },
+    piombo:     { bg:'#eceff1', bgImage:'', panel:'#fafafa', text:'#263238', muted:'#546e7a', brand:'#ff6f00', brand2:'#546e7a', border:'#90a4ae', side:'#37474f', font:'"Roboto Mono","Consolas",monospace', pRadius:'2px', pBorder:'1px solid #90a4ae', pShadow:'0 2px 4px rgba(38,50,56,.15),0 1px 0 rgba(0,0,0,.05)', shape:'square' },
+    manoscritto:{ bg:'#f5efe0', bgImage:'repeating-linear-gradient(0deg,transparent 0,transparent 22px,rgba(30,58,95,.08) 22px,rgba(30,58,95,.08) 23px)', panel:'#fdfaef', text:'#1e3a5f', muted:'#5a7396', brand:'#1e3a5f', brand2:'#8b2a2a', border:'#c8b88a', side:'#1e3a5f', font:'"Brush Script MT","Lucida Handwriting","Segoe Script",cursive', pRadius:'2px', pBorder:'1px solid #c8b88a', pShadow:'2px 3px 8px rgba(30,58,95,.15)' },
+    cyber2077:  { bg:'#0a0a0a', bgImage:'linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 50%,#0a0a0a 100%)', panel:'#161616', text:'#fcee0a', muted:'#00d9ff', brand:'#fcee0a', brand2:'#ff003c', border:'#fcee0a', side:'#0a0a0a', font:'"Impact","Arial Black",sans-serif', pRadius:'0', pBorder:'2px solid #fcee0a', pShadow:'0 0 15px rgba(252,238,10,.4),0 4px 0 #ff003c', shape:'brutal' }
+  };
+
+  function renderThemeSelect() {
+    if (!themeSelect) return;
+    themeSelect.innerHTML = '';
     var cur = currentPaletteId || localStorage.getItem('palette') || 'blu';
     THEMES.forEach(function(t) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'theme-swatch' + (t.id === cur ? ' active' : '');
-      btn.dataset.theme = t.id;
-      btn.innerHTML =
-        '<div class="theme-swatch-preview" style="background:linear-gradient(135deg,'+t.sidebar+' 35%,'+t.brand+' 100%)"></div>' +
-        '<span class="theme-swatch-name">'+t.label+'</span>';
-      btn.addEventListener('click', function() {
-        localStorage.setItem('palette', t.id);
-        applyTheme(t.id, currentDarkMode);
-        document.querySelectorAll('.theme-swatch').forEach(function(el) {
-          el.classList.toggle('active', el.dataset.theme === t.id);
-        });
-        saveUserCharts().catch(console.error);
-        refreshColorSensitiveViews().catch(function(){});
-      });
-      swatchesEl.appendChild(btn);
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      if (t.id === cur) opt.selected = true;
+      themeSelect.appendChild(opt);
     });
+  }
+
+  function updateThemePreview(themeId) {
+    if (!themePreview) return;
+    var meta = THEME_PREVIEW_META[themeId] || THEME_PREVIEW_META.blu;
+    var canvas = themePreview;
+    canvas.style.setProperty('--tp-bg', meta.bg);
+    canvas.style.setProperty('--tp-bg-image', meta.bgImage || 'none');
+    canvas.style.setProperty('--tp-panel', meta.panel);
+    canvas.style.setProperty('--tp-text', meta.text);
+    canvas.style.setProperty('--tp-muted', meta.muted);
+    canvas.style.setProperty('--tp-brand', meta.brand);
+    canvas.style.setProperty('--tp-brand-2', meta.brand2 || meta.brand);
+    canvas.style.setProperty('--tp-border', meta.border);
+    canvas.style.setProperty('--tp-side', meta.side);
+    canvas.style.setProperty('--tp-font', meta.font);
+    canvas.style.setProperty('--tp-panel-radius', meta.pRadius);
+    canvas.style.setProperty('--tp-panel-border', meta.pBorder);
+    canvas.style.setProperty('--tp-panel-shadow', meta.pShadow);
+    canvas.style.setProperty('--tp-blur', meta.blur || 'none');
+    if (meta.shape) canvas.setAttribute('data-shape', meta.shape); else canvas.removeAttribute('data-shape');
+    // Force reflow so nuovi custom-prop entrino in effetto prima del paint
+    void canvas.offsetWidth;
+    canvas.innerHTML =
+      '<div class="tp-sidebar">' +
+        '<div class="tp-logo"></div>' +
+        '<div class="tp-sidebar-item active"></div>' +
+        '<div class="tp-sidebar-item"></div>' +
+        '<div class="tp-sidebar-item"></div>' +
+      '</div>' +
+      '<div class="tp-main">' +
+        '<div class="tp-topbar">' +
+          '<span class="tp-title">Dashboard</span>' +
+          '<span class="tp-badge">Live</span>' +
+        '</div>' +
+        '<div class="tp-panel">' +
+          '<div class="tp-panel-title">Ticket per FAB</div>' +
+          '<div class="tp-bars"><i style="height:70%"></i><i style="height:85%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:25%"></i></div>' +
+          '<div class="tp-line short"></div>' +
+          '<div class="tp-line tiny"></div>' +
+          '<button type="button" class="tp-btn">Apri ticket</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  var _settingsSnapshot = null;
+  var _settingsSaved = false;
+
+  function captureSettingsSnapshot() {
+    _settingsSnapshot = {
+      palette: currentPaletteId || localStorage.getItem('palette') || 'blu',
+      darkMode: !!currentDarkMode,
+      panelScalePct: getPanelScalePct()
+    };
+    _settingsSaved = false;
+  }
+
+  function restoreSettingsSnapshot() {
+    if (!_settingsSnapshot) return;
+    var snap = _settingsSnapshot;
+    // Palette + dark
+    if (snap.palette !== currentPaletteId || snap.darkMode !== currentDarkMode) {
+      localStorage.setItem('palette', snap.palette);
+      localStorage.setItem('dark-mode', snap.darkMode ? '1' : '');
+      applyTheme(snap.palette, snap.darkMode);
+      saveUserCharts().catch(console.error);
+      refreshColorSensitiveViews().catch(function(){});
+    }
+    // Panel scale
+    if (snap.panelScalePct !== getPanelScalePct()) {
+      applyPanelScale(snap.panelScalePct);
+    }
   }
 
   function openUserSettingsModal() {
     if (!modal) return;
-    renderSwatches();
+    captureSettingsSnapshot();
+    renderThemeSelect();
+    updateThemePreview(currentPaletteId || 'blu');
     modal.classList.remove('closing');
     modal.classList.add('show');
     modal.setAttribute('aria-hidden', 'false');
@@ -6304,8 +6798,18 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
     requestAnimationFrame(function() { modal.classList.add('active'); });
   }
 
-  function closeUserSettingsModal() {
+  function closeUserSettingsModal(commit) {
     if (!modal) return;
+    if (commit) {
+      _settingsSaved = true;
+      // Persisti sul server SOLO ora: la palette e' gia' applicata localmente
+      // durante le modifiche in-modal, ma niente POST intermedie => niente race.
+      if (_settingsSnapshot && (_settingsSnapshot.palette !== currentPaletteId || _settingsSnapshot.darkMode !== currentDarkMode)) {
+        saveUserCharts().catch(console.error);
+      }
+    } else if (!_settingsSaved) {
+      restoreSettingsSnapshot();
+    }
     modal.classList.remove('active');
     modal.classList.add('closing');
     modal.setAttribute('aria-hidden', 'true');
@@ -6314,11 +6818,59 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
     setTimeout(function() { modal.classList.remove('show', 'closing'); modal.style.display = ''; }, 260);
   }
 
-  if (saveBtn) saveBtn.addEventListener('click', closeUserSettingsModal);
+  /* --- Dimensione pannelli/grafici --- */
+  var PANEL_SCALE_KEY = 'prodops_panel_scale';
+  var PANEL_SCALE_MIN = 70, PANEL_SCALE_MAX = 150, PANEL_SCALE_STEP = 5;
+  var scaleSlider = document.getElementById('panelScaleSlider');
+  var scaleValueEl = document.getElementById('panelScaleValue');
+  var scaleDownBtn = document.getElementById('panelScaleDown');
+  var scaleUpBtn = document.getElementById('panelScaleUp');
 
-  if (cancelBtn) cancelBtn.addEventListener('click', closeUserSettingsModal);
-  if (closeBtn) closeBtn.addEventListener('click', closeUserSettingsModal);
-  if (modal) modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeUserSettingsModal(); });
+  function getPanelScalePct() {
+    var raw = parseInt(localStorage.getItem(PANEL_SCALE_KEY) != null
+      ? Math.round(parseFloat(localStorage.getItem(PANEL_SCALE_KEY)) * 100) : 100, 10);
+    if (isNaN(raw)) raw = 100;
+    return Math.min(PANEL_SCALE_MAX, Math.max(PANEL_SCALE_MIN, raw));
+  }
+
+  function applyPanelScale(pct) {
+    pct = Math.min(PANEL_SCALE_MAX, Math.max(PANEL_SCALE_MIN, pct));
+    document.documentElement.style.setProperty('--panel-scale', pct / 100);
+    localStorage.setItem(PANEL_SCALE_KEY, String(pct / 100));
+    if (scaleSlider) scaleSlider.value = pct;
+    if (scaleValueEl) scaleValueEl.textContent = pct + '%';
+    if (scaleDownBtn) scaleDownBtn.disabled = pct <= PANEL_SCALE_MIN;
+    if (scaleUpBtn) scaleUpBtn.disabled = pct >= PANEL_SCALE_MAX;
+  }
+
+  function syncPanelScaleUI() { applyPanelScale(getPanelScalePct()); }
+
+  // Cambio tema all'interno del modal: aggiorna solo stato visivo + localStorage.
+  // La persistenza lato server e' fatta SOLO su Salva/Annulla per evitare race
+  // condition tra POST rapide in volo (una in ritardo sovrascriverebbe il rollback).
+  if (themeSelect) themeSelect.addEventListener('change', function() {
+    var newId = themeSelect.value;
+    localStorage.setItem('palette', newId);
+    applyTheme(newId, currentDarkMode);
+    updateThemePreview(newId);
+    refreshColorSensitiveViews().catch(function(){});
+  });
+
+  if (scaleSlider) scaleSlider.addEventListener('input', function() { applyPanelScale(parseInt(scaleSlider.value, 10) || 100); });
+  if (scaleDownBtn) scaleDownBtn.addEventListener('click', function() { applyPanelScale(getPanelScalePct() - PANEL_SCALE_STEP); });
+  if (scaleUpBtn) scaleUpBtn.addEventListener('click', function() { applyPanelScale(getPanelScalePct() + PANEL_SCALE_STEP); });
+
+  // Applica al caricamento (rinforza l'inline script anti-flash e allinea la UI)
+  syncPanelScaleUI();
+
+  var _origOpen = openUserSettingsModal;
+  openUserSettingsModal = function() { syncPanelScaleUI(); _origOpen(); };
+
+  if (saveBtn) saveBtn.addEventListener('click', function() { closeUserSettingsModal(true); });
+
+  if (cancelBtn) cancelBtn.addEventListener('click', function() { closeUserSettingsModal(false); });
+  if (closeBtn) closeBtn.addEventListener('click', function() { closeUserSettingsModal(false); });
+  if (modal) modal.addEventListener('mousedown', function(e) { if (e.target === modal) closeUserSettingsModal(false); });
 
   window._openUserSettingsModal = openUserSettingsModal;
 })();
@@ -6688,7 +7240,7 @@ document.addEventListener('visibilitychange', () => {
 
 
 
-ticketList.addEventListener('click', async (e) => {
+ticketList?.addEventListener('click', async (e) => {
   if (e.target.closest('.preset-value-link')) return;
   const btn = e.target.closest('.edit-ticket-btn');
   if (btn) {
