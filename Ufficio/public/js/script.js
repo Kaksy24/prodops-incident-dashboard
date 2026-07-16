@@ -157,6 +157,10 @@ let quickbarChannel = null;
 let quickbarRefocusTimer = null;
 let quickbarCompactWidthBeforeModal = 0;
 let quickbarIsClosing = false;
+let quickbarFocusRetryTimers = [];
+let quickbarWatchdogTimer = null;
+let quickbarTitleAlertTimer = null;
+const quickbarBaseTitle = document.title || 'ProdOps';
 function releaseThemeSyncPending() {
   document.documentElement.classList.remove('theme-sync-pending');
 }
@@ -256,6 +260,66 @@ function clearQuickbarHeartbeat() {
   try { localStorage.removeItem(quickbarHeartbeatKey); } catch (error) {}
 }
 
+function clearQuickbarFocusRetryTimers() {
+  if (!quickbarFocusRetryTimers.length) return;
+  quickbarFocusRetryTimers.forEach(function (timerId) {
+    try { clearTimeout(timerId); } catch (error) {}
+  });
+  quickbarFocusRetryTimers = [];
+}
+
+function stopQuickbarTitleAlert() {
+  if (quickbarTitleAlertTimer) {
+    clearInterval(quickbarTitleAlertTimer);
+    quickbarTitleAlertTimer = null;
+  }
+  if (isQuickbarPage && document.title !== quickbarBaseTitle) document.title = quickbarBaseTitle;
+}
+
+function startQuickbarTitleAlert() {
+  if (!isQuickbarPage || quickbarTitleAlertTimer || quickbarIsClosing) return;
+  let toggle = false;
+  quickbarTitleAlertTimer = setInterval(function () {
+    if (quickbarIsClosing) {
+      stopQuickbarTitleAlert();
+      return;
+    }
+    toggle = !toggle;
+    document.title = toggle ? 'Quickbar - attenzione' : quickbarBaseTitle;
+  }, 900);
+}
+
+function detachQuickbarFromDashboardWindow() {
+  if (!isQuickbarPage) return;
+  try {
+    // La quickbar deve sopravvivere anche se la dashboard che l'ha aperta viene chiusa.
+    // Spezziamo quindi il legame con window.opener e lasciamo il coordinamento a
+    // BroadcastChannel/localStorage, che sono gia' indipendenti dalla tab madre.
+    if (window.opener) window.opener = null;
+  } catch (error) {}
+}
+
+function restoreQuickbarWindowGeometry() {
+  if (!isQuickbarPage) return;
+  try {
+    const saved = readQuickbarWindowState();
+    if (!saved) return;
+    if (typeof window.moveTo === 'function' && saved.left !== undefined && saved.top !== undefined) {
+      window.moveTo(saved.left, saved.top);
+    }
+    if (typeof window.resizeTo === 'function' && saved.width && saved.height) {
+      window.resizeTo(saved.width, saved.height);
+    }
+  } catch (error) {}
+}
+
+function performQuickbarFrontAttempt(restoreGeometry) {
+  if (!isQuickbarPage || quickbarIsClosing) return;
+  if (restoreGeometry) restoreQuickbarWindowGeometry();
+  try { window.focus(); } catch (error) {}
+  touchQuickbarHeartbeat();
+}
+
 function openOrFocusQuickbar(forceOpen) {
   const features = getQuickbarPopupFeatures();
   if (quickbarWindowRef && !quickbarWindowRef.closed) {
@@ -298,12 +362,26 @@ function requestQuickbarFront() {
 
 function attemptQuickbarRefocus() {
   if (!isQuickbarPage || quickbarIsClosing) return;
-  try { window.focus(); } catch (error) {}
+  performQuickbarFrontAttempt(true);
+  startQuickbarTitleAlert();
   if (quickbarRefocusTimer) clearTimeout(quickbarRefocusTimer);
   quickbarRefocusTimer = setTimeout(function () {
     if (quickbarIsClosing) return;
-    try { window.focus(); } catch (error) {}
+    performQuickbarFrontAttempt(true);
   }, 180);
+  clearQuickbarFocusRetryTimers();
+  [80, 260, 620, 1200, 2200].forEach(function (delay, index) {
+    const timerId = setTimeout(function () {
+      if (quickbarIsClosing) return;
+      if (document.hasFocus && document.hasFocus() && !document.hidden) {
+        clearQuickbarFocusRetryTimers();
+        stopQuickbarTitleAlert();
+        return;
+      }
+      performQuickbarFrontAttempt(index >= 2);
+    }, delay);
+    quickbarFocusRetryTimers.push(timerId);
+  });
 }
 
 function initQuickbarLockMode() {
@@ -314,13 +392,28 @@ function initQuickbarLockMode() {
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) attemptQuickbarRefocus();
   });
+  window.addEventListener('focus', function () {
+    clearQuickbarFocusRetryTimers();
+    stopQuickbarTitleAlert();
+    touchQuickbarHeartbeat();
+  });
+  document.addEventListener('pointerdown', function () {
+    touchQuickbarHeartbeat();
+  });
+  document.addEventListener('keydown', function () {
+    touchQuickbarHeartbeat();
+  });
   window.addEventListener('beforeunload', function () {
     quickbarIsClosing = true;
+    clearQuickbarFocusRetryTimers();
+    stopQuickbarTitleAlert();
     clearQuickbarHeartbeat();
     saveCurrentQuickbarWindowState();
   });
   window.addEventListener('pagehide', function () {
     quickbarIsClosing = true;
+    clearQuickbarFocusRetryTimers();
+    stopQuickbarTitleAlert();
     clearQuickbarHeartbeat();
     saveCurrentQuickbarWindowState();
   });
@@ -344,6 +437,7 @@ function saveCurrentQuickbarWindowState() {
 
 function initQuickbarWindowBridge() {
   if (!isQuickbarPage) return;
+  detachQuickbarFromDashboardWindow();
   saveCurrentQuickbarWindowState();
   const channel = getQuickbarChannel();
   if (channel) {
@@ -372,6 +466,16 @@ function initQuickbarWindowBridge() {
   window.addEventListener('pagehide', saveCurrentQuickbarWindowState);
   window.addEventListener('focus', touchQuickbarHeartbeat);
   setInterval(touchQuickbarHeartbeat, 5000);
+  if (!quickbarWatchdogTimer) {
+    quickbarWatchdogTimer = setInterval(function () {
+      if (quickbarIsClosing) return;
+      if ((document.hasFocus && document.hasFocus()) && !document.hidden) {
+        stopQuickbarTitleAlert();
+        return;
+      }
+      attemptQuickbarRefocus();
+    }, 2500);
+  }
 }
 
 let quickbarAutoFitTimer = null;
@@ -662,13 +766,13 @@ function loadChartTypes() {
   return chartTypes;
 }
 
-function saveChartTypes() {
+function saveChartTypes(skipRemoteSave) {
   try {
     localStorage.setItem(chartTypeStorageKey, JSON.stringify(chartTypes));
   } catch (error) {
     // ignore storage issues
   }
-  saveUserCharts().catch(console.error);
+  if (!skipRemoteSave) saveUserCharts().catch(console.error);
 }
 
 function getChartType(chartId) {
@@ -992,11 +1096,77 @@ function descUpdateToolbarState(target) {
   });
 }
 
+// I chip dei preset non sono cancellabili: contenteditable="false" impedisce di
+// scrivere dentro al chip ma non di rimuoverlo (backspace, canc, taglia, Ctrl+A,
+// drag). Qui intercettiamo l'edit prima che avvenga e lo blocchiamo se tocca un
+// chip, cosi' i campi compilabili restano sempre nella descrizione.
+
+// Il chip vivo (non il clone) toccato da range, altrimenti null. cloneContents
+// include solo i nodi realmente dentro al range: un range che confina con il
+// chip senza coprirlo non lo restituisce, quindi il backspace sul carattere
+// prima del chip resta permesso.
+function descChipHitInRange(ctx, range) {
+  var frag;
+  try { frag = range.cloneContents(); } catch (e) { return null; }
+  var clone = frag && frag.querySelector ? frag.querySelector('.preset-chip') : null;
+  if (!clone) return null;
+  var live = ctx.editorEl.querySelector('.preset-chip[data-token-index="' + clone.getAttribute('data-token-index') + '"]');
+  return live || clone;
+}
+
+function descStaticRangeToRange(sr) {
+  try {
+    var r = document.createRange();
+    r.setStart(sr.startContainer, sr.startOffset);
+    r.setEnd(sr.endContainer, sr.endOffset);
+    return r;
+  } catch (e) { return null; }
+}
+
+function descFlashChip(chip) {
+  if (!chip || !chip.classList) return;
+  chip.classList.remove('preset-chip-blocked');
+  void chip.offsetWidth; // reflow: fa ripartire l'animazione se gia' in corso
+  chip.classList.add('preset-chip-blocked');
+  setTimeout(function () { chip.classList.remove('preset-chip-blocked'); }, 800);
+}
+
+// Il toast e' limitato nel tempo: tenendo premuto backspace l'evento si ripete
+// molte volte al secondo e senza freno sommergerebbe lo schermo di notifiche.
+var descChipToastAt = 0;
+function descBlockChipEdit(chip) {
+  descFlashChip(chip);
+  var now = Date.now();
+  if (now - descChipToastAt < 2500) return;
+  descChipToastAt = now;
+  var label = chip.getAttribute('data-token-label') || 'campo';
+  if (typeof showToast === 'function') {
+    showToast('Il campo "' + label + '" fa parte del preset e non puo\' essere rimosso dalla descrizione. Per cambiarlo usa i campi del preset qui sotto.', 'warning', 'Campo protetto');
+  }
+}
+
+function descGuardBeforeInput(ctx, e) {
+  var ranges = (typeof e.getTargetRanges === 'function') ? e.getTargetRanges() : [];
+  var i, range, chip = null;
+  for (i = 0; i < ranges.length && !chip; i += 1) {
+    range = descStaticRangeToRange(ranges[i]);
+    if (range) chip = descChipHitInRange(ctx, range);
+  }
+  if (!chip) return;
+  e.preventDefault();
+  descBlockChipEdit(chip);
+}
+
 function descInitEditor(target) {
   var ctx = descResolveContext(target);
   if (!ctx.editorEl || ctx.editorEl.dataset.descInit === '1') return;
   ctx.editorEl.dataset.descInit = '1';
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) {}
+  ctx.editorEl.addEventListener('beforeinput', function (e) { descGuardBeforeInput(ctx, e); });
+  // Trascinare un chip fuori dall'editor lo rimuoverebbe senza passare da beforeinput.
+  ctx.editorEl.addEventListener('dragstart', function (e) {
+    if (e.target && e.target.closest && e.target.closest('.preset-chip')) e.preventDefault();
+  });
   ctx.editorEl.addEventListener('input', function () { descSyncFromEditor(ctx); });
   ctx.editorEl.addEventListener('keyup', function () { descUpdateToolbarState(ctx); });
   ctx.editorEl.addEventListener('mouseup', function () { descUpdateToolbarState(ctx); });
@@ -1016,17 +1186,49 @@ function descInitEditor(target) {
 }
 descInitEditor();
 
+/* ── Tooltip "cosa manca" sul bottone Crea Ticket disabilitato ──── */
+(function () {
+  if (!ticketSubmitBtn) return;
+  var tip = document.createElement('div');
+  tip.className = 'submit-missing-tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.style.display = 'none';
+  ticketSubmitBtn.parentNode.style.position = 'relative';
+  ticketSubmitBtn.parentNode.appendChild(tip);
+
+  ticketSubmitBtn.addEventListener('mouseenter', function () {
+    if (!ticketSubmitBtn.disabled) { tip.style.display = 'none'; return; }
+    var missing = (ticketSubmitBtn.getAttribute('data-missing') || '').split('\n').filter(Boolean);
+    if (!missing.length) { tip.style.display = 'none'; return; }
+    tip.innerHTML = '<strong>Campi mancanti:</strong><ul>' +
+      missing.map(function (m) { return '<li>' + escapeHtml(m) + '</li>'; }).join('') + '</ul>';
+    tip.style.display = '';
+  });
+  ticketSubmitBtn.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+})();
+
+function getSubmitMissingReasons() {
+  var reasons = [];
+  if (!Number(incidentTypeInput.value || 0)) reasons.push('Tipo di incident');
+  if (!descGetText()) reasons.push('Descrizione');
+  var incompletePreset = getIncompletePresetFields(presetInlineComposer);
+  if (incompletePreset.length) {
+    incompletePreset.forEach(function (f) {
+      reasons.push(f.dataset.presetLabel || f.getAttribute('aria-label') || 'Campo preset');
+    });
+  }
+  if (!fabValue.value) reasons.push('FAB');
+  if (!ticketTimestampInput.value) reasons.push('Orario');
+  if (isGenericIncidentId(incidentTypeInput.value) && !(customIncidentNameInput && customIncidentNameInput.value.trim())) reasons.push('Nome incident');
+  return reasons;
+}
+
 function syncSubmitBtnState() {
   if (!ticketSubmitBtn || ticketSubmitBusy || ticketForm.dataset.readMode === '1') return;
-  const description = descGetText();
-  const presetComplete = !getIncompletePresetFields(presetInlineComposer).length;
-  const valid = !!Number(incidentTypeInput.value || 0)
-    && !!description
-    && presetComplete
-    && !!fabValue.value
-    && !!ticketTimestampInput.value
-    && (!isGenericIncidentId(incidentTypeInput.value) || !!(customIncidentNameInput && customIncidentNameInput.value.trim()));
+  var reasons = getSubmitMissingReasons();
+  var valid = !reasons.length;
   ticketSubmitBtn.disabled = !valid;
+  ticketSubmitBtn.setAttribute('data-missing', valid ? '' : reasons.join('\n'));
 }
 
 if (customIncidentNameInput) {
@@ -1113,6 +1315,15 @@ function defaultUiColors() {
       personal_axis_max: 0,
       personal_axis_max_mine: 0,
       personal_axis_max_group: 0
+    },
+    layout: {
+      panel_height_min: 400,
+      panel_height_preferred: 52,
+      panel_height_max: 580,
+      legend_font_size: 90,
+      legend_col_min: 150,
+      chart_height_pct: 100,
+      select_min_width: 126
     }
   };
 }
@@ -1129,7 +1340,8 @@ function normalizeUiColors(input) {
     bars: {},
     labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} }, users: { light: {}, dark: {} } },
     titles: { ...defaults.titles },
-    settings: { ...defaults.settings }
+    settings: { ...defaults.settings },
+    layout: { ...defaults.layout }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = {
@@ -1183,6 +1395,14 @@ function normalizeUiColors(input) {
     ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
   out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
     ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
+  if (input?.layout && typeof input.layout === 'object') {
+    Object.keys(defaults.layout).forEach((lk) => {
+      if (input.layout[lk] != null) {
+        const val = Math.round(Number(input.layout[lk]));
+        if (val > 0) out.layout[lk] = val;
+      }
+    });
+  }
   return out;
 }
 
@@ -1211,6 +1431,18 @@ function applyDashboardChartTitles() {
   Object.keys(titleMap).forEach((key) => {
     if (titleMap[key]) titleMap[key].textContent = getDashboardChartTitle(key);
   });
+}
+
+function applyLayoutCustomProperties() {
+  const layout = uiColors?.layout || defaultUiColors().layout;
+  const root = document.documentElement;
+  root.style.setProperty('--layout-panel-h-min', layout.panel_height_min + 'px');
+  root.style.setProperty('--layout-panel-h-pref', layout.panel_height_preferred + 'vh');
+  root.style.setProperty('--layout-panel-h-max', layout.panel_height_max + 'px');
+  root.style.setProperty('--layout-legend-font', (layout.legend_font_size / 100) + 'rem');
+  root.style.setProperty('--layout-legend-col-min', layout.legend_col_min + 'px');
+  root.style.setProperty('--layout-chart-h-pct', layout.chart_height_pct + '%');
+  root.style.setProperty('--layout-select-min-w', layout.select_min_width + 'px');
 }
 
 function themeKey() {
@@ -1280,6 +1512,7 @@ async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
   applyDashboardChartTitles();
+  applyLayoutCustomProperties();
   return uiColors;
 }
 
@@ -2312,17 +2545,20 @@ function makeSearchableSelect(select) {
 
   var placeholderText = '';
   var proposeOpt = null;
+  var customInsertOpt = null;
   var allItems = [];
 
   function syncItems() {
     allItems = [];
     proposeOpt = null;
+    customInsertOpt = null;
     placeholderText = '';
     for (var i = 0; i < select.options.length; i++) {
       var o = select.options[i];
       if (o.dataset && o.dataset.separator) continue;
       if (!o.value) { placeholderText = o.textContent; continue; }
       if (o.value === '__propose_new__') { proposeOpt = { value: o.value, text: o.textContent }; continue; }
+      if (o.value === '__custom_insert__') { customInsertOpt = { value: o.value, text: o.textContent }; continue; }
       allItems.push({ value: o.value, text: o.textContent });
     }
   }
@@ -2419,6 +2655,24 @@ function makeSearchableSelect(select) {
         setTimeout(updateTriggerLabel, 80);
       });
       list.appendChild(li2);
+    }
+    if (customInsertOpt) {
+      var li3 = document.createElement('li');
+      li3.className = 'sd-option sd-custom-insert';
+      li3.dataset.value = customInsertOpt.value;
+      li3.textContent = customInsertOpt.text;
+      li3.setAttribute('role', 'option');
+      li3.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        select.dataset.proposedDraft = (search.value || '').trim();
+        select.value = '__custom_insert__';
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        closePanel();
+        setTimeout(updateTriggerLabel, 80);
+      });
+      list.appendChild(li3);
+    }
+    if (proposeOpt || customInsertOpt) {
       var sep = document.createElement('li');
       sep.className = 'sd-separator';
       sep.setAttribute('aria-hidden', 'true');
@@ -2539,6 +2793,10 @@ async function loadDbPresetOptions(token, select, initialValue) {
       propose.value = '__propose_new__';
       propose.textContent = '+ Proponi nuovo elemento';
       select.appendChild(propose);
+      const customInsert = document.createElement('option');
+      customInsert.value = '__custom_insert__';
+      customInsert.textContent = '+ Inserimento custom';
+      select.appendChild(customInsert);
       const separator = document.createElement('option');
       separator.value = '';
       separator.disabled = true;
@@ -2654,6 +2912,8 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
   composerContainer.classList.toggle('preset-inline-composer--triple', tokenState.length >= 3);
   composerContainer.innerHTML = '';
   descriptionInput.readOnly = false;
+  descSetReadOnly(false, descCtx);
+  descShow(true, descCtx);
   descriptionInput.dataset.presetAutoSync = 'on';
   descriptionInput.dataset.presetAutoValue = '';
   descriptionInput.dataset.presetGeneratedBase = '';
@@ -2718,12 +2978,45 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
     input.dataset.presetLabel = token.label || `Campo ${tokenIndex + 1}`;
     input.style.width = '100%';
     const syncPresetFieldValue = async () => {
+      if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__custom_insert__') {
+        const customValue = await showPrompt('Inserisci un valore custom per il campo "' + (token.label || 'campo') + '".', { title: 'Inserimento custom', placeholder: 'Valore', defaultValue: String(input.dataset.proposedDraft || '').trim(), confirmText: 'Inserisci' });
+        if (!customValue || !customValue.trim()) {
+          input.value = '';
+          input.dataset.proposedDraft = '';
+          if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
+          syncSubmitBtnState();
+          return;
+        }
+        const val = customValue.trim();
+        const existingOpt = Array.from(input.querySelectorAll('option')).find(function(o) {
+          return o.value && o.value !== '__propose_new__' && o.value !== '__custom_insert__' && !o.dataset.separator && o.value.toLocaleLowerCase('it') === val.toLocaleLowerCase('it');
+        });
+        if (existingOpt) {
+          input.value = existingOpt.value;
+          showToast('Questo elemento esiste già: "' + existingOpt.value + '".', 'warning', 'Elemento duplicato');
+        } else {
+          var newOpt = document.createElement('option');
+          newOpt.value = val;
+          newOpt.textContent = val;
+          var beforeEl = input.querySelector('option[value="__propose_new__"]') || input.querySelector('option[value="__custom_insert__"]');
+          if (beforeEl) input.insertBefore(newOpt, beforeEl);
+          else input.appendChild(newOpt);
+          input.value = val;
+        }
+        input.dataset.proposedDraft = '';
+        if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
+        tokenState[tokenIndex].value = input.value || '';
+        descSetChipValue(tokenIndex, input.value || '', descCtx);
+        syncSubmitBtnState();
+        return;
+      }
       if ((token.type === 'select' || token.type === 'dbselect') && input.value === '__propose_new__') {
         const proposedValue = await showPrompt(`Proponi un nuovo elemento per il campo "${token.label}". Verrà inviato all'amministratore per l'approvazione prima di essere disponibile.`, { title: 'Proponi nuovo elemento', placeholder: 'Nuovo valore', defaultValue: String(input.dataset.proposedDraft || '').trim(), confirmText: 'Invia proposta' });
         if (!proposedValue || !proposedValue.trim()) {
           input.value = '';
           input.dataset.proposedDraft = '';
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
+          syncSubmitBtnState();
           return;
         }
         const value = proposedValue.trim();
@@ -2769,6 +3062,7 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
           input.dataset.proposedDraft = value;
           if (typeof input._sdSyncTrigger === 'function') input._sdSyncTrigger();
           showToast('Non è stato possibile inviare la proposta: ' + (error.message || error), 'error', 'Errore invio proposta');
+          syncSubmitBtnState();
           return;
         }
       }
@@ -2806,9 +3100,11 @@ function renderPresetForTargets(template, descriptionInput, composerContainer, i
 
 function getIncompletePresetFields(composerContainer) {
   if (!composerContainer || composerContainer.style.display === 'none') return [];
+  var specialValues = { '__propose_new__': true, '__custom_insert__': true };
   return [...composerContainer.querySelectorAll('[data-preset-field="1"]')].filter((field) => {
     if (field.disabled || field.type === 'hidden') return false;
-    return !String(field.value || '').trim();
+    var val = String(field.value || '').trim();
+    return !val || specialValues[val];
   });
 }
 
@@ -3374,6 +3670,7 @@ function renderColumnChart(target, stats) {
   inner.appendChild(axis);
   inner.appendChild(barsWrap);
   target.appendChild(inner);
+  setupVerticalChartFit(target, inner);
 }
 
 function renderHorizontalChart(target, stats) {
@@ -3499,85 +3796,90 @@ function makePieLegendRow(targetId, item, totalAll, hideLegendValue) {
   return row;
 }
 
+function formatPieLegendTooltipRows(targetId, rows, totalAll, hideLegendValue) {
+  return rows.map(function(item) {
+    var pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
+    var valTxt = hideLegendValue ? (pct + '%') : formatChartValueWithPercent(item.total, pct);
+    return '<div class="chart-pie-tooltip-row">' +
+      '<span class="chart-pie-tooltip-swatch" style="background:' + getBarColor(targetId, item.label) + '"></span>' +
+      '<span class="chart-pie-tooltip-label">' + escapeHtml(chartItemLabel(item)) + '</span>' +
+      '<strong class="chart-pie-tooltip-value">' + escapeHtml(valTxt) + '</strong>' +
+    '</div>';
+  }).join('');
+}
+
+function attachLegendMoreTooltip(more, rows, targetId, totalAll, hideLegendValue) {
+  if (!more || !rows || !rows.length) return;
+  var tip = getPieTooltipEl();
+  more.addEventListener('mousemove', function(e) {
+    tip.innerHTML = formatPieLegendTooltipRows(targetId, rows, totalAll, hideLegendValue);
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top = (e.clientY + 14) + 'px';
+    tip.classList.add('visible', 'chart-pie-tooltip-list');
+  });
+  more.addEventListener('mouseleave', function() {
+    tip.classList.remove('visible', 'chart-pie-tooltip-list');
+  });
+}
+
 // Dimensiona la legenda della ciambella in base allo spazio libero: mostra il
 // massimo numero di voci che entrano SOPRA il grafico senza sovrapporsi/tagliarlo
 // (più di 6 se c'è spazio, meno se ce n'è poco). Le voci nascoste restano nel
 // tooltip. Si ri-adatta al variare della dimensione del pannello (ResizeObserver).
 function setupDonutLegendFit(target, layout, legend, visual, sortedStats, targetId, hideLegendValue, totalAll) {
   var total = sortedStats.length;
-  function applyLegendScale(scale) {
-    var safeScale = Math.max(1, Math.min(scale || 1, targetId === 'teamYearChart' ? 1.75 : 1.35));
-    layout.style.setProperty('--donut-legend-font-size', (0.82 * safeScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
-    layout.style.setProperty('--donut-legend-value-size', (0.78 * safeScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
-    layout.style.setProperty('--donut-legend-row-gap', Math.round(8 * safeScale) + 'px');
-    layout.style.setProperty('--donut-legend-min-height', Math.round(20 * safeScale) + 'px');
-    layout.style.setProperty('--donut-swatch-size', Math.round(12 * Math.min(1.35, safeScale)) + 'px');
-    layout.style.setProperty('--donut-center-strong-size', (1.6 * Math.min(1.22, safeScale)).toFixed(3).replace(/\.?0+$/, '') + 'rem');
-    layout.style.setProperty('--donut-center-label-size', (0.78 * Math.min(1.18, safeScale)).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+  var LEGEND_MAX = 4;
+  var shown = sortedStats.slice(0, LEGEND_MAX);
+  var hidden = sortedStats.slice(LEGEND_MAX);
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+  function applyVisualScale(sizePx) {
+    var nextSize = clamp(Math.round(sizePx || 0), 154, 172);
+    visual.style.width = nextSize + 'px';
+    visual.style.maxWidth = nextSize + 'px';
+    var ratio = nextSize / 180;
+    var centerScale = clamp(ratio, 0.86, 1.0);
+    layout.style.setProperty('--donut-center-strong-size', (1.6 * centerScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+    layout.style.setProperty('--donut-center-label-size', (0.78 * Math.max(0.76, Math.min(centerScale, 1.02))).toFixed(3).replace(/\.?0+$/, '') + 'rem');
   }
   function resetLegendScale() {
-    layout.style.removeProperty('--donut-legend-font-size');
-    layout.style.removeProperty('--donut-legend-value-size');
-    layout.style.removeProperty('--donut-legend-row-gap');
-    layout.style.removeProperty('--donut-legend-min-height');
-    layout.style.removeProperty('--donut-swatch-size');
+    layout.style.setProperty('--donut-legend-font-size', '.78rem');
+    layout.style.setProperty('--donut-legend-value-size', '.74rem');
+    layout.style.setProperty('--donut-legend-row-gap', '7px');
+    layout.style.setProperty('--donut-legend-min-height', '20px');
+    layout.style.setProperty('--donut-swatch-size', '11px');
     layout.style.removeProperty('--donut-center-strong-size');
     layout.style.removeProperty('--donut-center-label-size');
+    visual.style.removeProperty('width');
+    visual.style.removeProperty('max-width');
   }
-  function fill(count, withMore) {
+  function fill() {
     legend.innerHTML = '';
-    for (var i = 0; i < count && i < total; i++) {
-      legend.appendChild(makePieLegendRow(targetId, sortedStats[i], totalAll, hideLegendValue));
+    for (var i = 0; i < shown.length; i++) {
+      legend.appendChild(makePieLegendRow(targetId, shown[i], totalAll, hideLegendValue));
     }
-    if (withMore && count < total) {
+    if (hidden.length) {
       var more = document.createElement('div');
       more.className = 'chart-pie-legend-more';
-      more.textContent = '+' + (total - count) + ' altri — passa il mouse sul grafico';
+      more.textContent = '+' + hidden.length + ' altri';
+      more.setAttribute('tabindex', '0');
+      more.setAttribute('title', 'Passa il mouse per vedere gli altri elementi');
+      attachLegendMoreTooltip(more, hidden, targetId, totalAll, hideLegendValue);
       legend.appendChild(more);
     }
   }
   function fit() {
     if (!total) { legend.innerHTML = ''; return; }
+    layout.classList.add('donut-legend-fixed');
+    layout.classList.remove('donut-legend-sparse');
     resetLegendScale();
-    // Spazio reale per legenda + ciambella = altezza del layout (NON del .chart,
-    // che include il padding-top): altrimenti si sovrastima e la ciambella sfora.
-    var avail = layout.clientHeight;
-    if (avail <= 0) return; // pannello non ancora visibile: ci ripensa il RO
+    var avail = layout.clientHeight || target.clientHeight || 0;
+    if (avail <= 0) return;
     var layoutGap = parseFloat(getComputedStyle(layout).rowGap) || 0;
-    // La ciambella (in basso) è dimensionata dalla CSS (max 60cqh): misuriamo la
-    // sua altezza reale e riserviamo il resto alla legenda (in alto). -2px di
-    // margine anti-arrotondamento così la ciambella non viene mai tagliata.
-    fill(total, false);
-    var budget = avail - visual.offsetHeight - layoutGap - 2;
-    // Se tutte le voci entrano già, le teniamo tutte.
-    if (legend.offsetHeight <= budget) {
-      var spare = budget - legend.offsetHeight;
-      if (spare > 18 && total <= 6) {
-        var scaleBoost = 1 + Math.min(0.75, spare / 130);
-        if (targetId === 'teamYearChart') scaleBoost += Math.min(0.18, spare / 220);
-        applyLegendScale(scaleBoost);
-        fill(total, false);
-        if (legend.offsetHeight > budget) {
-          resetLegendScale();
-          fill(total, false);
-        }
-      }
-      return;
-    }
-    // Altrimenti riduciamo di una riga (cols voci) alla volta — misurando l'altezza
-    // REALE della legenda con la riga "+N altri" inclusa — finché entra sopra la
-    // ciambella senza sovrapporsi/tagliarla.
-    var cols = Math.max(1, (getComputedStyle(legend).gridTemplateColumns || '').split(' ').filter(Boolean).length);
-    var count = Math.floor((total - 1) / cols) * cols; // massimo multiplo di cols < total
-    if (count < cols) count = cols;
-    while (count > cols) {
-      fill(count, true);
-      if (legend.offsetHeight <= budget) return;
-      count -= cols;
-    }
-    // Minimo: una riga di voci + "+N altri" (la ciambella resta comunque intera,
-    // essendo limitata al 60% dell'altezza dalla CSS).
-    fill(Math.min(cols, total), true);
+    fill();
+    var availableForVisual = avail - legend.offsetHeight - layoutGap - 4;
+    applyVisualScale(availableForVisual);
   }
   fit();
   if (typeof ResizeObserver !== 'undefined') {
@@ -3588,6 +3890,35 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
       raf = requestAnimationFrame(fit);
     });
     target._donutRO.observe(target);
+  }
+}
+
+function setupVerticalChartFit(target, inner) {
+  if (!target || !inner) return;
+  function fit() {
+    var availableHeight = target.clientHeight || 0;
+    if (availableHeight <= 0) return;
+    inner.style.removeProperty('transform');
+    inner.style.removeProperty('width');
+    inner.style.removeProperty('height');
+    inner.style.removeProperty('transform-origin');
+    var requiredHeight = inner.scrollHeight || inner.offsetHeight || 0;
+    if (!requiredHeight || requiredHeight <= availableHeight) return;
+    var scale = Math.max(0.72, Math.min(1, availableHeight / requiredHeight));
+    inner.style.transformOrigin = 'top left';
+    inner.style.transform = 'scale(' + scale.toFixed(4) + ')';
+    inner.style.width = (100 / scale).toFixed(4) + '%';
+    inner.style.height = Math.round(requiredHeight * scale) + 'px';
+  }
+  fit();
+  if (typeof ResizeObserver !== 'undefined') {
+    if (target._verticalChartRO) target._verticalChartRO.disconnect();
+    var raf = 0;
+    target._verticalChartRO = new ResizeObserver(function() {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(fit);
+    });
+    target._verticalChartRO.observe(target);
   }
 }
 
@@ -4041,14 +4372,23 @@ function setupChartTypeControls() {
 
   document.querySelectorAll('.chart-type-select[data-chart-target]').forEach((select) => {
     const targetId = select.dataset.chartTarget || '';
+    const panel = select.closest('.panel');
     const current = getChartType(targetId);
     if (select.value !== current) select.value = current;
     if (select.dataset.chartBound === '1') return;
     select.dataset.chartBound = '1';
     select.addEventListener('change', () => {
       const key = normalizeChartKey(targetId);
-      chartTypes[key] = normalizeChartType(select.value);
-      saveChartTypes();
+      const nextType = normalizeChartType(select.value);
+      chartTypes[key] = nextType;
+      if (panel && nextType === 'bar') enforceMinChartSpanForPanel(panel.id);
+      saveChartTypes(true);
+      saveChartSpans(true);
+      if (panel) {
+        applyChartSpan(panel, getChartSpan(panel.id));
+        refreshChartResizeControls(panel);
+      }
+      saveUserCharts().catch(console.error);
       loadCharts().catch(() => {});
     });
   });
@@ -4923,6 +5263,7 @@ async function loadUserCharts() {
     panelTitles = (data.panel_titles && typeof data.panel_titles === 'object') ? data.panel_titles : {};
     chartSpans = (data.chart_spans && typeof data.chart_spans === 'object') ? normalizeSpanMap(data.chart_spans) : chartSpans;
     chartTypes = (data.chart_types && typeof data.chart_types === 'object') ? normalizeTypeMap(data.chart_types) : chartTypes;
+    enforceMinChartSpans();
     currentPaletteId = typeof data.palette === 'string' && data.palette ? data.palette : currentPaletteId;
     currentDarkMode = !!data.dark_mode;
     try {
@@ -6277,10 +6618,47 @@ let dragSrcPanel = null;
 let saveUserChartsRequestSeq = 0;
 let saveUserChartsAppliedSeq = 0;
 
+function panelChartTargetKey(panelId) {
+  var map = {
+    chartPanelFab: 'fabYearChart',
+    chartPanelCat: 'catYearChart',
+    chartPanelTeam: 'teamYearChart',
+    chartPanelIncident: 'incidentYearChart',
+    chartPanelUser: 'userYearChart',
+    chartPanelPersonalMine: 'personalMineChart',
+    chartPanelPersonalGroup: 'personalGroupChart'
+  };
+  return map[panelId] || '';
+}
+
+function minChartSpanForPanel(panelId) {
+  if (panelId === 'chartPanelPersonalMine' || panelId === 'chartPanelPersonalGroup') return 6;
+  var targetKey = panelChartTargetKey(panelId);
+  if (targetKey && getChartType(targetKey) === 'bar') return 6;
+  return 3;
+}
+
+function effectiveAllowedChartSpanSteps(panelId) {
+  return allowedChartSpanSteps(panelId).filter(function (step) {
+    return step >= minChartSpanForPanel(panelId);
+  });
+}
+
+function enforceMinChartSpanForPanel(panelId) {
+  var minSpan = minChartSpanForPanel(panelId);
+  var current = Number(chartSpans[panelId] || 0);
+  if (current > 0 && current < minSpan) chartSpans[panelId] = minSpan;
+}
+
+function enforceMinChartSpans() {
+  Object.keys(chartSpans || {}).forEach(function (panelId) {
+    enforceMinChartSpanForPanel(panelId);
+  });
+}
+
 function defaultChartSpan(panelId) {
   if (panelId === 'chartPanelPersonal') return 12;
-  if (panelId === 'chartPanelPersonalMine' || panelId === 'chartPanelPersonalGroup') return 6;
-  return 3;
+  return minChartSpanForPanel(panelId);
 }
 
 function loadChartSpans() {
@@ -6288,13 +6666,13 @@ function loadChartSpans() {
   try { chartSpans = normalizeSpanMap(JSON.parse(localStorage.getItem(chartSpanStorageKey) || '{}')); } catch (e) { chartSpans = {}; }
 }
 
-function saveChartSpans() {
+function saveChartSpans(skipRemoteSave) {
   try { localStorage.setItem(chartSpanStorageKey, JSON.stringify(chartSpans)); } catch (e) {}
-  saveUserCharts().catch(console.error);
+  if (!skipRemoteSave) saveUserCharts().catch(console.error);
 }
 
 function getChartSpan(panelId) {
-  var allowed = allowedChartSpanSteps(panelId);
+  var allowed = effectiveAllowedChartSpanSteps(panelId);
   const v = Number(chartSpans[panelId]);
   return allowed.indexOf(v) !== -1 ? v : defaultChartSpan(panelId);
 }
@@ -6302,9 +6680,11 @@ function getChartSpan(panelId) {
 function chartGridColumnCount(grid) {
   if (!grid) return 12;
   // Deve rispecchiare i breakpoint CSS di .charts-grid: <=900 = 1 col,
-  // 901-1200 = 2 col (cap "max 2 per riga"), 1201-1400 = 4 col, oltre = 12.
+  // 901-1180 = 1 col (soglia minima panel), 1181-1400 = 2 col,
+  // 1401-1600 = 4 col, oltre = 12.
   if (window.matchMedia('(max-width: 900px)').matches) return 1;
-  if (window.matchMedia('(min-width: 901px) and (max-width: 1200px)').matches) return 2;
+  if (window.matchMedia('(min-width: 901px) and (max-width: 1180px)').matches) return 1;
+  if (window.matchMedia('(min-width: 1181px) and (max-width: 1400px)').matches) return 2;
   if (window.matchMedia('(min-width: 901px) and (max-width: 1400px)').matches) return 4;
   return 12;
 }
@@ -6328,7 +6708,7 @@ function chartLayoutColumns(panel, span, columnCount) {
 // (es. a 2 colonne 3 e 6 sono entrambi "meta"), quindi salta gli step che non
 // cambierebbero nulla, cosi ogni click sulle frecce ha un effetto visibile.
 function nextResizeSpan(panel, current, dir) {
-  var allowed = allowedChartSpanSteps(panel ? panel.id : '');
+  var allowed = effectiveAllowedChartSpanSteps(panel ? panel.id : '');
   var grid = document.getElementById('chartsGrid');
   var cols = chartGridColumnCount(grid);
   var curCols = chartLayoutColumns(panel, current, cols);
@@ -6398,7 +6778,7 @@ function applyChartSpan(panel, span) {
 // video (auto-allargata) così le frecce continuano dal valore visibile.
 function currentDisplaySpan(panel) {
   if (!panel) return chartSpanSteps[0];
-  var allowed = allowedChartSpanSteps(panel.id);
+  var allowed = effectiveAllowedChartSpanSteps(panel.id);
   if (Object.prototype.hasOwnProperty.call(chartSpans, panel.id)) return getChartSpan(panel.id);
   var eff = Number(panel.dataset.chartEffectiveSpan);
   return allowed.indexOf(eff) !== -1 ? eff : getChartSpan(panel.id);

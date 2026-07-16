@@ -424,6 +424,15 @@ function default_ui_colors()
             'personal_axis_max' => 0,
             'personal_axis_max_mine' => 0,
             'personal_axis_max_group' => 0
+        ),
+        'layout' => array(
+            'panel_height_min' => 400,
+            'panel_height_preferred' => 52,
+            'panel_height_max' => 580,
+            'legend_font_size' => 90,
+            'legend_col_min' => 150,
+            'chart_height_pct' => 100,
+            'select_min_width' => 126
         )
     );
 }
@@ -511,6 +520,15 @@ function normalize_ui_colors($colors)
             if (!isset($colors['titles'][$key])) continue;
             $title = trim(strval($colors['titles'][$key]));
             if ($title !== '') $out['titles'][$key] = $title;
+        }
+    }
+    if (isset($colors['layout']) && is_array($colors['layout'])) {
+        $layoutDefaults = $defaults['layout'];
+        foreach ($layoutDefaults as $lk => $lv) {
+            if (isset($colors['layout'][$lk])) {
+                $val = intval($colors['layout'][$lk]);
+                if ($val > 0) $out['layout'][$lk] = $val;
+            }
         }
     }
     if (isset($colors['settings']) && is_array($colors['settings'])) {
@@ -1998,7 +2016,7 @@ if ($path === '/api/me' && $method === 'GET') {
 
 
 function allowed_avatars() {
-    return array('🦁','🐯','🐻','🦊','🐼','🐨','🐸','🐱','🐶','🐺','🦝','🦅','🦉','🐙','🦋','🐲','🤖','👽','🥷','🦸');
+    return allowed_avatars_list();
 }
 
 if ($path === '/api/user-avatars' && $method === 'GET') {
@@ -3573,7 +3591,7 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     }
     $allowedChartModeTargets = array('fabYear', 'catYear', 'teamYear', 'incidentYear', 'userYear');
     $allowedChartModeValues = array('day', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3', 'custom');
-    $allowedPaletteValues = array('cappuccino', 'bordeaux', 'verde', 'blu', 'giallo');
+    $allowedPaletteValues = array('cappuccino', 'bordeaux', 'verde', 'blu', 'giallo', 'neon', 'papiro', 'terminale', 'aurora', 'blueprint', 'sakura', 'brutalista', 'oceano', 'nordico', 'dracula', 'monokai', 'vaporwave', 'foresta', 'marmo', 'solarpunk', 'piombo', 'manoscritto', 'cyber2077');
     $allowedChartSpanPanels = array('chartPanelPersonal', 'chartPanelPersonalMine', 'chartPanelPersonalGroup', 'chartPanelFab', 'chartPanelCat', 'chartPanelTeam', 'chartPanelIncident', 'chartPanelUser');
     $allowedChartSpanValues = array(3, 6, 9, 12);
     $allowedChartTypeTargets = array('fabDay', 'catDay', 'fabYear', 'catYear', 'personalMineChart', 'personalGroupChart', 'teamYear', 'incidentYear', 'userYear');

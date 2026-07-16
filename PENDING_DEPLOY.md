@@ -6,7 +6,48 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
-_Nessuna feature in attesa di deploy — l'ultimo pacchetto (v1.13.11 → v1.13.15) è stato deployato in data 2026-07-12._
+Fix `v1.13.20` — **descrizione non modificabile + temi nuovi persi al toggle dark mode**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **Bug descrizione bloccata:** aprendo un ticket in sola lettura (`openTicketReadModal`) e poi creandone uno nuovo con preset, l'editor restava `contenteditable="false"` perché il percorso "con token" di `renderPresetForTargets` non chiamava `descSetReadOnly(false)`. Aggiunto `descSetReadOnly(false)` + `descShow(true)` nel percorso con token, in modo simmetrico al percorso senza token. |
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | **Bug temi:** `$allowedPaletteValues` conteneva solo i 5 temi originali (cappuccino, bordeaux, verde, blu, giallo) mentre il frontend ne offre 23. Selezionando un tema nuovo (es. dracula, neon, sakura...) il server lo rifiutava silenziosamente e resettava a `'blu'`. Al toggle dark mode `saveUserCharts()` inviava il tema al server e la risposta con `palette:'blu'` sovrascriveva il tema scelto — esatto stesso pattern del bug avatar v1.13.16. Aggiornata la allowlist a tutti i 23 temi. |
+
+Feature + fix `v1.13.19` — **"Inserimento custom" nei menu a tendina preset + bug "proponi → annulla" che rendeva il ticket creabile senza valore**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **Feature:** aggiunta opzione "Inserimento custom" sotto "Proponi nuovo elemento" nei select dei preset (`dbselect`). Apre un prompt, inserisce il valore direttamente come opzione del dropdown (senza passare dall'admin), lo seleziona e aggiorna chip/descrizione. Se l'elemento esiste già lo seleziona mostrando un toast. **Bug fix:** selezionare "Proponi nuovo elemento" e poi annullare lasciava `input.value = ''` ma il `return` anticipato saltava `syncSubmitBtnState()`, lasciando il bottone abilitato senza valore. Aggiunto `syncSubmitBtnState()` in tutti i percorsi `return` di `syncPresetFieldValue`. `getIncompletePresetFields` ora tratta `__propose_new__` e `__custom_insert__` come campi incompleti. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stile `.sd-custom-insert` per l'opzione "Inserimento custom" nel dropdown ricercabile. |
+
+Miglioria `v1.13.18` — **bottone Crea Ticket disabilitato: cursore "divieto" e tooltip con i campi mancanti**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Aggiunta `getSubmitMissingReasons()` che calcola i campi ancora da compilare. `syncSubmitBtnState()` ora scrive i motivi in `data-missing` sul bottone. Un tooltip ("Campi mancanti: Macchina, Motivo, FAB") compare al passaggio del mouse sul bottone disabilitato e sparisce quando il bottone e' abilitato. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Cursore globale `button:disabled` cambiato da `wait` a `not-allowed`. Stile del tooltip `.submit-missing-tip` (posizionato sopra il bottone, con freccia, variabili tema). |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Solo cache-busting **v1.13.18** (allineamento versione). |
+
+Fix `v1.13.17` — **i campi pre-compilabili del preset (chip) non sono piu' cancellabili dalla descrizione**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | I chip di un preset (es. `[Macchina]`, `[Motivo]` in "Reset Interfaccia") erano `contenteditable="false"` ma restavano cancellabili con backspace/canc, Ctrl+A, taglia o drag, rovinando il formato standard della descrizione. Aggiunta una guardia `beforeinput` sull'editor descrizione (`descGuardBeforeInput` via `getTargetRanges()`): se l'edit toccherebbe un chip viene bloccato con `preventDefault`, mentre il testo fisso attorno resta liberamente modificabile. Bloccato anche il `dragstart` sui chip. Feedback: il chip lampeggia (rosso) + toast "Campo protetto" con throttle per non sommergere lo schermo tenendo premuto backspace. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Animazione `preset-chip-blocked-flash` (variante chiara e scura) per il lampeggio del chip protetto; rispetta `prefers-reduced-motion`. |
+
+Fix `v1.13.16` — **l'avatar scelto non veniva salvato e tornava al precedente dopo il reload**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `allowed_avatars()` conteneva una lista obsoleta di 20 emoji mentre il picker ne offre 50 e la lista canonica `allowed_avatars_list()` ne ha 52: scegliendo 🦄 o una qualsiasi da 🐵 in poi la `PUT /api/me/avatar` rispondeva `400 Avatar non valido`, l'errore veniva ignorato dal `.catch()` lato JS e al reload il server restituiva l'avatar precedente. Ora `allowed_avatars()` delega a `allowed_avatars_list()` (fonte di verità unica). Allowlist ancora applicata: valori non previsti restano `400`. |
+
+_Le 5 pagine HTML (`index/admin/search/login/quickbar`) sono condivise tra v1.13.16–v1.13.20 — vanno deployate una sola volta: portano tutte il badge/cache-busting **v1.13.20**._
+
+_Il pacchetto precedente (v1.13.11 → v1.13.15) è stato deployato in data 2026-07-12._
 
 _Nota: le feature `v1.13.0` → `v1.13.6` risultano già deployate in produzione — vedi sezione "Gia deployato" (2026-07-12)._
 

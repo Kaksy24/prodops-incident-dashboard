@@ -47,7 +47,8 @@
             "severity_mode": "user",
             "fab_default": "",
             "sort_order": 1,
-            "presets": []
+            "presets": [],
+            "name_mode": "custom"
         },
         {
             "id": 4,
@@ -1011,6 +1012,127 @@
             "owner_user_id": 1,
             "owner_team": "A",
             "created_at": "2026-07-09T19:56:00+00:00"
+        },
+        {
+            "id": 79,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "<b>Richiesto <\/b>Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6dis05\u00e3\u20ac\u2030 ;<br>Motivo del reset: \u00e3\u20ac\u02c6busy\u00e3\u20ac\u2030",
+            "fab": "EWS",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-07-10T09:06:00+00:00"
+        },
+        {
+            "id": 80,
+            "incident_id": 1,
+            "incident_name": "TITOLO XYZ",
+            "description": "desc principale",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-10T15:42:00+00:00"
+        },
+        {
+            "id": 81,
+            "incident_id": 1,
+            "incident_name": "TITOLO XYZ",
+            "description": "desc extra",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-10T15:42:00+00:00"
+        },
+        {
+            "id": 85,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:49:00+00:00"
+        },
+        {
+            "id": 86,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:49:00+00:00"
+        },
+        {
+            "id": 87,
+            "incident_id": 11,
+            "incident_name": "Restart ISL41",
+            "description": "Richiesto reset robotizzazione ISL41",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:49:00+00:00"
+        },
+        {
+            "id": 88,
+            "incident_id": 1,
+            "incident_name": "prova 2",
+            "description": "proca 2",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:55:00+00:00"
+        },
+        {
+            "id": 95,
+            "incident_id": 1,
+            "incident_name": "prova",
+            "description": "111",
+            "fab": "L1",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:58:00+00:00"
+        },
+        {
+            "id": 96,
+            "incident_id": 1,
+            "incident_name": "444",
+            "description": "222",
+            "fab": "M5",
+            "severity": 1,
+            "owner_user_id": 1,
+            "owner_team": "A",
+            "created_at": "2026-07-11T12:58:00+00:00"
+        },
+        {
+            "id": 102,
+            "incident_id": 2,
+            "incident_name": "Reset Interfaccia",
+            "description": "Richiesto Reset Interfaccia per la macchina: \u00e3\u20ac\u02c6ebeb\u00e3\u20ac\u2030 ;<br>Motivo del reset: \u00e3\u20ac\u02c6comm.down\u00e3\u20ac\u2030",
+            "fab": "WSIC",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-07-13T15:17:00+00:00"
+        },
+        {
+            "id": 103,
+            "incident_id": 8,
+            "incident_name": "ADSC",
+            "description": "Eseguito ADSC per Box\/Lotto \u00e3\u20ac\u02c6erfw\u00e3\u20ac\u2030 alla sequence \u00e3\u20ac\u02c6wfwfw\u00e3\u20ac\u2030",
+            "fab": "WSIC",
+            "severity": 1,
+            "owner_user_id": 5,
+            "owner_team": "B",
+            "created_at": "2026-07-16T11:16:00+00:00"
         }
     ],
     "users": [
@@ -1023,8 +1145,8 @@
             "group_name": "ProdOps",
             "personal_target": 200,
             "group_target": 20,
-            "avatar": "\ud83d\udc3c",
-            "last_login": "2026-07-09 19:56:27"
+            "last_login": "2026-07-16 09:51:02",
+            "avatar": "\ud83d\udc3c"
         },
         {
             "id": 5,
@@ -1035,8 +1157,8 @@
             "group_name": "ProdOps",
             "personal_target": 200,
             "group_target": 20,
-            "avatar": "\ud83d\udc19",
-            "last_login": "2026-07-09 19:35:48"
+            "avatar": "\ud83e\udd94",
+            "last_login": "2026-07-16 09:37:19"
         },
         {
             "id": 6,
@@ -1181,6 +1303,15 @@
             "personal_axis_max": 5000,
             "personal_axis_max_mine": 0,
             "personal_axis_max_group": 0
+        },
+        "layout": {
+            "panel_height_min": 200,
+            "panel_height_preferred": 52,
+            "panel_height_max": 500,
+            "legend_font_size": 150,
+            "legend_col_min": 150,
+            "chart_height_pct": 65,
+            "select_min_width": 50
         }
     },
     "user_charts": {
@@ -1250,33 +1381,71 @@
             },
             "chart_custom_ranges": [],
             "chart_spans": {
-                "chartPanelPersonalMine": 6,
-                "chartPanelPersonalGroup": 3,
-                "chartPanelCat": 6,
+                "chartPanelPersonalMine": 9,
+                "chartPanelPersonalGroup": 9,
+                "chartPanelCat": 9,
                 "chartPanelTeam": 3,
                 "chartPanelIncident": 6,
-                "chartPanelUser": 3
+                "chartPanelUser": 9
             },
             "chart_types": {
                 "fabDay": "column",
                 "catDay": "column",
                 "fabYear": "bar",
-                "catYear": "bar",
+                "catYear": "donut",
                 "personalMineChart": "column",
                 "personalGroupChart": "column",
-                "teamYear": "donut",
-                "incidentYear": "bar",
+                "teamYear": "column",
+                "incidentYear": "donut",
                 "userYear": "column"
             },
             "palette": "blu",
-            "dark_mode": true
+            "dark_mode": false
         },
         "5": {
             "charts": [],
             "hidden_panels": [
                 "chartPanelUser"
             ],
-            "panel_order": []
+            "panel_order": [
+                "chartPanelPersonalMine",
+                "chartPanelPersonalGroup",
+                "chartPanelCat",
+                "chartPanelUser",
+                "chartPanelFab",
+                "chartPanelTeam",
+                "chartPanelIncident"
+            ],
+            "panel_titles": [],
+            "chart_modes": {
+                "fabYear": "months",
+                "catYear": "months",
+                "teamYear": "months",
+                "incidentYear": "months",
+                "userYear": "day"
+            },
+            "chart_custom_ranges": [],
+            "chart_spans": {
+                "chartPanelPersonalMine": 6,
+                "chartPanelPersonalGroup": 6,
+                "chartPanelFab": 3,
+                "chartPanelCat": 3,
+                "chartPanelTeam": 3,
+                "chartPanelIncident": 3
+            },
+            "chart_types": {
+                "fabDay": "column",
+                "catDay": "column",
+                "fabYear": "column",
+                "catYear": "column",
+                "personalMineChart": "column",
+                "personalGroupChart": "column",
+                "teamYear": "donut",
+                "incidentYear": "donut",
+                "userYear": "column"
+            },
+            "palette": "blu",
+            "dark_mode": false
         }
     },
     "preset_options": {
@@ -1355,7 +1524,7 @@
     "counters": {
         "category": 6,
         "incident": 19,
-        "ticket": 78,
+        "ticket": 103,
         "user": 7,
         "preset_option_request": 4
     },
@@ -1385,9 +1554,9 @@
         }
     ],
     "user_avatars": {
-        "admin": "\ud83d\udc3c",
-        "DibellaA": "\ud83d\udc19",
+        "DibellaA": "\ud83e\udd94",
         "FaillaV": "\ud83d\udc3b",
-        "testmod": "\ud83e\udd9d"
+        "testmod": "\ud83e\udd9d",
+        "admin": "\ud83d\udc3c"
     }
 }

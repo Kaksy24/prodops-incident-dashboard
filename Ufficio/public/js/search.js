@@ -395,7 +395,18 @@ function renderDescriptionHtml(raw) {
 }
 
 function defaultUiColors() {
-  return { labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } } };
+  return {
+    labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } },
+    layout: {
+      panel_height_min: 400,
+      panel_height_preferred: 52,
+      panel_height_max: 580,
+      legend_font_size: 90,
+      legend_col_min: 150,
+      chart_height_pct: 100,
+      select_min_width: 126
+    }
+  };
 }
 
 function normalizeHexColor(value) {
@@ -416,6 +427,15 @@ function normalizeUiColors(input) {
       });
     });
   });
+  if (input?.layout && typeof input.layout === 'object') {
+    const layoutDefaults = defaultUiColors().layout;
+    Object.keys(layoutDefaults).forEach((lk) => {
+      if (input.layout[lk] != null) {
+        const val = Math.round(Number(input.layout[lk]));
+        if (val > 0) out.layout[lk] = val;
+      }
+    });
+  }
   return out;
 }
 

@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.15" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.22" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.15" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.22" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.15" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.22" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -149,43 +149,96 @@
         </div>
         <section class="panel admin-appearance-panel">
           <div class="admin-appearance-layout">
-            <section class="admin-appearance-card">
-              <div class="admin-axis-settings-card">
-                <div class="admin-appearance-card-head">
-                  <div>
-                    <span class="admin-eyebrow">Scala grafici personali</span>
-                    <h4>Asse Y grafici personali</h4>
-                    <p class="muted">Imposta il massimo dell'asse verticale separatamente per i due grafici. Metti 0 per lasciare il calcolo automatico.</p>
+            <section class="admin-appearance-card admin-appearance-stack-card">
+              <div class="admin-appearance-card-head">
+                <div>
+                  <span class="admin-eyebrow">Colori e scala</span>
+                  <h4>Editor colori e asse Y</h4>
+                  <p class="muted">Raggruppa qui il tema attivo e il limite asse Y dei grafici personali, senza lasciare vuoti inutili.</p>
+                </div>
+              </div>
+              <div class="admin-appearance-stack">
+                <div class="admin-axis-settings-card">
+                  <div class="admin-subcard-head">
+                    <strong>Asse Y grafici personali</strong>
+                    <p class="muted">Metti 0 per lasciare il calcolo automatico.</p>
+                  </div>
+                  <label class="admin-axis-setting-row" for="adminPersonalAxisMaxMineInput">
+                    <span>Massimo ticket asse ordinate — Ticket personali</span>
+                    <input id="adminPersonalAxisMaxMineInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
+                  </label>
+                  <label class="admin-axis-setting-row" for="adminPersonalAxisMaxGroupInput">
+                    <span>Massimo ticket asse ordinate — Ticket gruppo</span>
+                    <input id="adminPersonalAxisMaxGroupInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
+                  </label>
+                </div>
+                <div class="admin-theme-settings-card">
+                  <div class="admin-subcard-head">
+                    <strong>Tema colori attivo</strong>
+                    <p class="muted">Passa da Light a Dark per modificare la palette corretta in tempo reale.</p>
+                  </div>
+                  <div class="color-editor-card admin-theme-card">
+                    <div>
+                      <strong>Modalità palette</strong>
+                      <p class="muted">La lista colori qui sotto si aggiorna sul tema selezionato.</p>
+                    </div>
+                    <div class="color-editor-controls">
+                      <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
+                        <span class="switch-track"><span class="switch-thumb">L</span></span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxMineInput">
-                  <span>Massimo ticket asse ordinate — Ticket personali</span>
-                  <input id="adminPersonalAxisMaxMineInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
-                </label>
-                <label class="admin-axis-setting-row" for="adminPersonalAxisMaxGroupInput">
-                  <span>Massimo ticket asse ordinate — Ticket gruppo</span>
-                  <input id="adminPersonalAxisMaxGroupInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
-                </label>
               </div>
             </section>
 
-            <section class="admin-appearance-card">
+            <section class="admin-appearance-card admin-layout-preview-card">
               <div class="admin-appearance-card-head">
                 <div>
-                  <span class="admin-eyebrow">Colori</span>
-                  <h4>Editor colori</h4>
-                  <p class="muted">Scegli il tema e modifica direttamente i colori di categorie, team e severity.</p>
+                  <span class="admin-eyebrow">Dimensioni</span>
+                  <h4>Layout grafici</h4>
+                  <p class="muted">Ridimensiona pannelli, legende, grafici e select della dashboard. L'anteprima sotto si aggiorna subito.</p>
                 </div>
               </div>
-              <div class="color-editor-card admin-theme-card">
-                <div>
-                  <strong>Tema colori attivo</strong>
-                  <p class="muted">Passa da Light a Dark per modificare la palette giusta.</p>
+              <div class="admin-layout-preview-grid">
+                <div class="admin-layout-settings-card">
+                  <div class="admin-layout-grid">
+                    <label class="admin-layout-row">
+                      <span>Altezza min pannello <small>(px)</small></span>
+                      <input id="layoutPanelHeightMin" class="admin-axis-setting-input" type="number" min="200" max="800" step="10" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Altezza preferita pannello <small>(vh)</small></span>
+                      <input id="layoutPanelHeightPreferred" class="admin-axis-setting-input" type="number" min="20" max="90" step="1" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Altezza max pannello <small>(px)</small></span>
+                      <input id="layoutPanelHeightMax" class="admin-axis-setting-input" type="number" min="300" max="1200" step="10" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Font legenda <small>(%)</small></span>
+                      <input id="layoutLegendFontSize" class="admin-axis-setting-input" type="number" min="50" max="150" step="5" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Colonna legenda min <small>(px)</small></span>
+                      <input id="layoutLegendColMin" class="admin-axis-setting-input" type="number" min="80" max="300" step="10" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Altezza canvas grafico <small>(%)</small></span>
+                      <input id="layoutChartHeightPct" class="admin-axis-setting-input" type="number" min="50" max="100" step="5" />
+                    </label>
+                    <label class="admin-layout-row">
+                      <span>Larghezza min select <small>(px)</small></span>
+                      <input id="layoutSelectMinWidth" class="admin-axis-setting-input" type="number" min="80" max="300" step="10" />
+                    </label>
+                  </div>
                 </div>
-                <div class="color-editor-controls">
-                  <button id="uiColorThemeToggleBtn" class="theme-switch" type="button" aria-label="Tema colori" aria-pressed="false">
-                    <span class="switch-track"><span class="switch-thumb">L</span></span>
-                  </button>
+                <div class="admin-layout-live-card">
+                  <div class="admin-subcard-head">
+                    <strong>Grafico esempio in tempo reale</strong>
+                    <p class="muted">Mostra un solo pannello esempio con le stesse proporzioni della dashboard, così capisci subito l'effetto del layout.</p>
+                  </div>
+                  <div id="adminDashboardLayoutPreview" class="admin-dashboard-preview" aria-live="polite"></div>
                 </div>
               </div>
             </section>
@@ -198,7 +251,7 @@
               <p class="muted">Ogni riga mostra il colore attuale e il selettore diretto per modificarlo.</p>
             </div>
           </div>
-          <div id="adminChartsPreview" class="charts-grid admin-charts-grid"></div>
+          <div id="adminChartsPreview" class="admin-color-panels-grid"></div>
         </section>
       </section>
     </main>
@@ -315,8 +368,8 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.15"></script>
-  <script src="./public/js/admin.js?v=1.13.15"></script>
-  <div class="app-version-badge">v1.13.15</div>
+  <script src="./public/js/toast.js?v=1.13.22"></script>
+  <script src="./public/js/admin.js?v=1.13.22"></script>
+  <div class="app-version-badge">v1.13.22</div>
 </body>
 </html>

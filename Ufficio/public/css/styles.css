@@ -956,7 +956,7 @@ body.theme-dark .switch-thumb {
      intestazione/controlli; overflow hidden evita sbordi.
      container-type inline-size mantiene le query dei donut basate sulla
      larghezza, sempre definita. */
-  height: clamp(400px, 52vh, 580px);
+  height: clamp(var(--layout-panel-h-min, 400px), var(--layout-panel-h-pref, 52vh), var(--layout-panel-h-max, 580px));
   min-height: 0;
   /* overflow visible così i popover interni (calendario "Periodo
      personalizzato", menu export) non vengono tagliati; l'altezza resta
@@ -972,10 +972,20 @@ body.theme-dark .switch-thumb {
 .panel-grid > .panel.personal-chart-panel > .personal-chart {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
 }
 /* Grafici a colonne: la colonna interna si estende fino in fondo */
-.charts-grid > .panel > .chart.vertical-chart { display: flex; flex-direction: column; }
-.charts-grid > .panel > .chart.vertical-chart > .chart-inner { flex: 1 1 auto; min-height: 0; }
+.charts-grid > .panel > .chart.vertical-chart {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: var(--layout-chart-h-pct, 100%);
+}
+.charts-grid > .panel > .chart.vertical-chart > .chart-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
 /* Torta/ciambella: il layout riempie l'altezza (cerchio ancorato in basso) */
 .charts-grid > .panel > .chart > .chart-pie-layout { height: 100%; }
 .chart-span-3 { grid-column: span 3; min-width: 0; }
@@ -1544,6 +1554,13 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
 }
+.admin-color-panels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+  align-items: start;
+}
 .admin-charts-grid > .panel {
   grid-column: auto;
   min-width: 0;
@@ -1913,9 +1930,25 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
   font-weight: 600; white-space: nowrap;
 }
 .preset-chip[data-token-empty="1"] { background: rgba(180,83,9,.14); color: #b45309; font-weight: 500; }
+/* lampeggio quando si tenta di cancellare un chip: il chip e' display:inline,
+   quindi niente transform (non si applica agli inline) — solo colore. */
+@keyframes preset-chip-blocked-flash {
+  0%, 100% { background: rgba(220,38,38,.32); color: #b91c1c; }
+  50%      { background: rgba(220,38,38,.10); color: #b91c1c; }
+}
+.preset-chip.preset-chip-blocked { animation: preset-chip-blocked-flash .4s ease 2; }
 body.theme-dark .desc-editor { background: var(--input-bg); }
 body.theme-dark .preset-chip { background: rgba(31,182,255,.16); }
 body.theme-dark .preset-chip[data-token-empty="1"] { background: rgba(251,191,36,.16); color: #fbbf24; }
+@keyframes preset-chip-blocked-flash-dark {
+  0%, 100% { background: rgba(248,113,113,.38); color: #fca5a5; }
+  50%      { background: rgba(248,113,113,.12); color: #fca5a5; }
+}
+body.theme-dark .preset-chip.preset-chip-blocked { animation: preset-chip-blocked-flash-dark .4s ease 2; }
+@media (prefers-reduced-motion: reduce) {
+  .preset-chip.preset-chip-blocked,
+  body.theme-dark .preset-chip.preset-chip-blocked { animation-iteration-count: 1; }
+}
 .ticket-row-footer {
   position: relative;
   z-index: 1;
@@ -2300,7 +2333,7 @@ body.theme-dark .preset-option-card {
 .chart-type-select,
 .chart-range-select {
   width: auto;
-  min-width: 126px;
+  min-width: var(--layout-select-min-w, 126px);
   margin: 0;
   min-height: 40px;
   padding: 8px 12px;
@@ -2386,9 +2419,13 @@ body.theme-dark .chart-export-option {
 }
 .admin-appearance-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, .9fr);
+  grid-template-columns: minmax(320px, .78fr) minmax(420px, 1.22fr);
   gap: 16px;
   align-items: start;
+}
+.admin-appearance-stack {
+  display: grid;
+  gap: 12px;
 }
 .admin-appearance-card {
   display: grid;
@@ -2443,6 +2480,23 @@ body.theme-dark .chart-export-option {
   border-radius: 10px;
   background: var(--panel);
 }
+.admin-theme-settings-card,
+.admin-layout-settings-card,
+.admin-layout-live-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.admin-subcard-head {
+  display: grid;
+  gap: 4px;
+}
+.admin-subcard-head p {
+  margin: 0;
+}
 .admin-axis-setting-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px;
@@ -2466,19 +2520,164 @@ body.theme-dark .chart-export-option {
 .admin-theme-card {
   margin: 0;
 }
+.admin-layout-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+  gap: 14px;
+  align-items: start;
+}
+.admin-layout-grid {
+  display: grid;
+  gap: 10px;
+}
+.admin-dashboard-preview-frame {
+  border: 1px solid rgba(48, 92, 142, .16);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,250,254,.96));
+  padding: 12px;
+  overflow: hidden;
+}
+.admin-dashboard-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.admin-dashboard-preview-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.4;
+}
+.admin-dashboard-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(48, 92, 142, .16);
+  background: rgba(12,95,140,.06);
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.admin-dashboard-preview-grid {
+  display: block;
+  margin: 0;
+  min-width: 0;
+}
+.admin-dashboard-preview-card,
+.admin-dashboard-preview-grid > .panel {
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.admin-layout-preview-panel .panel-heading-row {
+  margin-bottom: 8px;
+}
+.admin-layout-preview-selects,
+.admin-layout-preview-chart-host,
+.admin-layout-preview-body,
+.admin-layout-preview-panel .chart-pie-legend {
+  position: relative;
+}
+.admin-layout-preview-body {
+  min-height: 0;
+  padding-bottom: 34px;
+}
+.admin-layout-preview-chart-host {
+  min-height: 0;
+  padding-bottom: 26px;
+}
+.admin-layout-preview-panel .chart-pie-legend {
+  padding-bottom: 54px;
+}
+.admin-layout-resize-handle {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 88px;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgba(12,95,140,.24);
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+  color: var(--brand);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
+  cursor: grab;
+  user-select: none;
+}
+.admin-layout-resize-handle:active {
+  cursor: grabbing;
+}
+.admin-layout-resize-handle strong {
+  display: block;
+  font-size: .68rem;
+  line-height: 1;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.admin-layout-resize-handle span {
+  display: block;
+  font-size: .64rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.admin-layout-resize-handle-select_min_width {
+  top: 50%;
+  right: -6px;
+  transform: translate(100%, -50%);
+}
+.admin-layout-resize-handle-chart_height_pct {
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+.admin-layout-resize-handle-panel_height_preferred {
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+.admin-layout-resize-handle-legend_font_size {
+  right: 0;
+  bottom: 0;
+  transform: translate(0, 30%);
+}
+.admin-layout-resize-handle-legend_col_min {
+  left: 0;
+  bottom: 0;
+  transform: translate(0, 30%);
+}
+.admin-layout-resize-handle-secondary {
+  border-style: dashed;
+  color: color-mix(in srgb, var(--brand) 78%, var(--text));
+}
 .admin-color-list-card {
   min-height: 0;
   padding: 14px;
-}
-.admin-color-list {
-  display: grid;
-  gap: 10px;
+  height: auto;
+  overflow: hidden;
+  container-type: normal;
 }
 .admin-color-list-card .panel-heading-row {
   margin-bottom: 12px;
 }
 .admin-color-list-card .panel-heading-row h3 {
   font-size: 1rem;
+}
+.admin-color-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(56vh, 520px);
+  padding-right: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .admin-color-row {
   display: grid;
@@ -2489,11 +2688,12 @@ body.theme-dark .chart-export-option {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel);
+  min-width: 0;
 }
 .admin-color-row-label {
   min-width: 0;
   font-weight: 700;
-  font-size: .95rem;
+  font-size: .9rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -2502,6 +2702,9 @@ body.theme-dark .chart-export-option {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
 }
 .admin-color-row-swatch {
   width: 24px;
@@ -2511,6 +2714,17 @@ body.theme-dark .chart-export-option {
   box-shadow: inset 0 0 0 2px rgba(255,255,255,.12);
   flex-shrink: 0;
 }
+.admin-color-hex {
+  display: inline-block;
+  min-width: 74px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(12,95,140,.08);
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
 .admin-color-row input[type="color"] {
   width: 64px;
   height: 38px;
@@ -2518,6 +2732,8 @@ body.theme-dark .chart-export-option {
   margin: 0;
   border-radius: 8px;
   flex-shrink: 0;
+  cursor: pointer;
+  pointer-events: auto;
 }
 .color-editor-controls {
   display: flex;
@@ -2910,8 +3126,23 @@ button:focus-visible {
 }
 button:disabled {
   opacity: .62;
-  cursor: wait;
+  cursor: not-allowed;
 }
+/* tooltip "cosa manca" sopra il bottone Crea Ticket disabilitato */
+.submit-missing-tip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; font-size: .78rem; line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); white-space: nowrap; z-index: 100;
+  pointer-events: none;
+}
+.submit-missing-tip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--border);
+}
+.submit-missing-tip strong { display: block; margin-bottom: 4px; font-size: .8rem; }
+.submit-missing-tip ul { margin: 0; padding-left: 16px; list-style: disc; }
+.submit-missing-tip li { margin: 1px 0; }
 textarea { resize: vertical; min-height: 160px; max-height: 420px; }
 button { border: 0; padding: 9px 12px; font-weight: 600; }
 .chart {
@@ -2920,7 +3151,15 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   min-width: 0;
 }
 .vertical-chart { min-height: 232px; padding-top: 6px; }
-.chart-inner { display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 8px; align-items: stretch; min-height: 232px; }
+.chart-inner {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: stretch;
+  min-height: 232px;
+  min-width: 0;
+  overflow: hidden;
+}
 .chart-y-axis {
   display: flex;
   flex-direction: column;
@@ -2931,6 +3170,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   /* Stessi offset dell'area di plot delle barre (24px sopra, 38px sotto) cosi le
      etichette dell'asse Y combaciano con le righe della griglia. */
   padding: 24px 0 38px;
+  min-height: 0;
 }
 .chart-bars-wrap {
   position: relative;
@@ -2943,10 +3183,11 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
      arrivano al 100% dell'area di plot). */
   padding: 24px 2px 38px;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   /* Necessario perché overflow-x:auto scrolli davvero invece di allargare la
      colonna 1fr (che altrimenti si espande fino a far uscire le barre dal panel). */
   min-width: 0;
+  max-width: 100%;
 }
 .chart-bars-wrap::before {
   content: "";
@@ -3028,10 +3269,10 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   gap: 10px;
   width: 100%;
   overflow: hidden;
-  /* Legenda ancorata in alto (order -1), ciambella ancorata in basso (order 0):
-     lo spazio libero resta nel mezzo. Il numero di voci è calcolato in JS così
-     la ciambella non viene mai coperta né tagliata dal basso. */
-  justify-content: space-between;
+  /* Legenda e ciambella restano raccolte in alto: evitiamo il grande vuoto
+     centrale che si vedeva con `space-between` nei pannelli con poche voci. */
+  justify-content: flex-start;
+  align-content: start;
   /* container-type size (l'altezza del pannello è fissa) così il donut può
      essere dimensionato anche in base all'altezza disponibile (cqh). */
   container-type: size;
@@ -3075,7 +3316,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 }
 .chart-pie-legend {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--layout-legend-col-min, 150px), 1fr));
   gap: 8px 14px;
   order: -1;
 }
@@ -3083,21 +3324,28 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   order: -1;
   align-self: stretch;
-  gap: 5px 14px;
+  gap: 5px 12px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   /* La legenda ha priorità: non collassa mai (prima si riduce il donut). */
   flex: 0 0 auto;
 }
+.chart-pie-layout.donut.donut-legend-fixed .chart-pie-legend {
+  min-height: 74px;
+}
+.chart-pie-layout.donut.donut-legend-sparse .chart-pie-legend {
+  gap: 6px 18px;
+  justify-content: center;
+}
 .chart-pie-layout.donut .chart-pie-visual {
   order: 0;
   align-self: center;
-  margin: 2px auto 0;
+  margin: 8px auto 0;
   /* Limitato SIA dalla larghezza SIA dall'altezza disponibile del corpo grafico
      (cqh): non sfora mai il pannello ad altezza fissa né schiaccia la legenda. */
-  width: min(100%, 180px, 60cqh);
-  max-width: 180px;
+  width: min(100%, 170px, 54cqh);
+  max-width: 170px;
   min-width: 0;
   flex: 0 0 auto;
 }
@@ -3106,7 +3354,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   grid-template-columns: 14px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  font-size: .9rem;
+  font-size: var(--layout-legend-font, .9rem);
 }
 .chart-pie-layout.donut .chart-pie-legend-row {
   grid-template-columns: var(--donut-swatch-size) minmax(0, 1fr) auto;
@@ -3116,6 +3364,11 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   padding: 1px 0;
   font-size: var(--donut-legend-font-size);
   align-items: center;
+}
+.chart-pie-layout.donut.donut-legend-sparse .chart-pie-legend-row {
+  grid-template-columns: var(--donut-swatch-size) auto auto;
+  justify-content: start;
+  gap: 8px;
 }
 .chart-pie-layout.donut .chart-pie-swatch {
   width: var(--donut-swatch-size);
@@ -3127,10 +3380,19 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 .chart-pie-layout.donut .chart-pie-label {
   grid-area: auto;
   line-height: 1.1;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  max-height: 2.25em;
+}
+.chart-pie-layout.donut.donut-legend-sparse .chart-pie-label {
+  white-space: nowrap;
+  display: block;
+  max-height: none;
 }
 .chart-pie-layout.donut .chart-pie-value,
 .chart-pie-layout.donut .chart-pie-percent {
@@ -3138,6 +3400,10 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   font-size: var(--donut-legend-value-size);
   white-space: nowrap;
   justify-self: end;
+}
+.chart-pie-layout.donut.donut-legend-sparse .chart-pie-value,
+.chart-pie-layout.donut.donut-legend-sparse .chart-pie-percent {
+  justify-self: start;
 }
 .chart-pie-layout.donut .chart-pie-center strong {
   font-size: var(--donut-center-strong-size);
@@ -3174,7 +3440,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   }
   .chart-pie-layout.donut .chart-pie-legend-row {
     min-height: 20px;
-    font-size: .78rem;
+    font-size: .72rem;
   }
 }
 @media (min-width: 1200px) {
@@ -3208,6 +3474,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   color: var(--muted);
   font-style: italic;
   padding: 2px 0;
+  cursor: help;
 }
 .chart-pie-visual { cursor: pointer; }
 /* Tooltip degli spicchi di torta/ciambella */
@@ -3228,6 +3495,19 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   color: var(--text);
 }
 .chart-pie-tooltip.visible { display: flex; }
+.chart-pie-tooltip.chart-pie-tooltip-list {
+  display: grid;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 220px;
+  max-width: 360px;
+}
+.chart-pie-tooltip-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
 .chart-pie-tooltip-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 .chart-pie-tooltip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chart-pie-tooltip-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -3718,7 +3998,13 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
   .admin-appearance-layout {
     grid-template-columns: 1fr;
   }
+  .admin-layout-preview-grid {
+    grid-template-columns: 1fr;
+  }
   .admin-charts-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-color-panels-grid {
     grid-template-columns: 1fr;
   }
   .admin-chart-title-row {
@@ -3729,6 +4015,9 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
   }
   .admin-color-row-picker {
     justify-content: flex-start;
+  }
+  .admin-dashboard-preview-grid {
+    min-width: 0;
   }
 }
 
@@ -3754,12 +4043,22 @@ body.theme-dark .range-calendar-btn { background: #2a3f5b; color: #e6eef9; }
   .charts-grid > .panel.chart-span-9 { grid-column: span 3; }
   .charts-grid > .panel.chart-span-12 { grid-column: span 4; }
 }
-/* Risoluzioni orizzontalmente strette: la griglia a 4 colonne rende i grafici
-   "a quarto/terzo" troppo compressi (< ~260px). Sotto i 1200px passiamo a 2
-   colonne e collassiamo tutti gli span cosi nessun grafico scende sotto meta
-   riga: al massimo 2 grafici per riga. (Deve stare DOPO il blocco 901-1400
-   per vincere nell'intervallo sovrapposto.) */
-@media (min-width: 901px) and (max-width: 1200px) {
+/* Sotto ~1180px viewport la colonna contenuti rimane troppo stretta a causa
+   della sidebar: qui imponiamo una soglia minima effettiva per i panel e
+   forziamo 1 grafico per riga. Così "Ticket per FAB" non resta più schiacciato
+   tra due card laterali. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  .charts-grid > .panel,
+  .charts-grid > .add-chart-card {
+    grid-column: span 1;
+  }
+}
+/* Fascia intermedia: teniamo al massimo 2 grafici per riga, così ogni panel
+   conserva una larghezza utile prima di tornare al layout a 4 colonne. */
+@media (min-width: 1181px) and (max-width: 1400px) {
   .charts-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4518,6 +4817,7 @@ body.theme-dark .preset-multi-option:has(input:checked) {
 .sd-option.sd-selected { background: var(--brand); color: #fff; }
 .sd-empty { padding: 10px 12px; color: var(--muted); font-size: .85rem; list-style: none; text-align: center; }
 .sd-propose { color: var(--brand); font-weight: 600; }
+.sd-custom-insert { color: var(--brand); font-weight: 600; opacity: .85; }
 .sd-separator { height: 0; margin: 4px 12px; border-top: 1px solid var(--border); list-style: none; pointer-events: none; }
 
 #presetInlineComposer .sd-trigger,

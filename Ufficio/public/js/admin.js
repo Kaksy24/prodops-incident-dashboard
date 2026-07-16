@@ -38,11 +38,21 @@ const adminColorEditorMeta = document.getElementById('adminColorEditorMeta');
 const adminColorEditorSwatch = document.getElementById('adminColorEditorSwatch');
 const adminColorEditorInput = document.getElementById('adminColorEditorInput');
 const adminChartsPreview = document.getElementById('adminChartsPreview');
+const adminDashboardLayoutPreview = document.getElementById('adminDashboardLayoutPreview');
 const adminChartTitlesEditor = document.getElementById('adminChartTitlesEditor');
 const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 const adminPersonalAxisMaxMineInput = document.getElementById('adminPersonalAxisMaxMineInput');
 const adminPersonalAxisMaxGroupInput = document.getElementById('adminPersonalAxisMaxGroupInput');
+const layoutInputs = {
+  panel_height_min: document.getElementById('layoutPanelHeightMin'),
+  panel_height_preferred: document.getElementById('layoutPanelHeightPreferred'),
+  panel_height_max: document.getElementById('layoutPanelHeightMax'),
+  legend_font_size: document.getElementById('layoutLegendFontSize'),
+  legend_col_min: document.getElementById('layoutLegendColMin'),
+  chart_height_pct: document.getElementById('layoutChartHeightPct'),
+  select_min_width: document.getElementById('layoutSelectMinWidth')
+};
 const currentAdminBadge = document.getElementById('currentAdminBadge');
 const catalogSummary = document.getElementById('catalogSummary');
 const adminTabButtons = [...document.querySelectorAll('[data-admin-tab]')];
@@ -102,6 +112,12 @@ const adminChartDefinitions = [
   { key: 'incidentYear', label: 'Ticket per Incident', preview: true, helper: 'Grafico riepilogo per incident.' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
+const adminLayoutPreviewFallbackStats = {
+  fabYear: [{ label: 'M5' }, { label: 'L1' }, { label: 'WSIC' }, { label: 'NRK' }],
+  catYear: [{ label: 'HW' }, { label: 'SW' }, { label: 'NET' }, { label: 'APP' }],
+  teamYear: [{ label: 'Team A' }, { label: 'Team B' }, { label: 'Team C' }, { label: 'Team D' }],
+  incidentYear: [{ label: 'Robot' }, { label: 'Sealiner' }, { label: 'Vision' }, { label: 'Fabline' }]
+};
 
 function setAdminTab(tabName) {
   const nextTab = adminTabPanels.some((panel) => panel.dataset.adminPanel === tabName) ? tabName : 'catalog';
@@ -193,6 +209,15 @@ function defaultUiColors() {
       personal_axis_max: 0,
       personal_axis_max_mine: 0,
       personal_axis_max_group: 0
+    },
+    layout: {
+      panel_height_min: 400,
+      panel_height_preferred: 52,
+      panel_height_max: 580,
+      legend_font_size: 90,
+      legend_col_min: 150,
+      chart_height_pct: 100,
+      select_min_width: 126
     }
   };
 }
@@ -209,7 +234,8 @@ function normalizeUiColors(input) {
     bars: {},
     labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} }, teams: { light: {}, dark: {} }, severities: { light: {}, dark: {} }, users: { light: {}, dark: {} } },
     titles: { ...defaults.titles },
-    settings: { ...defaults.settings }
+    settings: { ...defaults.settings },
+    layout: { ...defaults.layout }
   };
   Object.keys(defaults.charts).forEach((key) => {
     out.charts[key] = { ...defaults.charts[key] };
@@ -260,6 +286,14 @@ function normalizeUiColors(input) {
     ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
   out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
     ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
+  if (input?.layout && typeof input.layout === 'object') {
+    Object.keys(defaults.layout).forEach((lk) => {
+      if (input.layout[lk] != null) {
+        const val = Math.round(Number(input.layout[lk]));
+        if (val > 0) out.layout[lk] = val;
+      }
+    });
+  }
   return out;
 }
 
@@ -466,6 +500,179 @@ function applyAdminColorTheme(theme) {
   renderColorSettings();
 }
 
+function getAdminLayoutDraft() {
+  const defaults = defaultUiColors().layout;
+  const normalized = normalizeUiColors(adminUiColors || {}).layout;
+  const out = {
+    panel_height_min: normalized.panel_height_min || defaults.panel_height_min,
+    panel_height_preferred: normalized.panel_height_preferred || defaults.panel_height_preferred,
+    panel_height_max: normalized.panel_height_max || defaults.panel_height_max,
+    legend_font_size: normalized.legend_font_size || defaults.legend_font_size,
+    legend_col_min: normalized.legend_col_min || defaults.legend_col_min,
+    chart_height_pct: normalized.chart_height_pct || defaults.chart_height_pct,
+    select_min_width: normalized.select_min_width || defaults.select_min_width
+  };
+  Object.keys(layoutInputs).forEach((key) => {
+    const input = layoutInputs[key];
+    if (!input) return;
+    const val = Math.round(Number(input.value || 0));
+    if (Number.isFinite(val) && val > 0) out[key] = val;
+  });
+  return out;
+}
+
+function applyAdminLayoutPreviewVars(target, layout) {
+  if (!target || !layout) return;
+  target.style.setProperty('--layout-panel-h-min', layout.panel_height_min + 'px');
+  target.style.setProperty('--layout-panel-h-pref', layout.panel_height_preferred + 'vh');
+  target.style.setProperty('--layout-panel-h-max', layout.panel_height_max + 'px');
+  target.style.setProperty('--layout-legend-font', (layout.legend_font_size / 100) + 'rem');
+  target.style.setProperty('--layout-legend-col-min', layout.legend_col_min + 'px');
+  target.style.setProperty('--layout-chart-h-pct', layout.chart_height_pct + '%');
+  target.style.setProperty('--layout-select-min-w', layout.select_min_width + 'px');
+}
+
+function getAdminLayoutPreviewStats(chartKey) {
+  const liveStats = Array.isArray(adminChartStats && adminChartStats[chartKey]) ? adminChartStats[chartKey] : [];
+  if (liveStats.length) return liveStats.slice(0, 4);
+  return adminLayoutPreviewFallbackStats[chartKey] || [];
+}
+
+function clampLayoutInputValue(key, value) {
+  const input = layoutInputs[key];
+  if (!input) return Math.round(Number(value || 0)) || 0;
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 99999);
+  const step = Number(input.step || 1) || 1;
+  let next = Number(value || 0);
+  if (!Number.isFinite(next)) next = min;
+  next = Math.max(min, Math.min(max, next));
+  next = Math.round(next / step) * step;
+  next = Math.max(min, Math.min(max, next));
+  return next;
+}
+
+function setAdminLayoutInputValue(key, value) {
+  const input = layoutInputs[key];
+  if (!input) return;
+  input.value = String(clampLayoutInputValue(key, value));
+}
+
+function startAdminLayoutDrag(event, config) {
+  if (!config || !config.key) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startValue = Number(layoutInputs[config.key] && layoutInputs[config.key].value || 0);
+  const stepPx = config.stepPx || 6;
+  const move = function(moveEvent) {
+    const dx = moveEvent.clientX - startX;
+    const dy = moveEvent.clientY - startY;
+    const primaryDelta = config.axis === 'x' ? dx : -dy;
+    const nextValue = startValue + Math.round(primaryDelta / stepPx) * (config.valueStep || 1);
+    if (config.key === 'panel_height_preferred') {
+      const clampedPref = clampLayoutInputValue(config.key, nextValue);
+      setAdminLayoutInputValue('panel_height_preferred', clampedPref);
+      setAdminLayoutInputValue('panel_height_min', clampLayoutInputValue('panel_height_min', clampedPref * 7.5));
+      setAdminLayoutInputValue('panel_height_max', clampLayoutInputValue('panel_height_max', clampedPref * 11));
+    } else {
+      setAdminLayoutInputValue(config.key, nextValue);
+    }
+    renderAdminDashboardLayoutPreview();
+  };
+  const up = function() {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+function buildAdminPreviewResizeHandle(label, hint, key, axis, valueStep, stepPx) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'admin-layout-resize-handle admin-layout-resize-handle-' + key;
+  button.innerHTML = `<strong>${escapeHtml(label)}</strong><span>${escapeHtml(hint)}</span>`;
+  button.addEventListener('pointerdown', function(event) {
+    startAdminLayoutDrag(event, { key: key, axis: axis, valueStep: valueStep, stepPx: stepPx });
+  });
+  return button;
+}
+
+function attachAdminLayoutPreviewInteractions(card) {
+  if (!card) return;
+  const controls = card.querySelector('.admin-layout-preview-selects');
+  const chartHost = card.querySelector('.admin-layout-preview-chart-host');
+  const legend = card.querySelector('.chart-pie-legend');
+  const panelBody = card.querySelector('.admin-layout-preview-body');
+
+  if (controls) {
+    controls.appendChild(buildAdminPreviewResizeHandle('Select', 'trascina orizzontale', 'select_min_width', 'x', 10, 10));
+  }
+  if (chartHost) {
+    chartHost.appendChild(buildAdminPreviewResizeHandle('Canvas', 'trascina verticale', 'chart_height_pct', 'y', 5, 10));
+  }
+  if (legend) {
+    legend.appendChild(buildAdminPreviewResizeHandle('Legenda', 'su/giu font, dx/sx larghezza', 'legend_font_size', 'y', 5, 12));
+    const legendWidthHandle = buildAdminPreviewResizeHandle('Colonna', 'trascina orizzontale', 'legend_col_min', 'x', 10, 10);
+    legendWidthHandle.classList.add('admin-layout-resize-handle-secondary');
+    legend.appendChild(legendWidthHandle);
+  }
+  if (panelBody) {
+    panelBody.appendChild(buildAdminPreviewResizeHandle('Pannello', 'trascina verticale', 'panel_height_preferred', 'y', 1, 8));
+  }
+}
+
+function renderAdminDashboardLayoutPreview() {
+  if (!adminDashboardLayoutPreview) return;
+  ensureAdminUiColors();
+  const layout = getAdminLayoutDraft();
+  applyAdminLayoutPreviewVars(adminDashboardLayoutPreview, layout);
+  adminDashboardLayoutPreview.innerHTML = '';
+
+  const frame = document.createElement('div');
+  frame.className = 'admin-dashboard-preview-frame';
+  frame.innerHTML = `
+    <div class="admin-dashboard-preview-meta">
+      <span class="admin-dashboard-preview-chip">Pannelli: clamp(${layout.panel_height_min}px, ${layout.panel_height_preferred}vh, ${layout.panel_height_max}px)</span>
+      <span class="admin-dashboard-preview-chip">Legenda: ${layout.legend_font_size}% / min ${layout.legend_col_min}px</span>
+      <span class="admin-dashboard-preview-chip">Select min: ${layout.select_min_width}px</span>
+      <span class="admin-dashboard-preview-chip">Canvas: ${layout.chart_height_pct}%</span>
+    </div>
+    <p class="admin-dashboard-preview-hint">Trascina le maniglie dentro il grafico esempio per cambiare direttamente pannello, select, legenda e canvas.</p>
+  `;
+
+  const grid = document.createElement('div');
+  grid.className = 'admin-dashboard-preview-grid';
+  var card = document.createElement('section');
+  card.className = 'panel admin-dashboard-preview-card admin-layout-preview-panel';
+  card.innerHTML = `
+    <div class="panel-heading-row">
+      <div>
+        <h3>${escapeHtml(getAdminChartLabel('teamYear'))}</h3>
+        <p class="muted">Anteprima layout: usa le maniglie sul pannello invece dei campi numerici.</p>
+      </div>
+    </div>
+    <div class="chart-controls-row admin-layout-preview-selects">
+      <select class="chart-type-select" disabled aria-label="Tipo grafico esempio">
+        <option selected>Ciambella</option>
+      </select>
+      <select class="chart-range-select" disabled aria-label="Intervallo grafico esempio">
+        <option selected>Anno</option>
+      </select>
+    </div>
+    <div class="admin-layout-preview-body">
+      <div class="chart admin-chart admin-layout-preview-chart-host"></div>
+    </div>
+  `;
+  renderAdminPieOrDonutChart(card.querySelector('.admin-layout-preview-chart-host'), 'teamYear', getAdminLayoutPreviewStats('teamYear'), true);
+  attachAdminLayoutPreviewInteractions(card);
+  grid.appendChild(card);
+
+  frame.appendChild(grid);
+  adminDashboardLayoutPreview.appendChild(frame);
+}
+
 function buildAdminPreviewStats(stats) {
   const rows = Array.isArray(stats) ? stats : [];
   return rows
@@ -660,7 +867,7 @@ function renderAdminChartTitlesEditor() {
   adminChartTitlesEditor.querySelectorAll('[data-chart-title]').forEach((input) => {
     input.addEventListener('input', () => {
       setAdminChartLabel(input.dataset.chartTitle, input.value);
-      renderColorSettings();
+      renderAdminDashboardLayoutPreview();
     });
   });
 }
@@ -712,14 +919,18 @@ function renderAdminColorLists() {
           <span class="admin-color-row-label">${escapeHtml(label)}</span>
           <span class="admin-color-row-picker">
             <span class="admin-color-row-swatch" style="background:${color}"></span>
+            <code class="admin-color-hex">${color}</code>
             <input type="color" value="${color}" data-color-group="${config.group}" data-color-label="${escapeHtml(label)}" aria-label="Colore ${escapeHtml(label)}" />
           </span>
         `;
         const input = row.querySelector('input[type="color"]');
         const swatch = row.querySelector('.admin-color-row-swatch');
+        const hex = row.querySelector('.admin-color-hex');
         input.addEventListener('input', () => {
           setDirectGroupColor(config.group, label, input.value);
           swatch.style.background = input.value;
+          if (hex) hex.textContent = String(input.value || '').toUpperCase();
+          renderAdminDashboardLayoutPreview();
         });
         list.appendChild(row);
       });
@@ -733,7 +944,12 @@ function renderColorSettings() {
   ensureAdminUiColors();
   if (adminPersonalAxisMaxMineInput) adminPersonalAxisMaxMineInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_mine || 0) || 0);
   if (adminPersonalAxisMaxGroupInput) adminPersonalAxisMaxGroupInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_group || 0) || 0);
+  const layoutDefaults = defaultUiColors().layout;
+  Object.keys(layoutInputs).forEach((key) => {
+    if (layoutInputs[key]) layoutInputs[key].value = String(adminUiColors?.layout?.[key] || layoutDefaults[key]);
+  });
   renderAdminChartTitlesEditor();
+  renderAdminDashboardLayoutPreview();
   renderAdminColorLists();
 }
 
@@ -783,6 +999,13 @@ async function saveUiColors() {
   if (adminPersonalAxisMaxGroupInput) {
     adminUiColors.settings.personal_axis_max_group = cleanAxisInput(adminPersonalAxisMaxGroupInput);
   }
+  if (!adminUiColors.layout) adminUiColors.layout = {};
+  Object.keys(layoutInputs).forEach((key) => {
+    if (layoutInputs[key]) {
+      const val = Math.round(Number(layoutInputs[key].value || 0));
+      if (val > 0) adminUiColors.layout[key] = val;
+    }
+  });
   adminUiColors = normalizeUiColors(adminUiColors);
   await fetchJson('/api/ui-colors', {
     method: 'PUT',
@@ -2460,6 +2683,18 @@ addPresetTimestampBtn?.addEventListener('click', async () => {
   const label = await showPrompt("Assegna un nome al campo orario da inserire nel ticket precompilato.", { title: 'Campo orario', placeholder: 'Es. Orario evento', confirmText: 'Inserisci' });
   if (!label || !label.trim()) return;
   insertAtCursor(adminIncidentPresetInput, `[[timestamp:${label.trim()}]]`);
+});
+
+Object.keys(layoutInputs).forEach((key) => {
+  const input = layoutInputs[key];
+  if (!input) return;
+  input.addEventListener('input', renderAdminDashboardLayoutPreview);
+  input.addEventListener('change', renderAdminDashboardLayoutPreview);
+});
+
+[adminPersonalAxisMaxMineInput, adminPersonalAxisMaxGroupInput].forEach((input) => {
+  input?.addEventListener('input', renderAdminDashboardLayoutPreview);
+  input?.addEventListener('change', renderAdminDashboardLayoutPreview);
 });
 
 saveColorSettingsBtn?.addEventListener('click', async () => {
