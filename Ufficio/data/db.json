@@ -262,6 +262,90 @@
             "presets": [
                 "[[[timestamp:Orario inizio intervento]]]: Contattato reperibile\n\n[[[timestamp:Orario arrivo reperibile]]]: Arrivo Reperibile in sede\n\n[[[timestamp:Orario info]]]: Veniamo informati dal reperibile che la problematica riguarda ...\n\n[[[timestamp:Orario fine intervento]]]: Fine intervento"
             ]
+        },
+        {
+            "id": 20,
+            "category_id": 1,
+            "name": "prova",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 4,
+            "presets": []
+        },
+        {
+            "id": 21,
+            "category_id": 1,
+            "name": "prova 2",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 5,
+            "presets": []
+        },
+        {
+            "id": 22,
+            "category_id": 1,
+            "name": "prova 3",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 6,
+            "presets": []
+        },
+        {
+            "id": 23,
+            "category_id": 1,
+            "name": "prova5",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 7,
+            "presets": []
+        },
+        {
+            "id": 24,
+            "category_id": 1,
+            "name": "prova 4",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 8,
+            "presets": []
+        },
+        {
+            "id": 25,
+            "category_id": 1,
+            "name": "prova 6",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 9,
+            "presets": []
+        },
+        {
+            "id": 26,
+            "category_id": 1,
+            "name": "prova 7",
+            "hidden": false,
+            "severity_default": 1,
+            "severity_mode": "default",
+            "fab_default": "",
+            "name_mode": "default",
+            "sort_order": 10,
+            "presets": []
         }
     ],
     "tickets": [
@@ -1145,7 +1229,7 @@
             "group_name": "ProdOps",
             "personal_target": 200,
             "group_target": 20,
-            "last_login": "2026-07-16 09:51:02",
+            "last_login": "2026-07-18 11:06:51",
             "avatar": "\ud83d\udc3c"
         },
         {
@@ -1523,7 +1607,7 @@
     ],
     "counters": {
         "category": 6,
-        "incident": 19,
+        "incident": 26,
         "ticket": 103,
         "user": 7,
         "preset_option_request": 4

@@ -6,116 +6,28 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
-Fix `v1.13.20` — **descrizione non modificabile + temi nuovi persi al toggle dark mode**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **Bug descrizione bloccata:** aprendo un ticket in sola lettura (`openTicketReadModal`) e poi creandone uno nuovo con preset, l'editor restava `contenteditable="false"` perché il percorso "con token" di `renderPresetForTargets` non chiamava `descSetReadOnly(false)`. Aggiunto `descSetReadOnly(false)` + `descShow(true)` nel percorso con token, in modo simmetrico al percorso senza token. |
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | **Bug temi:** `$allowedPaletteValues` conteneva solo i 5 temi originali (cappuccino, bordeaux, verde, blu, giallo) mentre il frontend ne offre 23. Selezionando un tema nuovo (es. dracula, neon, sakura...) il server lo rifiutava silenziosamente e resettava a `'blu'`. Al toggle dark mode `saveUserCharts()` inviava il tema al server e la risposta con `palette:'blu'` sovrascriveva il tema scelto — esatto stesso pattern del bug avatar v1.13.16. Aggiornata la allowlist a tutti i 23 temi. |
-
-Feature + fix `v1.13.19` — **"Inserimento custom" nei menu a tendina preset + bug "proponi → annulla" che rendeva il ticket creabile senza valore**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **Feature:** aggiunta opzione "Inserimento custom" sotto "Proponi nuovo elemento" nei select dei preset (`dbselect`). Apre un prompt, inserisce il valore direttamente come opzione del dropdown (senza passare dall'admin), lo seleziona e aggiorna chip/descrizione. Se l'elemento esiste già lo seleziona mostrando un toast. **Bug fix:** selezionare "Proponi nuovo elemento" e poi annullare lasciava `input.value = ''` ma il `return` anticipato saltava `syncSubmitBtnState()`, lasciando il bottone abilitato senza valore. Aggiunto `syncSubmitBtnState()` in tutti i percorsi `return` di `syncPresetFieldValue`. `getIncompletePresetFields` ora tratta `__propose_new__` e `__custom_insert__` come campi incompleti. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stile `.sd-custom-insert` per l'opzione "Inserimento custom" nel dropdown ricercabile. |
-
-Miglioria `v1.13.18` — **bottone Crea Ticket disabilitato: cursore "divieto" e tooltip con i campi mancanti**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Aggiunta `getSubmitMissingReasons()` che calcola i campi ancora da compilare. `syncSubmitBtnState()` ora scrive i motivi in `data-missing` sul bottone. Un tooltip ("Campi mancanti: Macchina, Motivo, FAB") compare al passaggio del mouse sul bottone disabilitato e sparisce quando il bottone e' abilitato. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Cursore globale `button:disabled` cambiato da `wait` a `not-allowed`. Stile del tooltip `.submit-missing-tip` (posizionato sopra il bottone, con freccia, variabili tema). |
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.18** (allineamento versione). |
-| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Solo cache-busting **v1.13.18** (allineamento versione). |
-
-Fix `v1.13.17` — **i campi pre-compilabili del preset (chip) non sono piu' cancellabili dalla descrizione**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | I chip di un preset (es. `[Macchina]`, `[Motivo]` in "Reset Interfaccia") erano `contenteditable="false"` ma restavano cancellabili con backspace/canc, Ctrl+A, taglia o drag, rovinando il formato standard della descrizione. Aggiunta una guardia `beforeinput` sull'editor descrizione (`descGuardBeforeInput` via `getTargetRanges()`): se l'edit toccherebbe un chip viene bloccato con `preventDefault`, mentre il testo fisso attorno resta liberamente modificabile. Bloccato anche il `dragstart` sui chip. Feedback: il chip lampeggia (rosso) + toast "Campo protetto" con throttle per non sommergere lo schermo tenendo premuto backspace. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Animazione `preset-chip-blocked-flash` (variante chiara e scura) per il lampeggio del chip protetto; rispetta `prefers-reduced-motion`. |
-
-Fix `v1.13.16` — **l'avatar scelto non veniva salvato e tornava al precedente dopo il reload**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | `allowed_avatars()` conteneva una lista obsoleta di 20 emoji mentre il picker ne offre 50 e la lista canonica `allowed_avatars_list()` ne ha 52: scegliendo 🦄 o una qualsiasi da 🐵 in poi la `PUT /api/me/avatar` rispondeva `400 Avatar non valido`, l'errore veniva ignorato dal `.catch()` lato JS e al reload il server restituiva l'avatar precedente. Ora `allowed_avatars()` delega a `allowed_avatars_list()` (fonte di verità unica). Allowlist ancora applicata: valori non previsti restano `400`. |
-
-_Le 5 pagine HTML (`index/admin/search/login/quickbar`) sono condivise tra v1.13.16–v1.13.20 — vanno deployate una sola volta: portano tutte il badge/cache-busting **v1.13.20**._
-
-_Il pacchetto precedente (v1.13.11 → v1.13.15) è stato deployato in data 2026-07-12._
-
-_Nota: le feature `v1.13.0` → `v1.13.6` risultano già deployate in produzione — vedi sezione "Gia deployato" (2026-07-12)._
-
-<!-- SEZIONE OBSOLETA — GIÀ DEPLOYATO IN v1.13.1→v1.13.6 (2026-07-12)
-
-Feature `v1.13.4` — **massimo possibile lato web per quickbar sempre richiamabile**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuovo pulsante sidebar `Porta Davanti` per richiamare rapidamente la quickbar. Cache-busting/badge **v1.13.4**. |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Implementato il massimo possibile via web: stato finestra quickbar salvato in `localStorage` (posizione/dimensione), riapertura con ultime coordinate, heartbeat della popup e canale `BroadcastChannel` tra dashboard e quickbar per inviare richieste di focus/riporto davanti senza dover sempre ricreare la finestra. Fallback: se la quickbar non risponde viene riaperta. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stile dedicato per il pulsante `Porta Davanti`. |
-| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Quickbar aggiornata: richiamo/focus lato web e rimossa anche la targhetta versione in basso. |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
-
-Feature `v1.13.3` — **mini quickbar widget-like**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | La quickbar ora si apre in popup più stretta e bassa (`320x760` invece di `430x920`), mantenendo ridimensionamento e riuso della stessa finestra. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Restyling quickbar in chiave mini-widget: shell più stretta, padding ridotti, toggle tema rimpicciolito, categorie e incident molto più compatti, altezze minime ridotte e densità visiva maggiore. |
-| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione della mini quickbar). |
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
-
-Feature `v1.13.2` — **quickbar più pulita e compatta**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Rimossi dalla quickbar la pill utente e tutti i testi descrittivi/header superflui. Resta solo una topbar minimale con toggle tema e il menu categorie/incident. Cache-busting/badge **v1.13.2**. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Pulizia stili quickbar: rimossi header testuale, pill utente e nota inferiore; nuova topbar minimale allineata a destra per il solo toggle tema. |
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
-
-Feature `v1.13.1` — **quickbar popup per apertura ticket da qualsiasi finestra browser**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuovo pulsante sidebar `Apri Quickbar` che apre la navbar ticket in una popup browser separata. Cache-busting/badge **v1.13.1**. |
-| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Nuova pagina popup dedicata: mostra solo quickbar/menu categorie+incident, mantiene pill utente/tema e riusa la stessa modale ticket completa della dashboard. Include support placeholders nascosti per restare compatibile con la logica JS condivisa. Nuovo file da pubblicare anche in produzione. |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Aggiunti `openQuickbarBtn` e `quickbarWindowRef`: il click apre/rifocalizza `quickbar.html` via `window.open(...)` in popup ridimensionabile. Messa in sicurezza l'inizializzazione condivisa con listener opzionali (`openAdminBtn`, `ticketForm`, `ticketList`) così il file gira sia su dashboard completa sia su quickbar minimale. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili del pulsante `Apri Quickbar` e nuova skin `body.quickbar-page` / `.quickbar-*` per il popup compatto. |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
-
-Feature `v1.13.0` — **dimensione pannelli/grafici scalabile dalle impostazioni utente**:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Il contenitore dei grafici `.charts-grid` ha ora `zoom: var(--panel-scale, 1)` (default 1): la nuova variabile CSS scala in modo **uniforme** l'intera sezione grafici — pannelli, grafici SVG, testo, barre, legende, spaziature e altezze — così nulla sborda quando si rimpicciolisce. Uso `zoom` e non `transform: scale` perché il primo mantiene coerenti le coordinate del layout (getBoundingClientRect ↔ eventi puntatore), preservando drag&drop e resize dei grafici; il `zoom` moderno (Chrome ≥128 / Firefox ≥126) mantiene inoltre la larghezza del container, quindi i pannelli continuano a riempire la riga senza margini vuoti a lato e senza scroll orizzontale. Nuovi stili per il controllo nel modal impostazioni: `.panel-scale-control`, `.panel-scale-btn` (± 34px), `.panel-scale-slider` (range), `.panel-scale-value`, `.user-settings-hint`. **Layout ciambella**: `.chart-pie-layout.donut` passa da `justify-content: center` a `space-between` (legenda ancorata in alto, ciambella in basso, spazio libero nel mezzo); il breakpoint `≤720px` non inverte più l'ordine (legenda `order:-1` / ciambella `order:0` in tutti i breakpoint). |
-| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuova sezione "Dimensione grafici" nel modal `#userSettingsModal` (slider 70–150% con pulsanti −/+ e valore %). Script inline anti-flash nel `<head>`: legge `localStorage['prodops_panel_scale']` e imposta `--panel-scale` prima del render. Cache-busting/badge **v1.13.0**. |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Logica scala pannelli nel modulo impostazioni utente: `getPanelScalePct`/`applyPanelScale`/`syncPanelScaleUI` (range 70–150%, step 5%), persistenza in `localStorage['prodops_panel_scale']` come frazione, wiring di slider e pulsanti −/+, applicazione al caricamento e all'apertura del modal. **Legenda ciambella adattiva**: la legenda del donut non è più limitata a 6 voci fisse. Nuove `makePieLegendRow()` e `setupDonutLegendFit()`: dopo il render la legenda (in alto) viene riempita col massimo numero di voci che entrano SOPRA la ciambella (in basso) misurando l'altezza reale (loop che riduce di una riga alla volta finché legenda+ciambella entrano nell'altezza del layout — non del `.chart`, che include il padding), così mostra >6 voci quando c'è spazio e meno quando ce n'è poco, senza mai sovrapporsi né tagliare la ciambella; le voci in eccesso restano nel tooltip ("+N altri"). Ri-adattamento automatico al variare della dimensione del pannello via `ResizeObserver`. La torta (pie) mantiene il limite fisso a 6. |
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
-| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
-
-_La scala è una preferenza locale del browser (localStorage), come `palette`/`dark-mode` nel loro bootstrap; nessuna modifica backend o di schema._
-
--->
+_(Nessun file in attesa di deploy.)_
 
 ## Gia deployato
+
+Deploy confermato in data `2026-07-18` — fix incident coperti dalle categorie sotto: `max-height` della `.incident-list` aperta aumentato da 320px a 3000px (sidebar), da 700px a 5000px (admin catalog), da 520px a 3000px (quickbar) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Fix incident coperti dalle categorie sotto: `max-height` della `.incident-list` aperta aumentato da 320px a 3000px (sidebar), da 700px a 5000px (admin catalog), da 520px a 3000px (quickbar) — con molti incident la lista veniva troncata da `overflow:hidden` del contenitore. |
+
+Deploy confermato in data `2026-07-16` (**v1.13.16 -> v1.13.20** — fix avatar non salvato, chip preset non cancellabili, tooltip campi mancanti su Crea Ticket, inserimento custom nei preset, fix descrizione bloccata dopo lettura ticket, fix temi nuovi persi al toggle dark mode) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **v1.13.20**: fix descrizione bloccata dopo apertura ticket in sola lettura + fix temi nuovi persi al toggle dark mode. **v1.13.19**: opzione "Inserimento custom" nei select preset + fix bottone abilitato dopo annullamento "Proponi nuovo elemento". **v1.13.18**: tooltip campi mancanti sul bottone Crea Ticket disabilitato. **v1.13.17**: guardia `beforeinput` che impedisce la cancellazione delle chip preset dalla descrizione. |
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | **v1.13.20**: allowlist palette aggiornata a tutti i 23 temi. **v1.13.16**: `allowed_avatars()` ora delega a `allowed_avatars_list()` (fix avatar non salvato). |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | **v1.13.19**: stile `.sd-custom-insert`. **v1.13.18**: cursore `not-allowed` su `button:disabled`, tooltip `.submit-missing-tip`. **v1.13.17**: animazione `preset-chip-blocked-flash`. |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Cache-busting/badge **v1.13.20**. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting/badge **v1.13.20**. |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting/badge **v1.13.20**. |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Cache-busting/badge **v1.13.20**. |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Cache-busting **v1.13.20**. |
 
 Deploy confermato in data `2026-07-12` (**v1.13.11 -> v1.13.15** — fix Annulla nel modal impostazioni, modal "Impostazioni profilo" ridisegnato a 2 colonne con anteprima live del tema, 10 nuovi temi creativi (totale 23), fix vero rollback tema server-side con eliminazione race condition di rete, favicon SVG personalizzata) per i seguenti file:
 
