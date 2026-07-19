@@ -3772,12 +3772,25 @@ function renderPieOrDonutChart(target, stats, isDonut) {
     attachPieTooltip(visual, sliceRanges, hideLegendValue);
   }
 
-  layout.appendChild(visual);
-  layout.appendChild(legend);
-  target.appendChild(layout);
-
   if (isDonut) {
-    setupDonutLegendFit(target, layout, legend, visual, sortedStats, target.id, hideLegendValue, totalAll);
+    // Nella ciambella incapsuliamo legenda e grafico in due "box" distinti
+    // dentro il pannello: cosi' possiamo gestire indipendentemente lo spazio
+    // (la legenda si adatta al proprio contenuto, il grafico riempie
+    // dinamicamente tutto lo spazio libero rimanente).
+    const legendBox = document.createElement('div');
+    legendBox.className = 'chart-pie-legend-box';
+    legendBox.appendChild(legend);
+    const visualBox = document.createElement('div');
+    visualBox.className = 'chart-pie-visual-box';
+    visualBox.appendChild(visual);
+    layout.appendChild(legendBox);
+    layout.appendChild(visualBox);
+    target.appendChild(layout);
+    setupDonutLegendFit(target, layout, legend, visual, sortedStats, target.id, hideLegendValue, totalAll, visualBox);
+  } else {
+    layout.appendChild(visual);
+    layout.appendChild(legend);
+    target.appendChild(layout);
   }
 }
 
@@ -3826,7 +3839,7 @@ function attachLegendMoreTooltip(more, rows, targetId, totalAll, hideLegendValue
 // massimo numero di voci che entrano SOPRA il grafico senza sovrapporsi/tagliarlo
 // (più di 6 se c'è spazio, meno se ce n'è poco). Le voci nascoste restano nel
 // tooltip. Si ri-adatta al variare della dimensione del pannello (ResizeObserver).
-function setupDonutLegendFit(target, layout, legend, visual, sortedStats, targetId, hideLegendValue, totalAll) {
+function setupDonutLegendFit(target, layout, legend, visual, sortedStats, targetId, hideLegendValue, totalAll, visualBox) {
   var total = sortedStats.length;
   var LEGEND_MAX = 4;
   var shown = sortedStats.slice(0, LEGEND_MAX);
@@ -3834,18 +3847,20 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
-  function applyVisualScale(sizePx) {
-    var nextSize = clamp(Math.round(sizePx || 0), 154, 172);
-    visual.style.width = nextSize + 'px';
-    visual.style.maxWidth = nextSize + 'px';
+  function applyCenterScale() {
+    // La ciambella e' dimensionata dal CSS in base al box che la contiene;
+    // qui adattiamo solo la scritta al centro (totale + "Totale") all'attuale
+    // diametro effettivo.
+    var nextSize = visual.clientWidth || 0;
+    if (!nextSize) return;
     var ratio = nextSize / 180;
-    var centerScale = clamp(ratio, 0.86, 1.0);
-    layout.style.setProperty('--donut-center-strong-size', (1.6 * centerScale).toFixed(3).replace(/\.?0+$/, '') + 'rem');
-    layout.style.setProperty('--donut-center-label-size', (0.78 * Math.max(0.76, Math.min(centerScale, 1.02))).toFixed(3).replace(/\.?0+$/, '') + 'rem');
+    var centerScale = clamp(ratio, 0.86, 1.6);
+    layout.style.setProperty('--donut-center-strong-size', 'calc(' + (1.6 * centerScale).toFixed(3).replace(/\.?0+$/, '') + 'rem * var(--chart-font-scale))');
+    layout.style.setProperty('--donut-center-label-size', 'calc(' + (0.78 * Math.max(0.76, Math.min(centerScale, 1.4))).toFixed(3).replace(/\.?0+$/, '') + 'rem * var(--chart-font-scale))');
   }
   function resetLegendScale() {
-    layout.style.setProperty('--donut-legend-font-size', '.78rem');
-    layout.style.setProperty('--donut-legend-value-size', '.74rem');
+    layout.style.setProperty('--donut-legend-font-size', 'calc(.78rem * var(--chart-font-scale))');
+    layout.style.setProperty('--donut-legend-value-size', 'calc(.74rem * var(--chart-font-scale))');
     layout.style.setProperty('--donut-legend-row-gap', '7px');
     layout.style.setProperty('--donut-legend-min-height', '20px');
     layout.style.setProperty('--donut-swatch-size', '11px');
@@ -3874,12 +3889,10 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
     layout.classList.add('donut-legend-fixed');
     layout.classList.remove('donut-legend-sparse');
     resetLegendScale();
-    var avail = layout.clientHeight || target.clientHeight || 0;
-    if (avail <= 0) return;
-    var layoutGap = parseFloat(getComputedStyle(layout).rowGap) || 0;
     fill();
-    var availableForVisual = avail - legend.offsetHeight - layoutGap - 4;
-    applyVisualScale(availableForVisual);
+    // Dopo il layout CSS (nel frame successivo) leggiamo la dimensione finale
+    // della ciambella per adattare la scritta centrale.
+    requestAnimationFrame(applyCenterScale);
   }
   fit();
   if (typeof ResizeObserver !== 'undefined') {
@@ -3890,6 +3903,15 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
       raf = requestAnimationFrame(fit);
     });
     target._donutRO.observe(target);
+    if (visualBox) {
+      if (target._donutVisualRO) target._donutVisualRO.disconnect();
+      var raf2 = 0;
+      target._donutVisualRO = new ResizeObserver(function() {
+        if (raf2) cancelAnimationFrame(raf2);
+        raf2 = requestAnimationFrame(applyCenterScale);
+      });
+      target._donutVisualRO.observe(visualBox);
+    }
   }
 }
 

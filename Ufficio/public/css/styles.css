@@ -10,6 +10,11 @@
   --side-1: #0f172a;
   --side-2: #172b45;
   --input-bg: #f0f4f8;
+  /* Scala automatica dei testi nei grafici in base alla larghezza del viewport.
+     Baseline 1 fino a ~1920px, cresce fino a 1.5x su schermi 4K (~3840px).
+     Utile su monitor grandi ad alta risoluzione (es. 27" 4K) dove le scritte
+     dei grafici risulterebbero altrimenti troppo piccole. */
+  --chart-font-scale: clamp(1, calc(1 + (100vw - 1920px) / 3840px), 1.5);
 }
 body.theme-dark {
   --bg: #0b1320;
@@ -772,7 +777,7 @@ body.theme-dark .switch-thumb {
   border-left: 1px solid rgba(122, 159, 196, .5);
   margin-left: 8px;
 }
-.menu-category.open .incident-list { max-height: 3000px; }
+.menu-category.open .incident-list { max-height: 3000px; overflow-y: auto; }
 .menu-category.open .incident-list { opacity: 1; }
 .incident-btn {
   width: 100%;
@@ -1504,9 +1509,9 @@ body.theme-dark .switch-thumb {
 .personal-chart-target { stroke-width: 2; stroke-dasharray: 7 4; }
 .personal-chart-target-monthly { stroke: #e53935; }
 .personal-chart-target-annual { stroke: #0c5f8c; }
-.personal-chart-label { font-size: 14px; fill: var(--muted); font-weight: 700; }
-.personal-chart-value { font-size: 15px; fill: #fff; font-weight: 800; }
-.personal-chart-zero { font-size: 13px; fill: var(--muted); font-weight: 600; }
+.personal-chart-label { font-size: calc(14px * var(--chart-font-scale)); fill: var(--muted); font-weight: 700; }
+.personal-chart-value { font-size: calc(15px * var(--chart-font-scale)); fill: #fff; font-weight: 800; }
+.personal-chart-zero { font-size: calc(13px * var(--chart-font-scale)); fill: var(--muted); font-weight: 600; }
 /* Etichette mese cliccabili (drill-down giornaliero) */
 .personal-chart-month-hit { cursor: pointer; transition: fill .12s ease; }
 .personal-chart-month-hit:hover { fill: var(--brand); text-decoration: underline; }
@@ -1545,7 +1550,7 @@ body.theme-dark .switch-thumb {
 .chart-horizontal-row.chart-clickable:hover,
 .chart-pie-legend-row.chart-clickable:hover { background: rgba(120, 160, 210, .12); border-radius: 8px; }
 circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-width: 3; }
-.personal-chart-target-label { font-size: 13px; font-weight: 800; }
+.personal-chart-target-label { font-size: calc(13px * var(--chart-font-scale)); font-weight: 800; }
 .personal-chart-target-label-monthly { fill: #e53935; }
 .personal-chart-target-label-annual { fill: #0c5f8c; }
 .day-charts-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
@@ -3259,13 +3264,16 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   min-width: 0;
 }
 .chart-pie-layout.donut {
-  --donut-legend-font-size: .82rem;
-  --donut-legend-value-size: .78rem;
+  --donut-legend-font-size: calc(.82rem * var(--chart-font-scale));
+  --donut-legend-value-size: calc(.78rem * var(--chart-font-scale));
   --donut-legend-row-gap: 8px;
   --donut-legend-min-height: 20px;
   --donut-swatch-size: 12px;
-  --donut-center-strong-size: 1.6rem;
-  --donut-center-label-size: .78rem;
+  --donut-center-strong-size: calc(1.6rem * var(--chart-font-scale));
+  --donut-center-label-size: calc(.78rem * var(--chart-font-scale));
+  /* Riempie tutta l'altezza del pannello grafico: cosi' il visualBox
+     (flex: 1) puo' espandersi e la ciambella prendere tutto lo spazio libero. */
+  height: 100%;
   gap: 10px;
   width: 100%;
   overflow: hidden;
@@ -3307,11 +3315,11 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   pointer-events: none;
 }
 .chart-pie-center strong {
-  font-size: 1.35rem;
+  font-size: calc(1.35rem * var(--chart-font-scale));
 }
 .chart-pie-center span {
   color: var(--muted);
-  font-size: .82rem;
+  font-size: calc(.82rem * var(--chart-font-scale));
   font-weight: 700;
 }
 .chart-pie-legend {
@@ -3341,20 +3349,46 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 .chart-pie-layout.donut .chart-pie-visual {
   order: 0;
   align-self: center;
-  margin: 8px auto 0;
-  /* Limitato SIA dalla larghezza SIA dall'altezza disponibile del corpo grafico
-     (cqh): non sfora mai il pannello ad altezza fissa né schiaccia la legenda. */
-  width: min(100%, 170px, 54cqh);
-  max-width: 170px;
+  margin: 0;
+  /* La ciambella e' interamente governata dal box che la contiene
+     (.chart-pie-visual-box, con container-type: size): usa il piu' piccolo
+     tra la larghezza e l'altezza del box in modo da riempirlo restando un
+     cerchio perfetto. */
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  max-width: 100%;
+  max-height: 100%;
   min-width: 0;
   flex: 0 0 auto;
+}
+/* Box legenda: contenitore auto-dimensionato per la lista dei nomi.
+   Riquadro invisibile: nessun bordo/sfondo, ma la struttura resta come
+   contenitore logico per la gestione dello spazio. */
+.chart-pie-legend-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Box grafico: riempie tutto lo spazio verticale rimanente nel pannello,
+   centra la ciambella e le fa prendere il massimo cerchio possibile.
+   Riquadro invisibile. */
+.chart-pie-visual-box {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  container-type: size;
+  overflow: hidden;
 }
 .chart-pie-legend-row {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  font-size: var(--layout-legend-font, .9rem);
+  font-size: calc(var(--layout-legend-font, .9rem) * var(--chart-font-scale));
 }
 .chart-pie-layout.donut .chart-pie-legend-row {
   grid-template-columns: var(--donut-swatch-size) minmax(0, 1fr) auto;
@@ -3532,18 +3566,18 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
 }
 .chart-line-label {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--chart-font-scale));
   font-weight: 700;
 }
 .chart-line-value {
   fill: var(--text);
-  font-size: 10px;
+  font-size: calc(10px * var(--chart-font-scale));
   font-weight: 700;
 }
 .bar { flex: 1 0 42px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 0; position: relative; height: 100%; }
 .bar-fill { width: 100%; max-width: 54px; min-height: 0; flex-shrink: 0; background: linear-gradient(180deg, var(--brand-2), var(--brand)); border-radius: 4px 4px 2px 2px; }
 .bar-fill { position: relative; display: flex; align-items: center; justify-content: center; }
-.bar-pct { color: #fff; font-size: 0.68rem; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.bar-pct { color: #fff; font-size: calc(0.68rem * var(--chart-font-scale)); font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
 .bar-label {
   position: absolute;
   top: calc(100% + 5px);
@@ -3553,7 +3587,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   text-align: center;
   font-weight: 600;
   color: var(--muted);
-  font-size: .82rem;
+  font-size: calc(.82rem * var(--chart-font-scale));
   line-height: 1.1;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -3569,7 +3603,7 @@ button { border: 0; padding: 9px 12px; font-weight: 600; }
   bottom: var(--bar-fill-h, 0%);
   margin-bottom: 3px;
   font-weight: 700;
-  font-size: .95rem;
+  font-size: calc(.95rem * var(--chart-font-scale));
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
@@ -6412,6 +6446,7 @@ body.quickbar-page .incident-list {
 
 body.quickbar-page .menu-category.open .incident-list {
   max-height: 3000px;
+  overflow-y: auto;
 }
 
 body.quickbar-page .incident-btn {

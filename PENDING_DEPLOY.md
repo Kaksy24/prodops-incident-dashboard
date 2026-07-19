@@ -10,6 +10,32 @@ _(Nessun file in attesa di deploy.)_
 
 ## Gia deployato
 
+Deploy confermato in data `2026-07-19` (**v1.13.26** — navbar quickbar: incident oltre il sesto in una categoria venivano tagliati) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Ulteriore hardening del fix del 2026-07-18: `.menu-category.open .incident-list` e la variante `body.quickbar-page` mantengono `max-height: 3000px` e aggiunto `overflow-y: auto` come fallback nel caso estremo di categorie enormi. Ora nessun clipping possibile. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.26**. |
+
+Deploy confermato in data `2026-07-19` (**v1.13.25** — riquadri dei due box del grafico a ciambella (legenda + chart) resi invisibili, mantenendo la struttura logica dei contenitori) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Rimossi `border`, `border-radius`, `background` e `padding` da `.chart-pie-legend-box` e `.chart-pie-visual-box`. La struttura dei due box (introdotta in v1.13.24) resta come contenitore logico per gestire lo spazio (legend `flex: 0 0 auto`, visual `flex: 1 1 auto` che riempie il resto), ma visivamente il riquadro non si vede piu'. |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Cache-busting/badge **v1.13.25**. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting/badge **v1.13.25**. |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting/badge **v1.13.25**. |
+
+Deploy confermato in data `2026-07-19` (**v1.13.23 -> v1.13.24** — scritte dei grafici scalate con la larghezza del viewport per leggibilita' su monitor 4K; grafico a ciambella ristrutturato in due box separati (legenda + chart) con ciambella che riempie tutto lo spazio libero del pannello) per i seguenti file:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | **v1.13.23**: variabile `--chart-font-scale` in `:root` con `clamp(1, calc(1 + (100vw - 1920px) / 3840px), 1.5)` applicata via `calc()` a legenda/valori/centro donut, legenda torta, etichette/valori linea, barre verticali, grafico personale (baseline 1 fino a 1920px, 1.5x a 3840px). **v1.13.24**: aggiunte `.chart-pie-legend-box` (auto-height, bordo + sfondo tenue) e `.chart-pie-visual-box` (`flex: 1 1 auto`, riempie lo spazio verticale rimanente, `container-type: size`); ciambella dentro il box usa `width/height: min(100cqw, 100cqh)` — cerchio perfetto che prende tutto lo spazio possibile. Rimosso il vecchio limite fisso `max-width: 170px` sulla ciambella. `.chart-pie-layout.donut { height: 100%; }` cosi' il visualBox riempie il pannello. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | **v1.13.24**: in `renderPieOrDonutChart` (donut) legenda e visual incapsulati in due box distinti; `setupDonutLegendFit` non forza piu' larghezza inline sulla ciambella (rimosso `applyVisualScale` con clamp 154-172px), lascia il dimensionamento al CSS. `ResizeObserver` sul visual box aggiorna solo la scritta centrale (totale + "Totale"). |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Cache-busting/badge **v1.13.24**. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Cache-busting/badge **v1.13.24**. |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting/badge **v1.13.24**. |
+
 Deploy confermato in data `2026-07-18` — fix incident coperti dalle categorie sotto: `max-height` della `.incident-list` aperta aumentato da 320px a 3000px (sidebar), da 700px a 5000px (admin catalog), da 520px a 3000px (quickbar) per i seguenti file:
 
 | File locale | Path produzione | Note |
@@ -28,6 +54,70 @@ Deploy confermato in data `2026-07-16` (**v1.13.16 -> v1.13.20** — fix avatar 
 | `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Cache-busting/badge **v1.13.20**. |
 | `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Cache-busting/badge **v1.13.20**. |
 | `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Cache-busting **v1.13.20**. |
+
+<!-- SEZIONE OBSOLETA — GIÀ DEPLOYATO IN v1.13.1→v1.13.6 (2026-07-12)
+
+Feature `v1.13.4` — **massimo possibile lato web per quickbar sempre richiamabile**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuovo pulsante sidebar `Porta Davanti` per richiamare rapidamente la quickbar. Cache-busting/badge **v1.13.4**. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Implementato il massimo possibile via web: stato finestra quickbar salvato in `localStorage` (posizione/dimensione), riapertura con ultime coordinate, heartbeat della popup e canale `BroadcastChannel` tra dashboard e quickbar per inviare richieste di focus/riporto davanti senza dover sempre ricreare la finestra. Fallback: se la quickbar non risponde viene riaperta. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stile dedicato per il pulsante `Porta Davanti`. |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Quickbar aggiornata: richiamo/focus lato web e rimossa anche la targhetta versione in basso. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.4** (allineamento versione). |
+
+Feature `v1.13.3` — **mini quickbar widget-like**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | La quickbar ora si apre in popup più stretta e bassa (`320x760` invece di `430x920`), mantenendo ridimensionamento e riuso della stessa finestra. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Restyling quickbar in chiave mini-widget: shell più stretta, padding ridotti, toggle tema rimpicciolito, categorie e incident molto più compatti, altezze minime ridotte e densità visiva maggiore. |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione della mini quickbar). |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.3** (allineamento versione). |
+
+Feature `v1.13.2` — **quickbar più pulita e compatta**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Rimossi dalla quickbar la pill utente e tutti i testi descrittivi/header superflui. Resta solo una topbar minimale con toggle tema e il menu categorie/incident. Cache-busting/badge **v1.13.2**. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Pulizia stili quickbar: rimossi header testuale, pill utente e nota inferiore; nuova topbar minimale allineata a destra per il solo toggle tema. |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.2** (allineamento versione). |
+
+Feature `v1.13.1` — **quickbar popup per apertura ticket da qualsiasi finestra browser**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuovo pulsante sidebar `Apri Quickbar` che apre la navbar ticket in una popup browser separata. Cache-busting/badge **v1.13.1**. |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Nuova pagina popup dedicata: mostra solo quickbar/menu categorie+incident, mantiene pill utente/tema e riusa la stessa modale ticket completa della dashboard. Include support placeholders nascosti per restare compatibile con la logica JS condivisa. Nuovo file da pubblicare anche in produzione. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Aggiunti `openQuickbarBtn` e `quickbarWindowRef`: il click apre/rifocalizza `quickbar.html` via `window.open(...)` in popup ridimensionabile. Messa in sicurezza l'inizializzazione condivisa con listener opzionali (`openAdminBtn`, `ticketForm`, `ticketList`) così il file gira sia su dashboard completa sia su quickbar minimale. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili del pulsante `Apri Quickbar` e nuova skin `body.quickbar-page` / `.quickbar-*` per il popup compatto. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.1** (allineamento versione). |
+
+Feature `v1.13.0` — **dimensione pannelli/grafici scalabile dalle impostazioni utente**:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Il contenitore dei grafici `.charts-grid` ha ora `zoom: var(--panel-scale, 1)` (default 1): la nuova variabile CSS scala in modo **uniforme** l'intera sezione grafici — pannelli, grafici SVG, testo, barre, legende, spaziature e altezze — così nulla sborda quando si rimpicciolisce. Uso `zoom` e non `transform: scale` perché il primo mantiene coerenti le coordinate del layout (getBoundingClientRect ↔ eventi puntatore), preservando drag&drop e resize dei grafici; il `zoom` moderno (Chrome ≥128 / Firefox ≥126) mantiene inoltre la larghezza del container, quindi i pannelli continuano a riempire la riga senza margini vuoti a lato e senza scroll orizzontale. Nuovi stili per il controllo nel modal impostazioni: `.panel-scale-control`, `.panel-scale-btn` (± 34px), `.panel-scale-slider` (range), `.panel-scale-value`, `.user-settings-hint`. **Layout ciambella**: `.chart-pie-layout.donut` passa da `justify-content: center` a `space-between` (legenda ancorata in alto, ciambella in basso, spazio libero nel mezzo); il breakpoint `≤720px` non inverte più l'ordine (legenda `order:-1` / ciambella `order:0` in tutti i breakpoint). |
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuova sezione "Dimensione grafici" nel modal `#userSettingsModal` (slider 70–150% con pulsanti −/+ e valore %). Script inline anti-flash nel `<head>`: legge `localStorage['prodops_panel_scale']` e imposta `--panel-scale` prima del render. Cache-busting/badge **v1.13.0**. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Logica scala pannelli nel modulo impostazioni utente: `getPanelScalePct`/`applyPanelScale`/`syncPanelScaleUI` (range 70–150%, step 5%), persistenza in `localStorage['prodops_panel_scale']` come frazione, wiring di slider e pulsanti −/+, applicazione al caricamento e all'apertura del modal. **Legenda ciambella adattiva**: la legenda del donut non è più limitata a 6 voci fisse. Nuove `makePieLegendRow()` e `setupDonutLegendFit()`: dopo il render la legenda (in alto) viene riempita col massimo numero di voci che entrano SOPRA la ciambella (in basso) misurando l'altezza reale (loop che riduce di una riga alla volta finché legenda+ciambella entrano nell'altezza del layout — non del `.chart`, che include il padding), così mostra >6 voci quando c'è spazio e meno quando ce n'è poco, senza mai sovrapporsi né tagliare la ciambella; le voci in eccesso restano nel tooltip ("+N altri"). Ri-adattamento automatico al variare della dimensione del pannello via `ResizeObserver`. La torta (pie) mantiene il limite fisso a 6. |
+| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
+| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
+| `Ufficio/public/login.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/login.html` | Solo cache-busting/badge **v1.13.0** (allineamento versione). |
+
+_La scala è una preferenza locale del browser (localStorage), come `palette`/`dark-mode` nel loro bootstrap; nessuna modifica backend o di schema._
+
+-->
 
 Deploy confermato in data `2026-07-12` (**v1.13.11 -> v1.13.15** — fix Annulla nel modal impostazioni, modal "Impostazioni profilo" ridisegnato a 2 colonne con anteprima live del tema, 10 nuovi temi creativi (totale 23), fix vero rollback tema server-side con eliminazione race condition di rete, favicon SVG personalizzata) per i seguenti file:
 
