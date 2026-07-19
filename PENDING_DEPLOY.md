@@ -6,7 +6,12 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
-_(Nessun file in attesa di deploy.)_
+Allineamento `v1.13.27` — **allineamento locale <-> origin dopo il rebase**: incorpora sia il fix locale v1.13.26 (overflow-y auto) sia quello parallelo del 2026-07-18 su origin (max-height alzati a 3000/5000/3000). Il codice in produzione ha attualmente solo il patch minimo del v1.13.26 (2000px); questo deploy porta i cap ai valori piu' larghi + include anche `.admin-catalog` (5000px) che era rimasto indietro.
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | `.menu-category.open .incident-list` → `max-height: 3000px; overflow-y: auto`; `.admin-catalog .menu-category.open .incident-list` → `max-height: 5000px`; `body.quickbar-page .menu-category.open .incident-list` → `max-height: 3000px; overflow-y: auto`. Ora anche il pannello admin catalog gestisce categorie enormi senza clipping. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.27**. |
 
 ## Gia deployato
 
