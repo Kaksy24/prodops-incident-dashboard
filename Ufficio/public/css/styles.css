@@ -1646,13 +1646,16 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 8px;
   margin-top: 10px;
+  padding-top: 10px;
   align-items: start;
+  overflow: visible;
 }
 #ticketList.ticket-list-collapsed { display: none; }
 #ticketList.ticket-list-scrollable {
   max-height: 560px;
   overflow-y: auto;
   padding-right: 2px;
+  padding-top: 10px;
 }
 .panel-resize-handle {
   display: flex;
@@ -2791,6 +2794,7 @@ body.theme-dark .chart-export-option {
   list-style: none;
   padding-left: 0;
   margin: 0;
+  overflow: visible;
 }
 .ticket-list .incident-title {
   color: var(--text);
@@ -5940,6 +5944,7 @@ body.theme-dark .ticket-stack-popup {
   position: relative;
   margin: 0 0 16px;
   cursor: pointer;
+  overflow: visible;
 }
 .previous-shifts-content .ticket-dup-stack { margin: 0; }
 .ticket-dup-stack > .ticket-row {
@@ -5948,6 +5953,7 @@ body.theme-dark .ticket-stack-popup {
   margin: 0;
   width: 100%;
   box-sizing: border-box;
+  overflow: visible;
 }
 .ticket-dup-stack::before,
 .ticket-dup-stack::after {
@@ -5978,9 +5984,9 @@ body.theme-dark .ticket-stack-popup {
 }
 .ticket-dup-badge {
   position: absolute;
-  top: -7px;
-  right: 4px;
-  z-index: 5;
+  top: -10px;
+  right: -7px;
+  z-index: 60;
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
