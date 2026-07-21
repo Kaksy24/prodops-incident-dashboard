@@ -13,3 +13,6 @@ deploy_ticket_manager_*.zippa
 outputs/
 Ufficio/data/db.json
 Ufficio/data/db.local.json
+.codex-remote-attachments/
+pending_updates_*.zip
+pending_updates_*.zippa
