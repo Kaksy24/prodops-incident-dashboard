@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Robotization">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#ffffff" stroke="#20334d" stroke-width="3"/>
+  <path d="M20 44h24M26 44V31l9-5 7 5v13M29 31l-5-7 8-6 7 5M20 22h10M45 36l5-5M47 45l4 4" fill="none" stroke="#20334d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="20" cy="22" r="2" fill="#20334d"/>
+</svg>

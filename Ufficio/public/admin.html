@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.27" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.34" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.27" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.34" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.27" alt="PRODOPS Ticket Manager" /><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.34" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -303,6 +303,30 @@
     </div>
   </div>
 
+  <div class="modal" id="adminCategoryModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel admin-category-modal-panel">
+      <div class="modal-header">
+        <h3 id="adminCategoryModalTitle">Nuova categoria</h3>
+        <button class="close-category-modal" type="button">x</button>
+      </div>
+      <form id="adminCategoryForm" class="ticket-form admin-category-form">
+        <div class="admin-category-form-name">
+          <label for="adminCategoryName">Nome categoria</label>
+          <input id="adminCategoryName" name="adminCategoryName" type="text" required />
+        </div>
+        <div class="admin-category-form-icons">
+          <label>Icona categoria</label>
+          <p class="muted admin-category-icon-help">Scegli una delle icone disponibili. Non serve inserire path manuali.</p>
+          <div id="adminCategoryLogoGrid" class="admin-category-logo-grid" role="listbox" aria-label="Seleziona icona categoria"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="secondary close-category-modal">Annulla</button>
+          <button type="submit" class="primary">Salva categoria</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="adminIncidentModal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-panel">
       <div class="modal-header">
@@ -368,8 +392,8 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.27"></script>
-  <script src="./public/js/admin.js?v=1.13.27"></script>
-  <div class="app-version-badge">v1.13.27</div>
+  <script src="./public/js/toast.js?v=1.13.34"></script>
+  <script src="./public/js/admin.js?v=1.13.34"></script>
+  <div class="app-version-badge">v1.13.34</div>
 </body>
 </html>

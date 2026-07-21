@@ -7,6 +7,20 @@ function appUrl(path) {
   return appBasePath + normalizedPath;
 }
 
+function isCategoryLogoImage(value) {
+  const text = String(value || '').trim();
+  return /^(https?:\/\/|\.\/|\/|data:image\/)/i.test(text);
+}
+
+function renderCategoryLogoMarkup(value, name) {
+  const logo = String(value || '').trim();
+  if (!logo) return '';
+  if (isCategoryLogoImage(logo)) {
+    return `<span class="category-logo category-logo-image" aria-hidden="true"><img src="${escapeHtml(logo)}" alt="" loading="lazy" /></span>`;
+  }
+  return `<span class="category-logo category-logo-text" aria-hidden="true">${escapeHtml(logo)}</span>`;
+}
+
 const modal = document.getElementById('ticketModal');
 const mainTicketPanel = document.querySelector('#ticketModal > .modal-panel');
 const incidentTypeInput = document.getElementById('incidentType');
@@ -4441,7 +4455,7 @@ async function loadCategories() {
     const visibleIncidents = [];
     const wrap = document.createElement('div');
     wrap.className = 'menu-category';
-    wrap.innerHTML = `<button class="category-toggle" type="button" aria-expanded="false">${cat.name}</button>`;
+    wrap.innerHTML = `<button class="category-toggle" type="button" aria-expanded="false"><span class="category-toggle-label">${renderCategoryLogoMarkup(cat.logo, cat.name)}<span class="category-toggle-text">${escapeHtml(cat.name)}</span></span></button>`;
     const ul = document.createElement('ul');
     ul.className = 'incident-list';
     cat.incidents.forEach((inc) => {

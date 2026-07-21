@@ -161,39 +161,68 @@ function export_cmp_groups($a, $b) {
     return $c !== 0 ? $c : strcmp($a['fab'], $b['fab']);
 }
 
-// Ripara il testo salvato con doppia codifica UTF-8 (es. "〈ERR901〉" diventato
-// "ã€ˆERR901ã€‰" perche' i byte UTF-8 originali sono stati reinterpretati come
-// Windows-1252 e ri-codificati). Rilevato tramite i caratteri "spia" del blocco
-// C1 (€ ‚ ƒ „ … ˆ ‰ Š ‹ Œ Ž ' ' " " • – — ˜ ™ š › œ Ÿ), che non compaiono mai
-// in un normale testo italiano ma sono l'impronta tipica di questo artefatto.
-function export_fix_mojibake($s) {
-    if ($s === '' || !function_exists('mb_convert_encoding')) return $s;
-    static $signals = null;
-    if ($signals === null) {
-        $signals = array(
-            "\xE2\x82\xAC", "\xE2\x80\x9A", "\xC6\x92", "\xE2\x80\x9E", "\xE2\x80\xA6",
-            "\xCB\x86", "\xE2\x80\xB0", "\xC5\xA0", "\xE2\x80\xB9", "\xC5\x92", "\xC5\xBD",
-            "\xE2\x80\x98", "\xE2\x80\x99", "\xE2\x80\x9C", "\xE2\x80\x9D", "\xE2\x80\xA2",
-            "\xE2\x80\x93", "\xE2\x80\x94", "\xCB\x9C", "\xE2\x84\xA2", "\xC5\xA1",
-            "\xE2\x80\xBA", "\xC5\x93", "\xC5\xB8"
-        );
-    }
-    $hit = false;
-    foreach ($signals as $sig) {
-        if (strpos($s, $sig) !== false) { $hit = true; break; }
-    }
-    if (!$hit) return $s;
-    // Decodifica il testo "mojibake" in due passi: prima recupera i byte
-    // originali Windows-1252 interpretati per errore come UTF-8, poi li
-    // ricodifica davvero in UTF-8. Esempio: "ã€ˆ16:47ã€‰" -> "〈16:47〉".
-    $bytes = @mb_convert_encoding($s, 'Windows-1252', 'UTF-8');
-    if ($bytes !== false && $bytes !== '') {
-        $fixed = @mb_convert_encoding($bytes, 'UTF-8', 'Windows-1252');
-        if ($fixed !== false && $fixed !== '' && mb_check_encoding($fixed, 'UTF-8')) {
-            return $fixed;
-        }
-    }
+function export_has_mojibake_signal($s) {
+    if ($s === '') return false;
+    return preg_match('/(?:Ã.|Â.|â€.|â€“|â€”|â€¦|ã€.|â€[ˆ‰¹º]|\x{FFFD})/u', $s) === 1;
+}
+
+function export_cleanup_mojibake_noise($s) {
+    if ($s === '') return $s;
+    $s = strtr($s, array(
+        'ã€ˆ' => '〈',
+        'ã€‰' => '〉',
+        'â€˜' => '‘',
+        'â€™' => '’',
+        'â€œ' => '“',
+        'â€' => '”',
+        'â€“' => '–',
+        'â€”' => '—',
+        'â€¦' => '…',
+        'â€ˆ' => '',
+        'â€‰' => '',
+        'â€¹' => '',
+        'â€º' => '',
+        'Â ' => ' ',
+        'Â' => '',
+        'Ã¨' => 'è',
+        'Ã¹' => 'ù',
+        'Ã ' => 'à',
+        'Ã²' => 'ò',
+        'Ã¬' => 'ì',
+        'Ã©' => 'é',
+        'Ãˆ' => 'È',
+        'Ã‰' => 'É',
+        'Ã§' => 'ç'
+    ));
+    $s = preg_replace('/[\x{2008}\x{2009}\x{200A}\x{202F}\x{2060}\x{FEFF}]+/u', '', $s);
     return $s;
+}
+
+// Ripara il testo salvato con doppia/multipla codifica UTF-8 (mojibake).
+// Esegue piu' passaggi per intercettare sia i casi classici "ã€ˆ...ã€‰" sia
+// quelli con sequenze tipo "â€ˆ ... â€‰" o vocali accentate spezzate "Ã¨".
+function export_fix_mojibake($s) {
+    if ($s === '') return $s;
+    $current = export_cleanup_mojibake_noise($s);
+    if (!function_exists('mb_convert_encoding')) return $current;
+    if (!export_has_mojibake_signal($current)) return $current;
+
+    $attemptCharsets = array('Windows-1252', 'ISO-8859-1');
+    for ($i = 0; $i < 3; $i++) {
+        $best = $current;
+        foreach ($attemptCharsets as $charset) {
+            $bytes = @mb_convert_encoding($current, $charset, 'UTF-8');
+            if ($bytes === false || $bytes === '') continue;
+            $fixed = @mb_convert_encoding($bytes, 'UTF-8', $charset);
+            if ($fixed === false || $fixed === '' || !mb_check_encoding($fixed, 'UTF-8')) continue;
+            $fixed = export_cleanup_mojibake_noise($fixed);
+            if (!export_has_mojibake_signal($fixed)) return $fixed;
+            if (strlen($fixed) <= strlen($best) || export_has_mojibake_signal($best)) $best = $fixed;
+        }
+        if ($best === $current) break;
+        $current = $best;
+    }
+    return export_cleanup_mojibake_noise($current);
 }
 
 // Rimuove tutti gli "a capo" dalla descrizione: sia i caratteri di newline reali

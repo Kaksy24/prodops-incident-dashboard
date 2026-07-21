@@ -7,12 +7,32 @@ function appUrl(path) {
   return appBasePath + normalizedPath;
 }
 
+function isCategoryLogoImage(value) {
+  const text = String(value || '').trim();
+  return /^(https?:\/\/|\.\/|\/|data:image\/)/i.test(text);
+}
+
+function renderCategoryLogoMarkup(value) {
+  const logo = String(value || '').trim();
+  if (!logo) return '';
+  if (isCategoryLogoImage(logo)) {
+    return `<span class="category-logo category-logo-image" aria-hidden="true"><img src="${escapeHtml(logo)}" alt="" loading="lazy" /></span>`;
+  }
+  return `<span class="category-logo category-logo-text" aria-hidden="true">${escapeHtml(logo)}</span>`;
+}
+
 const adminMenu = document.getElementById('adminMenu');
+const adminBrandLogoBtn = document.getElementById('adminBrandLogoBtn');
 const backToDashboardBtn = document.getElementById('backToDashboardBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const adminIncidentModal = document.getElementById('adminIncidentModal');
 const adminIncidentForm = document.getElementById('adminIncidentForm');
 const userCreateModal = document.getElementById('userCreateModal');
+const adminCategoryModal = document.getElementById('adminCategoryModal');
+const adminCategoryForm = document.getElementById('adminCategoryForm');
+const adminCategoryModalTitle = document.getElementById('adminCategoryModalTitle');
+const adminCategoryNameInput = document.getElementById('adminCategoryName');
+const adminCategoryLogoGrid = document.getElementById('adminCategoryLogoGrid');
 const openUserCreateModalBtn = document.getElementById('openUserCreateModalBtn');
 const adminIncidentNameInput = document.getElementById('adminIncidentName');
 const adminIncidentPresetInput = document.getElementById('adminIncidentPreset');
@@ -85,6 +105,9 @@ let adminOverlayPressStarted = false;
 let adminModalCloseTimer = null;
 let userCreateOverlayPressStarted = false;
 let userCreateModalCloseTimer = null;
+let categoryModalOverlayPressStarted = false;
+let categoryModalCloseTimer = null;
+let editingCategoryId = null;
 let currentAdminUser = null;
 let adminCategoriesCache = [];
 let adminUiColors = null;
@@ -112,6 +135,41 @@ const adminChartDefinitions = [
   { key: 'incidentYear', label: 'Ticket per Incident', preview: true, helper: 'Grafico riepilogo per incident.' }
 ];
 const adminFabList = ['M5', 'L1', 'EWS', 'WSIC', 'NRK'];
+const adminCategoryLogoChoices = [
+  { value: './public/assets/loghi/automation.svg', label: 'Automation' },
+  { value: './public/assets/loghi/wmm.svg', label: 'WMM' },
+  { value: './public/assets/loghi/sicma.svg', label: 'SICMA' },
+  { value: './public/assets/loghi/robotization.svg', label: 'Robotization' },
+  { value: './public/assets/loghi/sealing.svg', label: 'Sealing' },
+  { value: './public/assets/loghi/reperibilita.svg', label: 'Reperibilita' },
+  { value: './public/assets/loghi/server.svg', label: 'Server' },
+  { value: './public/assets/loghi/network.svg', label: 'Network' },
+  { value: './public/assets/loghi/cloud.svg', label: 'Cloud' },
+  { value: './public/assets/loghi/database.svg', label: 'Database' },
+  { value: './public/assets/loghi/monitor.svg', label: 'Monitor' },
+  { value: './public/assets/loghi/code.svg', label: 'Code' },
+  { value: './public/assets/loghi/bug.svg', label: 'Bugfix' },
+  { value: './public/assets/loghi/tools.svg', label: 'Tools' },
+  { value: './public/assets/loghi/building.svg', label: 'Building' },
+  { value: './public/assets/loghi/dashboard.svg', label: 'Dashboard' },
+  { value: './public/assets/loghi/export.svg', label: 'Export' },
+  { value: './public/assets/loghi/security.svg', label: 'Security' },
+  { value: './public/assets/loghi/support.svg', label: 'Support' },
+  { value: './public/assets/loghi/wifi.svg', label: 'WiFi' },
+  { value: './public/assets/loghi/factory.svg', label: 'Factory' },
+  { value: './public/assets/loghi/chip.svg', label: 'Chip' },
+  { value: './public/assets/loghi/terminal.svg', label: 'Terminal' },
+  { value: './public/assets/loghi/laptop.svg', label: 'Laptop' },
+  { value: './public/assets/loghi/api.svg', label: 'API' },
+  { value: './public/assets/loghi/mail.svg', label: 'Mail' },
+  { value: './public/assets/loghi/printer.svg', label: 'Printer' },
+  { value: './public/assets/loghi/document.svg', label: 'Document' },
+  { value: './public/assets/loghi/users.svg', label: 'Users' },
+  { value: './public/assets/loghi/calendar.svg', label: 'Calendar' },
+  { value: './public/assets/loghi/clipboard.svg', label: 'Clipboard' },
+  { value: './public/assets/loghi/settings.svg', label: 'Settings' },
+  { value: './public/assets/loghi/chart.svg', label: 'Chart' }
+];
 const adminLayoutPreviewFallbackStats = {
   fabYear: [{ label: 'M5' }, { label: 'L1' }, { label: 'WSIC' }, { label: 'NRK' }],
   catYear: [{ label: 'HW' }, { label: 'SW' }, { label: 'NET' }, { label: 'APP' }],
@@ -498,6 +556,79 @@ function applyAdminColorTheme(theme) {
   adminColorEditTheme = theme === 'dark' ? 'dark' : 'light';
   syncAdminColorToggle();
   renderColorSettings();
+}
+
+function getDefaultCategoryLogo(name) {
+  const text = String(name || '').trim().toUpperCase();
+  if (!text) return '';
+  if (text === 'AUTOMATION') return './public/assets/loghi/automation.svg';
+  if (text === 'WMM') return './public/assets/loghi/wmm.svg';
+  if (text === 'SICMA') return './public/assets/loghi/sicma.svg';
+  if (text === 'ROBOTIZATION') return './public/assets/loghi/robotization.svg';
+  if (text === 'SEALING') return './public/assets/loghi/sealing.svg';
+  if (text === 'REPERIBILITA' || text === 'REPERIBILITÀ') return './public/assets/loghi/reperibilita.svg';
+  return '';
+}
+
+function getCategoryLogoChoices(currentName) {
+  const options = adminCategoryLogoChoices.slice();
+  const defaultLogo = getDefaultCategoryLogo(currentName);
+  if (defaultLogo && !options.some((item) => item.value === defaultLogo)) {
+    options.unshift({ value: defaultLogo, label: currentName || 'Categoria' });
+  }
+  return options;
+}
+
+function renderCategoryLogoPicker(selectedValue, currentName) {
+  if (!adminCategoryLogoGrid) return;
+  const options = [{ value: '', label: 'Nessuna' }].concat(getCategoryLogoChoices(currentName));
+  adminCategoryLogoGrid.innerHTML = options.map((option) => {
+    const selected = String(selectedValue || '') === String(option.value || '');
+    const preview = option.value
+      ? `<span class="admin-category-logo-option-preview">${renderCategoryLogoMarkup(option.value)}</span>`
+      : `<span class="admin-category-logo-option-preview"><span class="category-logo category-logo-text" aria-hidden="true">-</span></span>`;
+    return `<button type="button" class="admin-category-logo-option${selected ? ' active' : ''}" data-logo-value="${escapeHtml(option.value)}" aria-pressed="${selected ? 'true' : 'false'}" aria-label="${escapeHtml(option.label)}" title="${escapeHtml(option.label)}">${preview}</button>`;
+  }).join('');
+}
+
+function getSelectedCategoryLogoValue() {
+  const active = adminCategoryLogoGrid?.querySelector('.admin-category-logo-option.active');
+  return active ? String(active.dataset.logoValue || '') : '';
+}
+
+function closeCategoryModal() {
+  if (!adminCategoryModal) return;
+  if (categoryModalCloseTimer) clearTimeout(categoryModalCloseTimer);
+  adminCategoryModal.classList.remove('active');
+  adminCategoryModal.classList.add('closing');
+  adminCategoryModal.setAttribute('aria-hidden', 'true');
+  categoryModalOverlayPressStarted = false;
+  categoryModalCloseTimer = setTimeout(() => {
+    adminCategoryModal.classList.remove('show', 'closing');
+    categoryModalCloseTimer = null;
+  }, 220);
+}
+
+function openCategoryModal(category) {
+  if (!adminCategoryModal) return;
+  if (categoryModalCloseTimer) {
+    clearTimeout(categoryModalCloseTimer);
+    categoryModalCloseTimer = null;
+  }
+  editingCategoryId = category && category.id ? Number(category.id) : null;
+  const categoryName = String(category?.name || '').trim();
+  const selectedLogo = String(category?.logo || getDefaultCategoryLogo(categoryName) || '').trim();
+  if (adminCategoryModalTitle) adminCategoryModalTitle.textContent = editingCategoryId ? 'Modifica categoria' : 'Nuova categoria';
+  if (adminCategoryNameInput) adminCategoryNameInput.value = categoryName;
+  renderCategoryLogoPicker(selectedLogo, categoryName);
+  adminCategoryModal.classList.remove('closing');
+  adminCategoryModal.classList.add('show');
+  adminCategoryModal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => {
+    adminCategoryModal.classList.add('active');
+    adminCategoryNameInput?.focus();
+    adminCategoryNameInput?.select();
+  });
 }
 
 function getAdminLayoutDraft() {
@@ -1031,6 +1162,7 @@ themeToggleBtn.addEventListener('click', () => {
   }).catch(function() {});
 });
 
+adminBrandLogoBtn?.addEventListener('click', () => { window.location.href = appUrl('/index.html'); });
 backToDashboardBtn.addEventListener('click', () => { window.location.href = appUrl('/index.html'); });
 logoutBtn?.addEventListener('click', async () => {
   await fetch(appUrl('/api/logout'), { method: 'POST' });
@@ -2116,7 +2248,7 @@ async function loadAdminMenu(state = captureAdminUiState()) {
     catBtn.setAttribute('role', 'button');
     catBtn.tabIndex = 0;
     catBtn.setAttribute('aria-expanded', 'false');
-    catBtn.innerHTML = `<span>${cat.name}${cat.hidden ? '<span class="admin-hidden-badge">Nascosta</span>' : ''}</span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" title="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">${cat.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica categoria" title="Modifica categoria" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">&#9998;</button><button type="button" class="tiny-add" data-type="incident" data-id="${cat.id}" title="Nuovo incident">+</button><button type="button" class="tiny-delete" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" title="Elimina categoria">x</button></span>`;
+    catBtn.innerHTML = `<span class="category-toggle-label">${renderCategoryLogoMarkup(cat.logo)}<span class="category-toggle-text">${escapeHtml(cat.name)}${cat.hidden ? '<span class="admin-hidden-badge">Nascosta</span>' : ''}</span></span><span class="admin-actions"><button type="button" class="tiny-toggle-hide" aria-label="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" title="${cat.hidden ? 'Mostra categoria' : 'Nascondi categoria'}" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-logo="${String(cat.logo || '').replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">${cat.hidden ? 'Mostra' : 'Nascondi'}</button><button type="button" class="tiny-edit" aria-label="Modifica categoria" title="Modifica categoria" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" data-logo="${String(cat.logo || '').replace(/"/g, '&quot;')}" data-hidden="${cat.hidden ? '1' : '0'}">&#9998;</button><button type="button" class="tiny-add" data-type="incident" data-id="${cat.id}" title="Nuovo incident">+</button><button type="button" class="tiny-delete" data-type="category" data-id="${cat.id}" data-name="${cat.name.replace(/"/g, '&quot;')}" title="Elimina categoria">x</button></span>`;
 
     const ul = document.createElement('ul');
     ul.className = 'incident-list';
@@ -2197,16 +2329,10 @@ function bindAdminActions() {
         const type = btn.dataset.type;
         const id = Number(btn.dataset.id);
         const current = btn.dataset.name || '';
+        const currentLogo = btn.dataset.logo || '';
 
         if (type === 'category') {
-          const next = await showPrompt('Inserisci il nuovo nome per questa categoria.', { title: 'Rinomina categoria', defaultValue: current, placeholder: 'Nome categoria', confirmText: 'Rinomina' });
-          if (!next || !next.trim()) return;
-          await fetchJson(`/api/categories/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: next.trim() })
-          });
-          await loadAdminMenu();
+          openCategoryModal({ id, name: current, logo: currentLogo });
           return;
         }
 
@@ -2301,10 +2427,11 @@ function bindAdminActions() {
         const name = btn.dataset.name || '';
         const isHidden = btn.dataset.hidden === '1';
         if (type === 'category') {
+          const currentLogo = btn.dataset.logo || '';
           await fetchJson(`/api/categories/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hidden: !isHidden, name })
+            body: JSON.stringify({ hidden: !isHidden, name, logo: currentLogo })
           });
         } else {
           const editBtn = btn.parentElement?.querySelector('.tiny-edit');
@@ -2330,20 +2457,7 @@ function bindAdminActions() {
 
   const addCategoryBtn = document.getElementById('addCategoryBtn');
   if (addCategoryBtn) {
-    addCategoryBtn.addEventListener('click', async () => {
-      try {
-        const name = await showPrompt('Assegna un nome alla nuova categoria di ticket.', { title: 'Nuova categoria', placeholder: 'Nome categoria', confirmText: 'Crea' });
-        if (!name || !name.trim()) return;
-        await fetchJson('/api/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim() })
-        });
-        await loadAdminMenu();
-      } catch (error) {
-        showToast('Impossibile creare la categoria: ' + (error.message || error), 'error', 'Errore creazione');
-      }
-    });
+    addCategoryBtn.addEventListener('click', () => openCategoryModal({ id: null, name: '', logo: '' }));
   }
 }
 
@@ -2378,6 +2492,10 @@ document.querySelectorAll('.close-user-modal').forEach((btn) => {
   btn.addEventListener('click', closeUserCreateModal);
 });
 
+document.querySelectorAll('.close-category-modal').forEach((btn) => {
+  btn.addEventListener('click', closeCategoryModal);
+});
+
 adminIncidentModal?.addEventListener('mousedown', (e) => {
   adminOverlayPressStarted = e.target === adminIncidentModal;
 });
@@ -2408,6 +2526,53 @@ userCreateModal?.addEventListener('mousedown', (e) => {
 userCreateModal?.addEventListener('mouseup', (e) => {
   if (e.target === userCreateModal && userCreateOverlayPressStarted) closeUserCreateModal();
   userCreateOverlayPressStarted = false;
+});
+
+adminCategoryModal?.addEventListener('mousedown', (e) => {
+  categoryModalOverlayPressStarted = e.target === adminCategoryModal;
+});
+
+adminCategoryModal?.addEventListener('mouseup', (e) => {
+  if (e.target === adminCategoryModal && categoryModalOverlayPressStarted) closeCategoryModal();
+  categoryModalOverlayPressStarted = false;
+});
+
+adminCategoryLogoGrid?.addEventListener('click', (e) => {
+  const button = e.target.closest('.admin-category-logo-option');
+  if (!button) return;
+  const currentName = String(adminCategoryNameInput?.value || '').trim();
+  renderCategoryLogoPicker(String(button.dataset.logoValue || ''), currentName);
+});
+
+adminCategoryNameInput?.addEventListener('input', () => {
+  const currentLogo = getSelectedCategoryLogoValue();
+  renderCategoryLogoPicker(currentLogo, adminCategoryNameInput.value || '');
+});
+
+adminCategoryForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = String(adminCategoryNameInput?.value || '').trim();
+  const logo = getSelectedCategoryLogoValue();
+  if (!name) return;
+  try {
+    if (editingCategoryId) {
+      await fetchJson(`/api/categories/${editingCategoryId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, logo })
+      });
+    } else {
+      await fetchJson('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, logo })
+      });
+    }
+    closeCategoryModal();
+    await loadAdminMenu();
+  } catch (error) {
+    showToast('Impossibile salvare la categoria: ' + (error.message || error), 'error', 'Errore categoria');
+  }
 });
 
 adminIncidentForm?.addEventListener('submit', async (e) => {

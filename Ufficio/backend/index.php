@@ -212,6 +212,34 @@ function normalize_group_target($value)
     return normalize_personal_target($value);
 }
 
+function normalize_category_logo($value)
+{
+    $logo = trim(strval($value));
+    if ($logo === '') return '';
+    if (function_exists('mb_substr')) return mb_substr($logo, 0, 255, 'UTF-8');
+    return substr($logo, 0, 255);
+}
+
+function default_category_logo_path($categoryName)
+{
+    $name = strtoupper(trim(strval($categoryName)));
+    if ($name === 'AUTOMATION') return './public/assets/loghi/automation.svg';
+    if ($name === 'WMM') return './public/assets/loghi/wmm.svg';
+    if ($name === 'SICMA') return './public/assets/loghi/sicma.svg';
+    if ($name === 'ROBOTIZATION') return './public/assets/loghi/robotization.svg';
+    if ($name === 'SEALING') return './public/assets/loghi/sealing.svg';
+    if ($name === 'REPERIBILITÀ' || $name === 'REPERIBILITA') return './public/assets/loghi/reperibilita.svg';
+    return '';
+}
+
+function effective_category_logo($category)
+{
+    $customLogo = isset($category['logo']) ? normalize_category_logo($category['logo']) : '';
+    if ($customLogo !== '') return $customLogo;
+    $categoryName = isset($category['name']) ? $category['name'] : '';
+    return default_category_logo_path($categoryName);
+}
+
 function normalize_group_name($value)
 {
     $name = trim(strval($value));
@@ -925,6 +953,7 @@ function mysql_ensure_schema($conn)
         "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id",
         "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
         "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
+        "ALTER TABLE categories ADD COLUMN logo VARCHAR(255) NOT NULL DEFAULT '' AFTER name",
         "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
         "ALTER TABLE incidents ADD COLUMN name_mode VARCHAR(10) NOT NULL DEFAULT 'default' AFTER fab_default"
     );
@@ -975,12 +1004,13 @@ function mysql_load_db($defaultUsers)
         mysqli_free_result($rp);
     }
 
-    $rc = @mysqli_query($conn, "SELECT id, name, hidden, sort_order FROM categories ORDER BY sort_order ASC, id ASC");
+    $rc = @mysqli_query($conn, "SELECT id, name, logo, hidden, sort_order FROM categories ORDER BY sort_order ASC, id ASC");
     if ($rc) {
         while ($row = mysqli_fetch_assoc($rc)) {
             $db['categories'][] = array(
                 'id' => intval($row['id']),
                 'name' => $row['name'],
+                'logo' => isset($row['logo']) ? normalize_category_logo($row['logo']) : '',
                 'hidden' => !empty($row['hidden']),
                 'sort_order' => intval($row['sort_order'])
             );
@@ -1166,8 +1196,9 @@ function mysql_save_db($db)
         foreach ($db['categories'] as $c) {
             $id = intval($c['id']);
             $name = mysql_escape($conn, $c['name']);
+            $logo = mysql_escape($conn, isset($c['logo']) ? normalize_category_logo($c['logo']) : '');
             $hidden = !empty($c['hidden']) ? 1 : 0;
-            if (!mysqli_query($conn, "INSERT INTO categories (id,name,hidden,sort_order) VALUES ($id,'$name',$hidden,$order)")) { $ok = false; break; }
+            if (!mysqli_query($conn, "INSERT INTO categories (id,name,logo,hidden,sort_order) VALUES ($id,'$name','$logo',$hidden,$order)")) { $ok = false; break; }
             $order++;
         }
     }
@@ -1351,6 +1382,8 @@ function load_json_db($defaultUsers)
     }
     $categoryOrder = 1;
     foreach ($db['categories'] as $ci => $cat) {
+        if (!isset($db['categories'][$ci]['logo'])) $db['categories'][$ci]['logo'] = '';
+        $db['categories'][$ci]['logo'] = normalize_category_logo($db['categories'][$ci]['logo']);
         if (!isset($db['categories'][$ci]['sort_order']) || intval($db['categories'][$ci]['sort_order']) <= 0) {
             $db['categories'][$ci]['sort_order'] = $categoryOrder;
         } else {
@@ -2522,7 +2555,7 @@ if ($path === '/api/admin/preset-option-format' && $method === 'PUT') {
 
 if ($path === '/api/categories' && $method === 'GET') {
     if (supabase_enabled()) {
-        $catsResp = sb_select('categories', 'id,name,hidden,sort_order', array(), 'sort_order.asc');
+        $catsResp = sb_select('categories', 'id,name,logo,hidden,sort_order', array(), 'sort_order.asc');
         $incResp = sb_select('incidents', 'id,category_id,name,hidden,severity_default,severity_mode,fab_default,name_mode,sort_order', array(), 'sort_order.asc');
         if ($catsResp['ok'] && $incResp['ok']) {
             $cats = is_array($catsResp['data']) ? $catsResp['data'] : array();
@@ -2544,7 +2577,7 @@ if ($path === '/api/categories' && $method === 'GET') {
                         $items[] = $inc;
                     }
                 }
-                $outSb[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
+                $outSb[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'logo' => effective_category_logo($cat), 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
             }
             json_response($outSb, 200);
             }
@@ -2577,7 +2610,7 @@ if ($path === '/api/categories' && $method === 'GET') {
             if ($ao !== $bo) return $ao - $bo;
             return intval($a['id']) - intval($b['id']);
         });
-        $out[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
+        $out[] = array('id' => intval($cat['id']), 'name' => $cat['name'], 'logo' => effective_category_logo($cat), 'hidden' => !empty($cat['hidden']), 'incidents' => $items);
     }
     json_response($out, 200);
 }
@@ -2585,13 +2618,14 @@ if ($path === '/api/categories' && $method === 'GET') {
 if ($path === '/api/categories' && $method === 'POST') {
     require_api_auth('moderator');
     $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
+    $logo = isset($payload['logo']) ? normalize_category_logo($payload['logo']) : '';
     if ($name === '') json_response(array('error' => 'Nome categoria obbligatorio'), 400);
     if (supabase_enabled()) {
         $row = sb_select('categories', 'sort_order', array(), 'sort_order.desc');
         $maxOrder = 0;
         if ($row['ok'] && is_array($row['data']) && count($row['data'])) $maxOrder = intval($row['data'][0]['sort_order']);
-        $ins = sb_insert('categories', array('name' => $name, 'hidden' => 0, 'sort_order' => $maxOrder + 1), true);
-        if ($ins['ok']) json_response(array('id' => intval($ins['data']['id']), 'name' => $ins['data']['name']), 200);
+        $ins = sb_insert('categories', array('name' => $name, 'logo' => $logo, 'hidden' => 0, 'sort_order' => $maxOrder + 1), true);
+        if ($ins['ok']) json_response(array('id' => intval($ins['data']['id']), 'name' => $ins['data']['name'], 'logo' => $logo !== '' ? $logo : default_category_logo_path($ins['data']['name'])), 200);
     }
     $db['counters']['category'] = intval($db['counters']['category']) + 1;
     $maxOrder = 0;
@@ -2599,9 +2633,10 @@ if ($path === '/api/categories' && $method === 'POST') {
         $currentOrder = isset($existingCategory['sort_order']) ? intval($existingCategory['sort_order']) : 0;
         if ($currentOrder > $maxOrder) $maxOrder = $currentOrder;
     }
-    $cat = array('id' => $db['counters']['category'], 'name' => $name, 'hidden' => false, 'sort_order' => $maxOrder + 1);
+    $cat = array('id' => $db['counters']['category'], 'name' => $name, 'logo' => $logo, 'hidden' => false, 'sort_order' => $maxOrder + 1);
     $db['categories'][] = $cat;
     save_db($db);
+    $cat['logo'] = effective_category_logo($cat);
     json_response($cat, 200);
 }
 
@@ -2644,11 +2679,13 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
     $id = intval($m[1]);
     if ($method === 'PUT') {
         $name = isset($payload['name']) ? trim(strval($payload['name'])) : '';
+        $logo = array_key_exists('logo', $payload) ? normalize_category_logo($payload['logo']) : null;
         $hidden = isset($payload['hidden']) ? !!$payload['hidden'] : null;
-        if ($name === '' && $hidden === null) json_response(array('error' => 'Dati non validi'), 400);
+        if ($name === '' && $hidden === null && $logo === null) json_response(array('error' => 'Dati non validi'), 400);
         foreach ($db['categories'] as &$cat) {
             if (intval($cat['id']) === $id) {
                 if ($name !== '') $cat['name'] = $name;
+                if ($logo !== null) $cat['logo'] = $logo;
                 if ($hidden !== null) $cat['hidden'] = $hidden;
                 save_db($db);
                 json_response(array('ok' => true), 200);

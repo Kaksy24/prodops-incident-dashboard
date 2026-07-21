@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Laptop">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#ffffff" stroke="#20334d" stroke-width="3"/>
+  <rect x="18" y="18" width="28" height="18" rx="3" fill="none" stroke="#20334d" stroke-width="3"/>
+  <path d="M14 42h36l-3 4H17z" fill="none" stroke="#20334d" stroke-width="3" stroke-linejoin="round"/>
+</svg>
