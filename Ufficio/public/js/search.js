@@ -37,6 +37,7 @@ const themeToggleBtn = document.getElementById('themeToggleBtn');
 const searchModal = document.getElementById('searchModal');
 const searchModalTitle = document.getElementById('searchModalTitle');
 const searchModalBody = document.getElementById('searchModalBody');
+const searchModalEditBtn = document.getElementById('searchModalEditBtn');
 const searchModalDeleteBtn = document.getElementById('searchModalDeleteBtn');
 
 const incidentCategoryMap = {};
@@ -50,6 +51,8 @@ let searchModalCloseTimer = null;
 let categorySelectHandle = null;
 let categoriesData = [];
 let activeSearchModalTicketId = '';
+let activeSearchModalTicket = null;
+let searchModalEditMode = false;
 let ticketSearchUserHandle = null;
 let ticketSearchTeamHandle = null;
 let incidentIdToPresetTemplateMap = {};
@@ -493,10 +496,7 @@ async function fetchJson(url, options) {
   try { return JSON.parse(text); } catch { throw new Error('Risposta JSON non valida'); }
 }
 
-function openSearchModal(ticket) {
-  if (!searchModal) return;
-  if (searchModalCloseTimer) { clearTimeout(searchModalCloseTimer); searchModalCloseTimer = null; }
-  activeSearchModalTicketId = String(ticket.ticketId || '');
+function renderSearchModalBodyContent(ticket, editing) {
   const category = incidentIdToCategoryMap[String(ticket.incidentId || '')] || incidentCategoryMap[ticket.incidentName || ''] || '';
   const categoryColor = getLabelColor('categories', category);
   const fabColor = getLabelColor('fabs', ticket.fab || '');
@@ -505,25 +505,60 @@ function openSearchModal(ticket) {
   const dtStr = isNaN(d.getTime()) ? '' :
     pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' +
     pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return '' +
+    '<div class="ticket-row-top" style="margin-bottom:8px">' +
+      (category ? '<span class="ticket-row-cat" style="color:' + categoryColor + '">' + escapeHtml(category) + '</span><span class="ticket-row-sep" aria-hidden="true"> | </span>' : '') +
+      '<span class="ticket-row-fab" style="color:' + fabColor + ';font-weight:600">' + escapeHtml(String(ticket.fab || '')) + '</span>' +
+    '</div>' +
+    '<label>Descrizione</label>' +
+    (editing
+      ? '<textarea id="searchModalEditTextarea" rows="9" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:180px;margin-bottom:12px;resize:vertical">' + escapeHtml(ticket.description || '') + '</textarea>'
+      : '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' + renderDescriptionHtml(ticket.description || '') + '</div>') +
+    (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
+    (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
+}
+
+function renderSearchModal(ticket, editing) {
   if (searchModalTitle) searchModalTitle.textContent = ticket.incidentName || 'Dettaglio Ticket';
-  if (searchModalBody) {
-    searchModalBody.innerHTML =
-      '<div class="ticket-row-top" style="margin-bottom:8px">' +
-        (category ? '<span class="ticket-row-cat" style="color:' + categoryColor + '">' + escapeHtml(category) + '</span><span class="ticket-row-sep" aria-hidden="true"> | </span>' : '') +
-        '<span class="ticket-row-fab" style="color:' + fabColor + ';font-weight:600">' + escapeHtml(String(ticket.fab || '')) + '</span>' +
-      '</div>' +
-      '<label>Descrizione</label>' +
-      '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' +
-        renderDescriptionHtml(ticket.description || '') +
-      '</div>' +
-      (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
-      (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
+  if (searchModalBody) searchModalBody.innerHTML = renderSearchModalBodyContent(ticket, editing);
+  if (searchModalEditBtn) {
+    searchModalEditBtn.style.display = ticket.canEdit ? '' : 'none';
+    searchModalEditBtn.textContent = editing ? 'Salva testo' : 'Modifica testo';
+    searchModalEditBtn.disabled = false;
   }
   if (searchModalDeleteBtn) {
     searchModalDeleteBtn.style.display = isAdminUser() ? '' : 'none';
     searchModalDeleteBtn.disabled = false;
     searchModalDeleteBtn.dataset.ticketId = activeSearchModalTicketId;
   }
+}
+
+function syncSearchResultTicket(ticket) {
+  if (!ticketSearchResults || !ticket) return;
+  const row = ticketSearchResults.querySelector('.ticket-row[data-ticket-id="' + String(ticket.ticketId || ticket.id || '') + '"]');
+  if (!row) return;
+  row.dataset.description = String(ticket.description || '');
+  const desc = row.querySelector('.ticket-row-desc');
+  if (desc) desc.innerHTML = renderDescriptionHtml(ticket.description || '');
+}
+
+function openSearchModal(ticket) {
+  if (!searchModal) return;
+  if (searchModalCloseTimer) { clearTimeout(searchModalCloseTimer); searchModalCloseTimer = null; }
+  activeSearchModalTicketId = String(ticket.ticketId || '');
+  activeSearchModalTicket = {
+    ticketId: String(ticket.ticketId || ''),
+    incidentId: Number(ticket.incidentId || 0),
+    incidentName: String(ticket.incidentName || ''),
+    description: String(ticket.description || ''),
+    fab: String(ticket.fab || ''),
+    createdAt: String(ticket.createdAt || ''),
+    severity: Number(ticket.severity || 1),
+    ownerUsername: String(ticket.ownerUsername || ''),
+    canEdit: !!ticket.canEdit
+  };
+  searchModalEditMode = false;
+  renderSearchModal(activeSearchModalTicket, false);
   searchModal.classList.remove('closing');
   searchModal.classList.add('show');
   searchModal.setAttribute('aria-hidden', 'false');
@@ -536,6 +571,9 @@ function closeSearchModal() {
   if (!searchModal || (!searchModal.classList.contains('show') && !searchModal.classList.contains('active'))) return;
   if (searchModalCloseTimer) clearTimeout(searchModalCloseTimer);
   activeSearchModalTicketId = '';
+  activeSearchModalTicket = null;
+  searchModalEditMode = false;
+  if (searchModalEditBtn) searchModalEditBtn.disabled = false;
   if (searchModalDeleteBtn) {
     searchModalDeleteBtn.disabled = false;
     searchModalDeleteBtn.dataset.ticketId = '';
@@ -581,6 +619,42 @@ async function deleteSearchTicket(ticketId, triggerBtn) {
     showToast('Impossibile eliminare il ticket: ' + (err.message || err), 'error', 'Errore eliminazione');
     if (triggerBtn) triggerBtn.disabled = false;
     return false;
+  }
+}
+
+async function saveSearchTicketDescription() {
+  if (!activeSearchModalTicket || !activeSearchModalTicket.ticketId) return;
+  const textarea = document.getElementById('searchModalEditTextarea');
+  if (!textarea) return;
+  const nextDescription = String(textarea.value || '').trim();
+  if (!nextDescription) {
+    showToast('La descrizione del ticket non può essere vuota.', 'warning', 'Campo obbligatorio');
+    textarea.focus();
+    return;
+  }
+  if (searchModalEditBtn) searchModalEditBtn.disabled = true;
+  try {
+    await fetchJson('/api/tickets/' + activeSearchModalTicket.ticketId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        incident_id: Number(activeSearchModalTicket.incidentId || 0),
+        incident_name: String(activeSearchModalTicket.incidentName || ''),
+        description: nextDescription,
+        fab: String(activeSearchModalTicket.fab || ''),
+        ticket_time: String(activeSearchModalTicket.createdAt || ''),
+        severity: Number(activeSearchModalTicket.severity || 1)
+      })
+    });
+    activeSearchModalTicket.description = nextDescription;
+    searchModalEditMode = false;
+    renderSearchModal(activeSearchModalTicket, false);
+    syncSearchResultTicket(activeSearchModalTicket);
+    refreshSearchPinnedTickets();
+    showToast('Testo ticket aggiornato.', 'success', 'Modifica salvata');
+  } catch (error) {
+    showToast('Impossibile salvare il ticket: ' + (error.message || error), 'error', 'Errore modifica');
+    if (searchModalEditBtn) searchModalEditBtn.disabled = false;
   }
 }
 
@@ -632,6 +706,7 @@ function renderSearchTickets(tickets) {
     li.dataset.severity = String(t.severity || '');
     li.dataset.category = category;
     li.dataset.ownerUsername = ownerUsername;
+    li.dataset.canEdit = t.can_edit ? '1' : '0';
     li.style.setProperty('--ticket-accent', categoryColor);
 
     li.innerHTML =
@@ -647,6 +722,7 @@ function renderSearchTickets(tickets) {
       '<div class="ticket-row-footer">' +
         (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
+        (t.can_edit ? '<button type="button" class="ticket-edit-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Modifica testo ticket" aria-label="Modifica testo ticket">✎</button>' : '') +
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
       '</div>';
 
@@ -994,12 +1070,24 @@ function applyTicketSearchListeners() {
       createdAt: card.dataset.createdAt,
       severity: card.dataset.severity,
       category: card.dataset.category,
-      ownerUsername: card.dataset.ownerUsername || ''
+      ownerUsername: card.dataset.ownerUsername || '',
+      canEdit: card.dataset.canEdit === '1'
     });
   });
 
   if (searchModal) {
     searchModal.querySelectorAll('.close-modal').forEach((b) => b.addEventListener('click', closeSearchModal));
+    searchModalEditBtn?.addEventListener('click', async () => {
+      if (!activeSearchModalTicket || !activeSearchModalTicket.canEdit) return;
+      if (!searchModalEditMode) {
+        searchModalEditMode = true;
+        renderSearchModal(activeSearchModalTicket, true);
+        const textarea = document.getElementById('searchModalEditTextarea');
+        if (textarea) textarea.focus();
+        return;
+      }
+      await saveSearchTicketDescription();
+    });
     searchModalDeleteBtn?.addEventListener('click', async () => {
       if (!isAdminUser()) return;
       await deleteSearchTicket(activeSearchModalTicketId || searchModalDeleteBtn.dataset.ticketId || '', searchModalDeleteBtn);
