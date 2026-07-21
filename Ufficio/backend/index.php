@@ -8,8 +8,8 @@ if (function_exists('mysqli_report')) {
     mysqli_report(MYSQLI_REPORT_OFF);
 }
 
-define('DB_PATH', dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.json');
 define('SYNC_TS_PATH', dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'sync_ts');
+define('LOCAL_DB_PATH', dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'db.local.json');
 require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'auth.php';
 require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'ldap.php';
 
@@ -1300,7 +1300,7 @@ function db_richness_score($db)
 
 function load_json_db($defaultUsers)
 {
-    if (!file_exists(DB_PATH)) {
+    if (!file_exists(LOCAL_DB_PATH)) {
         $empty = array(
             'categories' => array(),
             'incidents' => array(),
@@ -1313,10 +1313,10 @@ function load_json_db($defaultUsers)
             'preset_option_formats' => array(),
             'counters' => array('category' => 0, 'incident' => 0, 'ticket' => 0, 'user' => 2, 'preset_option_request' => 0)
         );
-        file_put_contents(DB_PATH, json_encode($empty, JSON_PRETTY_PRINT));
+        file_put_contents(LOCAL_DB_PATH, json_encode($empty, JSON_PRETTY_PRINT));
         return $empty;
     }
-    $content = file_get_contents(DB_PATH);
+    $content = file_get_contents(LOCAL_DB_PATH);
     if (substr($content, 0, 3) === "\xEF\xBB\xBF") $content = substr($content, 3);
     $db = json_decode($content, true);
     if (!is_array($db)) {
@@ -1415,29 +1415,37 @@ function load_json_db($defaultUsers)
 
 function load_db($defaultUsers)
 {
-    $jsonDb = load_json_db($defaultUsers);
-    $mysqlDb = mysql_load_db($defaultUsers);
-
     if (is_local_dev_host()) {
-        $selected = 'json';
-        if (is_array($mysqlDb) && db_richness_score($mysqlDb) > db_richness_score($jsonDb)) {
-            $selected = 'mysql';
+        $mysqlDb = mysql_load_db($defaultUsers);
+        if (is_array($mysqlDb)) {
+            set_active_storage_backend('mysql');
+            if (ensure_default_user_avatars($mysqlDb)) save_db($mysqlDb);
+            return $mysqlDb;
         }
-        set_active_storage_backend($selected);
-        $db = $selected === 'mysql' ? $mysqlDb : $jsonDb;
-        if (ensure_default_user_avatars($db)) save_db($db);
-        return $db;
+        $localDb = load_json_db($defaultUsers);
+        set_active_storage_backend('local-json');
+        if (ensure_default_user_avatars($localDb)) save_db($localDb);
+        return $localDb;
     }
 
+    $mysqlDb = mysql_load_db($defaultUsers);
     if (is_array($mysqlDb)) {
         set_active_storage_backend('mysql');
         if (ensure_default_user_avatars($mysqlDb)) save_db($mysqlDb);
         return $mysqlDb;
     }
+    return null;
+}
 
-    set_active_storage_backend('json');
-    if (ensure_default_user_avatars($jsonDb)) save_db($jsonDb);
-    return $jsonDb;
+function ensure_runtime_db($defaultUsers)
+{
+    if (!array_key_exists('_prodops_runtime_db', $GLOBALS) || !is_array($GLOBALS['_prodops_runtime_db'])) {
+        $GLOBALS['_prodops_runtime_db'] = load_db($defaultUsers);
+    }
+    if (!is_array($GLOBALS['_prodops_runtime_db'])) {
+        json_response(array('error' => 'Database MySQL non disponibile'), 503);
+    }
+    return $GLOBALS['_prodops_runtime_db'];
 }
 
 function touch_sync_ts()
@@ -1448,31 +1456,24 @@ function touch_sync_ts()
 function save_db($db)
 {
     $activeStorage = get_active_storage_backend();
-    if ($activeStorage === 'mysql') {
-        if (mysql_save_db($db)) { touch_sync_ts(); return true; }
-        return false;
-    }
-
-    if ($activeStorage !== 'json' && mysql_enabled()) {
-        if (mysql_save_db($db)) { touch_sync_ts(); return true; }
-    }
-
-    $fp = fopen(DB_PATH, 'c+');
-    if (!$fp) {
-        return false;
-    }
-    if (!flock($fp, LOCK_EX)) {
+    if ($activeStorage === 'local-json') {
+        $fp = fopen(LOCAL_DB_PATH, 'c+');
+        if (!$fp) return false;
+        if (!flock($fp, LOCK_EX)) {
+            fclose($fp);
+            return false;
+        }
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($db, JSON_PRETTY_PRINT));
+        fflush($fp);
+        flock($fp, LOCK_UN);
         fclose($fp);
-        return false;
+        touch_sync_ts();
+        return true;
     }
-    ftruncate($fp, 0);
-    rewind($fp);
-    fwrite($fp, json_encode($db, JSON_PRETTY_PRINT));
-    fflush($fp);
-    flock($fp, LOCK_UN);
-    fclose($fp);
-    touch_sync_ts();
-    return true;
+    if (mysql_save_db($db)) { touch_sync_ts(); return true; }
+    return false;
 }
 
 function max_id($list)
@@ -1917,12 +1918,8 @@ if (remote_api_base() !== '') {
     proxy_remote_api_request($path, $method, $payload);
 }
 
-$db = load_db($defaultUsers);
-if (!mysql_enabled()) {
-    supabase_bootstrap_if_needed($db);
-}
-
 if ($path === '/api/login' && $method === 'POST') {
+    $db = ensure_runtime_db($defaultUsers);
     $contentType = isset($_SERVER['CONTENT_TYPE']) ? strtolower(strval($_SERVER['CONTENT_TYPE'])) : '';
     $isJsonRequest = strpos($contentType, 'application/json') !== false;
     $requestData = $payload;
@@ -1963,15 +1960,6 @@ if ($path === '/api/login' && $method === 'POST') {
             if ($loginConn) {
                 $ip = isset($_SERVER['REMOTE_ADDR']) ? @mysqli_real_escape_string($loginConn, $_SERVER['REMOTE_ADDR']) : '';
                 @mysqli_query($loginConn, "UPDATE app_users SET last_login=NOW(), last_login_ip='" . $ip . "' WHERE id=" . intval($u['id']));
-            } else if (!supabase_enabled()) {
-                // Modalita JSON (dev/fallback): persisti last_login su db.json.
-                foreach ($db['users'] as $luIdx => $luUser) {
-                    if (intval($luUser['id']) === intval($u['id'])) {
-                        $db['users'][$luIdx]['last_login'] = date('Y-m-d H:i:s');
-                        break;
-                    }
-                }
-                save_db($db);
             }
             set_auth_cookie($u);
             $redirectTo = app_url('/index.html');
@@ -2002,6 +1990,63 @@ if ($path === '/api/logout' && $method === 'POST') {
 }
 
 $user = require_api_auth('user');
+
+if ($path === '/api/ping' && $method === 'GET') {
+    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
+    json_response(array('ts' => $ts), 200);
+}
+
+if ($path === '/api/events' && $method === 'GET') {
+    // Auth gia' eseguita globalmente — $user e' disponibile
+    set_time_limit(35);
+    @ini_set('zlib.output_compression', '0');
+    // Discard any buffered pre-output, then auto-flush for streaming
+    @ob_end_clean();
+    ob_implicit_flush(true);
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('X-Accel-Buffering: no');
+    $knownTs = 0;
+    if (!empty($_SERVER['HTTP_LAST_EVENT_ID'])) {
+        $knownTs = floatval($_SERVER['HTTP_LAST_EVENT_ID']);
+    } elseif (isset($_GET['last'])) {
+        $knownTs = floatval($_GET['last']);
+    }
+    // Send an immediate ping so the browser confirms the connection is live
+    echo ": ping\n\n";
+    flush();
+    // Sul server PHP dev locale (`php -S`, single-thread) tenere lo stream
+    // aperto 25s bloccherebbe l'unico worker e accoderebbe TUTTE le altre
+    // richieste (lentezza estrema). In dev rispondiamo subito con il ts
+    // corrente e lasciamo che l'EventSource si riconnetta dopo `retry` ms:
+    // la sincronizzazione resta attiva via polling breve, senza bloccare.
+    if (is_local_dev_host()) {
+        echo "retry: 3000\n";
+        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
+        echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+        echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+        flush();
+        exit;
+    }
+    $deadline = time() + 25;
+    while (time() < $deadline) {
+        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
+        if ($ts > $knownTs + 0.001) {
+            echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+            echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+            flush();
+            exit;
+        }
+        usleep(500000);
+    }
+    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
+    echo 'id: ' . sprintf('%.6f', $ts) . "\n";
+    echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
+    flush();
+    exit;
+}
+
+$db = ensure_runtime_db($defaultUsers);
 
 if ($path === '/api/me' && $method === 'GET') {
     $me = user_by_id($db['users'], intval($user['id']));
@@ -3633,61 +3678,6 @@ if ($path === '/api/user-charts' && $method === 'PUT') {
     $db['user_charts'][$userKey] = array('charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges, 'chart_spans' => $cleanSpans, 'chart_types' => $cleanTypes, 'palette' => $palette, 'dark_mode' => $darkMode);
     save_db($db);
     json_response(array('ok' => true, 'charts' => $clean, 'hidden_panels' => $cleanHidden, 'panel_order' => $cleanOrder, 'panel_titles' => $cleanTitles, 'chart_modes' => $cleanModes, 'chart_custom_ranges' => $cleanRanges, 'chart_spans' => $cleanSpans, 'chart_types' => $cleanTypes, 'palette' => $palette, 'dark_mode' => $darkMode), 200);
-}
-
-if ($path === '/api/ping' && $method === 'GET') {
-    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
-    json_response(array('ts' => $ts), 200);
-}
-
-if ($path === '/api/events' && $method === 'GET') {
-    // Auth già eseguita globalmente — $user è disponibile
-    set_time_limit(35);
-    @ini_set('zlib.output_compression', '0');
-    // Discard any buffered pre-output, then auto-flush for streaming
-    @ob_end_clean();
-    ob_implicit_flush(true);
-    header('Content-Type: text/event-stream');
-    header('Cache-Control: no-cache');
-    header('X-Accel-Buffering: no');
-    $knownTs = 0;
-    if (!empty($_SERVER['HTTP_LAST_EVENT_ID'])) {
-        $knownTs = floatval($_SERVER['HTTP_LAST_EVENT_ID']);
-    } elseif (isset($_GET['last'])) {
-        $knownTs = floatval($_GET['last']);
-    }
-    // Send an immediate ping so the browser confirms the connection is live
-    echo ": ping\n\n";
-    flush();
-    // Sul server PHP dev locale (`php -S`, single-thread) tenere lo stream
-    // aperto 25s bloccherebbe l'unico worker e accoderebbe TUTTE le altre
-    // richieste (lentezza estrema). In dev rispondiamo subito con il ts
-    // corrente e lasciamo che l'EventSource si riconnetta dopo `retry` ms:
-    // la sincronizzazione resta attiva via polling breve, senza bloccare.
-    if (is_local_dev_host()) {
-        echo "retry: 3000\n";
-        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
-        echo 'id: ' . sprintf('%.6f', $ts) . "\n";
-        echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
-        flush();
-        exit;
-    }
-    $deadline = time() + 25;
-    while (time() < $deadline) {
-        $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : 0;
-        if ($ts > $knownTs + 0.001) {
-            echo 'id: ' . sprintf('%.6f', $ts) . "\n";
-            echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
-            flush();
-            exit;
-        }
-        usleep(500000);
-    }
-    $ts = file_exists(SYNC_TS_PATH) ? floatval(file_get_contents(SYNC_TS_PATH)) : $knownTs;
-    echo 'id: ' . sprintf('%.6f', $ts) . "\n";
-    echo 'data: ' . json_encode(array('ts' => $ts)) . "\n\n";
-    flush();
-    exit;
 }
 
 json_response(array('error' => 'Endpoint non trovato'), 404);

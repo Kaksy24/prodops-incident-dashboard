@@ -1841,7 +1841,8 @@ circle.chart-line-point.chart-clickable:hover { stroke: var(--brand); stroke-wid
   line-height: 1;
 }
 .ticket-row-sep { color: var(--muted); opacity: .4; }
-.ticket-row-owner { font-size: .65rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; display: flex; align-items: center; gap: 3px; }
+.ticket-row-owner { font-size: .65rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; display: flex; align-items: center; gap: 3px; font-weight: 700; }
+.ticket-row-owner strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .ticket-owner-avatar { font-size: 11px; line-height: 1; flex-shrink: 0; }
 .ticket-row-body {
   position: relative;
@@ -2004,6 +2005,7 @@ body.theme-dark .ticket-row.ticket-pinned {
   margin-left: auto;
   font-size: .66rem;
   color: var(--muted);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
   white-space: nowrap;
@@ -5893,6 +5895,7 @@ body.theme-dark .app-version-badge {
   box-shadow: 0 20px 48px rgba(15, 39, 61, .22), 0 0 0 1px rgba(20, 44, 74, .06);
   max-width: 90vw;
   overflow-x: auto;
+  overflow-y: hidden;
   transition: opacity .12s ease;
 }
 
@@ -5922,6 +5925,10 @@ body.theme-dark .app-version-badge {
 body.theme-dark .ticket-stack-popup .ticket-row {
   border-color: rgba(20,44,74,.14);
   box-shadow: 0 2px 8px rgba(4,10,19,.35);
+}
+.ticket-stack-popup .ticket-row-owner strong,
+.ticket-stack-popup .ticket-row-datetime strong {
+  font-weight: 700;
 }
 /* Testo leggibile sulle card chiare anche in dark mode (come nella lista) */
 body.theme-dark .ticket-stack-popup .ticket-row .ticket-row-title { color: #17202f; }

@@ -183,9 +183,15 @@ function export_fix_mojibake($s) {
         if (strpos($s, $sig) !== false) { $hit = true; break; }
     }
     if (!$hit) return $s;
-    $fixed = @mb_convert_encoding($s, 'Windows-1252', 'UTF-8');
-    if ($fixed !== false && $fixed !== '' && mb_check_encoding($fixed, 'UTF-8')) {
-        return $fixed;
+    // Decodifica il testo "mojibake" in due passi: prima recupera i byte
+    // originali Windows-1252 interpretati per errore come UTF-8, poi li
+    // ricodifica davvero in UTF-8. Esempio: "ã€ˆ16:47ã€‰" -> "〈16:47〉".
+    $bytes = @mb_convert_encoding($s, 'Windows-1252', 'UTF-8');
+    if ($bytes !== false && $bytes !== '') {
+        $fixed = @mb_convert_encoding($bytes, 'UTF-8', 'Windows-1252');
+        if ($fixed !== false && $fixed !== '' && mb_check_encoding($fixed, 'UTF-8')) {
+            return $fixed;
+        }
     }
     return $s;
 }

@@ -11,3 +11,5 @@ deploy_ticket_manager_*.zip
 deploy_ticket_manager_*.zippa
 .deploy_staging_ticket_manager/
 outputs/
+Ufficio/data/db.json
+Ufficio/data/db.local.json

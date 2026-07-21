@@ -137,9 +137,8 @@ let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
 let previousShiftsData = null;
-let syncLastTs = 0;
-let syncPollTimer = null;
-let _sseSource = null;
+const PAGE_AUTO_REFRESH_MS = 3 * 60 * 1000;
+let pageAutoRefreshTimer = null;
 let currentShiftAutoRefreshBusy = false;
 let currentShiftOwnerFilter = 'all';
 let currentShiftSortKey = 'time';
@@ -3709,6 +3708,7 @@ function renderPieOrDonutChart(target, stats, isDonut) {
 
   const layout = document.createElement('div');
   layout.className = `chart-pie-layout${isDonut ? ' donut' : ' pie'}`;
+  if (isDonut && target && target.id === 'teamYearChart') layout.classList.add('team-donut-chart');
 
   const visual = document.createElement('div');
   visual.className = `chart-pie-visual${isDonut ? ' donut' : ' pie'}`;
@@ -3859,9 +3859,15 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
     layout.style.setProperty('--donut-center-label-size', 'calc(' + (0.78 * Math.max(0.76, Math.min(centerScale, 1.4))).toFixed(3).replace(/\.?0+$/, '') + 'rem * var(--chart-font-scale))');
   }
   function resetLegendScale() {
-    layout.style.setProperty('--donut-legend-font-size', 'calc(.78rem * var(--chart-font-scale))');
-    layout.style.setProperty('--donut-legend-value-size', 'calc(.74rem * var(--chart-font-scale))');
-    layout.style.setProperty('--donut-legend-row-gap', '7px');
+    if (targetId === 'teamYearChart') {
+      layout.style.setProperty('--donut-legend-font-size', 'calc(.88rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-value-size', 'calc(.82rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-row-gap', '9px');
+    } else {
+      layout.style.setProperty('--donut-legend-font-size', 'calc(.78rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-value-size', 'calc(.74rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-row-gap', '7px');
+    }
     layout.style.setProperty('--donut-legend-min-height', '20px');
     layout.style.setProperty('--donut-swatch-size', '11px');
     layout.style.removeProperty('--donut-center-strong-size');
@@ -4469,8 +4475,15 @@ async function loadCategories() {
     });
     wrap.appendChild(ul);
     wrap.querySelector('.category-toggle').addEventListener('click', () => {
-      const isOpen = wrap.classList.toggle('open');
-      wrap.querySelector('.category-toggle').setAttribute('aria-expanded', String(isOpen));
+      const shouldOpen = !wrap.classList.contains('open');
+      Array.from(menu.querySelectorAll('.menu-category.open')).forEach((other) => {
+        if (other === wrap) return;
+        other.classList.remove('open');
+        const btn = other.querySelector('.category-toggle');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      });
+      wrap.classList.toggle('open', shouldOpen);
+      wrap.querySelector('.category-toggle').setAttribute('aria-expanded', String(shouldOpen));
       scheduleQuickbarAutoFitHeight();
       scheduleQuickbarAutoFitHeight(320);
     });
@@ -4534,8 +4547,8 @@ function createTicketRowElement(t, isAnimated) {
       '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
-      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
-      '<span class="ticket-row-datetime">' + dayMonth + ' ' + hhmm + '</span>' +
+      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + '<strong>' + escapeHtml(ownerUsername) + '</strong></span>' : '') +
+      '<span class="ticket-row-datetime"><strong>' + dayMonth + ' ' + hhmm + '</strong></span>' +
     '</div>';
   return li;
 }
@@ -4751,88 +4764,12 @@ async function refreshCurrentShiftTickets() {
   }
 }
 
-function pingUrl() {
-  return appUrl('/api/ping?_t=' + Date.now());
-}
-
 function startCurrentShiftAutoRefresh() {
-  if (typeof EventSource === 'undefined') {
-    // Fallback: polling
-    if (syncPollTimer) return;
-    fetch(pingUrl())
-      .then(function(r) { return r.json(); })
-      .then(function(data) { syncLastTs = data.ts || 0; scheduleSyncPoll(); })
-      .catch(function() { scheduleSyncPoll(); });
-    return;
-  }
-  if (_sseSource) return;
-  // Initial ping to seed syncLastTs so we don't re-fire on stale changes
-  fetch(pingUrl())
-    .then(function(r) { return r.json(); })
-    .then(function(data) { syncLastTs = data.ts || 0; _openSSE(); })
-    .catch(function() { _openSSE(); });
-}
-
-function _openSSE() {
-  if (_sseSource) return;
-  var src = new EventSource('/api/events?last=' + syncLastTs);
-  _sseSource = src;
-  var received = false;
-  // Fallback: if server doesn't stream (e.g. PHP built-in dev server buffers), switch to polling
-  var fallbackTimer = setTimeout(function() {
-    if (!received) {
-      src.close();
-      _sseSource = null;
-      scheduleSyncPoll();
-    }
-  }, 8000);
-  src.onmessage = function(e) {
-    received = true;
-    clearTimeout(fallbackTimer);
-    try {
-      var ts = Number(JSON.parse(e.data).ts) || 0;
-      if (ts > syncLastTs + 0.001) {
-        syncLastTs = ts;
-        refreshCurrentShiftTickets().catch(function() {});
-        loadCharts().catch(function() {});
-        if (previousShiftsLoaded) loadPreviousShifts().catch(function() {});
-      }
-      syncLastTs = Math.max(syncLastTs, ts);
-    } catch (_) {}
-    // EventSource auto-reconnects using Last-Event-ID — no manual retry needed
-  };
-  src.onerror = function() {
-    clearTimeout(fallbackTimer);
-    if (src.readyState === EventSource.CLOSED) {
-      _sseSource = null;
-      if (received) {
-        setTimeout(_openSSE, 3000);
-      } else {
-        scheduleSyncPoll();
-      }
-    }
-  };
-}
-
-function scheduleSyncPoll() {
-  syncPollTimer = setTimeout(() => {
-    syncPollTimer = null;
-    fetch(pingUrl())
-      .then((r) => r.json())
-      .then((data) => {
-        const ts = data.ts || 0;
-        if (ts > syncLastTs + 0.001) {
-          syncLastTs = ts;
-          refreshCurrentShiftTickets().catch(() => {});
-          loadCharts().catch(() => {});
-          if (previousShiftsLoaded) loadPreviousShifts().catch(() => {});
-        }
-        scheduleSyncPoll();
-      })
-      .catch(() => {
-        syncPollTimer = setTimeout(() => { syncPollTimer = null; scheduleSyncPoll(); }, 5000);
-      });
-  }, 2000);
+  if (pageAutoRefreshTimer) return;
+  pageAutoRefreshTimer = window.setTimeout(function() {
+    pageAutoRefreshTimer = null;
+    window.location.reload();
+  }, PAGE_AUTO_REFRESH_MS);
 }
 
 function renderSearchTickets(tickets) {
@@ -7747,6 +7684,19 @@ function _compactLabelForMode() {
   return 'categoria';
 }
 
+function _compactExpandRows(entries) {
+  var expanded = [];
+  (entries || []).forEach(function(entry) {
+    if (!entry || entry.style.display === 'none') return;
+    if (entry.classList && entry.classList.contains('ticket-dup-stack') && Array.isArray(entry._tsCards) && entry._tsCards.length) {
+      entry._tsCards.forEach(function(card) { expanded.push(card); });
+      return;
+    }
+    expanded.push(entry);
+  });
+  return expanded;
+}
+
 function _compactBuild() {
   var allRows = [];
   if (_compactFlatRows.length) {
@@ -7758,7 +7708,7 @@ function _compactBuild() {
     _compactFlatRows = allRows.slice();
   }
 
-  var visRows = allRows.filter(function(li) { return li.style.display !== 'none'; });
+  var visRows = _compactExpandRows(allRows);
 
   var groups = {};
   var order = [];
@@ -7811,6 +7761,7 @@ function _tsShowPopup(stack) {
   if (_tsPopupTimer) { clearTimeout(_tsPopupTimer); _tsPopupTimer = null; }
   var cards = stack._tsCards;
   if (!cards || cards.length <= 1) return;
+  if (tsPopup) tsPopup._anchorStack = stack;
 
   tsPopup.innerHTML = '';
   cards.forEach(function(card) { tsPopup.appendChild(card.cloneNode(true)); });
@@ -7828,10 +7779,20 @@ function _tsShowPopup(stack) {
 }
 
 function _tsHidePopup() {
-  if (tsPopup) { tsPopup.setAttribute('hidden', ''); tsPopup.innerHTML = ''; }
+  if (tsPopup) {
+    tsPopup.setAttribute('hidden', '');
+    tsPopup.innerHTML = '';
+    tsPopup._anchorStack = null;
+  }
 }
 
 if (tsPopup) {
+  tsPopup.addEventListener('wheel', function(e) {
+    if (tsPopup.scrollWidth <= tsPopup.clientWidth) return;
+    var delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    tsPopup.scrollLeft += delta;
+    e.preventDefault();
+  }, { passive: false });
   tsPopup.addEventListener('mouseenter', function() {
     if (_tsPopupTimer) { clearTimeout(_tsPopupTimer); _tsPopupTimer = null; }
   });
@@ -7855,6 +7816,15 @@ if (tsPopup) {
       canEdit: card.dataset.canEdit === '1'
     });
     _tsHidePopup();
+  });
+}
+
+if (ticketList) {
+  ticketList.addEventListener('mouseover', function(e) {
+    var stack = e.target.closest('.ticket-stack, .ticket-dup-stack');
+    if (!stack || !stack._tsCards || stack._tsCards.length <= 1) return;
+    if (tsPopup && tsPopup._anchorStack === stack && !tsPopup.hasAttribute('hidden')) return;
+    _tsShowPopup(stack);
   });
 }
 
