@@ -107,6 +107,110 @@ function env_first($keys)
     return false;
 }
 
+function mysql_read_cache_ttl()
+{
+    $ttl = env_first(array('MYSQL_READ_CACHE_TTL', 'PRODOPS_DB_CACHE_TTL'));
+    $ttl = $ttl !== false ? intval($ttl) : 10;
+    if ($ttl < 0) $ttl = 0;
+    if ($ttl > 60) $ttl = 60;
+    return $ttl;
+}
+
+function mysql_read_cache_path()
+{
+    $custom = env_first(array('MYSQL_READ_CACHE_PATH', 'PRODOPS_DB_CACHE_PATH'));
+    if ($custom !== false && trim(strval($custom)) !== '') return strval($custom);
+    $base = function_exists('sys_get_temp_dir') ? sys_get_temp_dir() : dirname(__FILE__);
+    return rtrim($base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'prodops_mysql_read_cache_' . md5(dirname(__FILE__)) . '.cache';
+}
+
+function current_request_api_path()
+{
+    $uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+    $path = parse_url($uri, PHP_URL_PATH);
+    if (!$path) return '';
+    $basePath = app_base_path();
+    if ($basePath !== '' && ($path === $basePath || strpos($path, $basePath . '/') === 0)) {
+        $path = substr($path, strlen($basePath));
+        if ($path === '') $path = '/';
+    }
+    return $path;
+}
+
+function mysql_read_cache_allowed()
+{
+    if (!mysql_enabled()) return false;
+    if (mysql_read_cache_ttl() <= 0) return false;
+    $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : '';
+    if ($method !== 'GET') return false;
+    $path = current_request_api_path();
+    if ($path === '/api/me') return true;
+    if ($path === '/api/user-avatars') return true;
+    if ($path === '/api/ui-colors') return true;
+    if ($path === '/api/group-targets') return true;
+    if ($path === '/api/users') return true;
+    if ($path === '/api/categories') return true;
+    if ($path === '/api/preset-options') return true;
+    if ($path === '/api/search-filter-options') return true;
+    if ($path === '/api/admin/preset-option-requests') return true;
+    if ($path === '/api/admin/preset-options') return true;
+    if ($path === '/api/tickets/current-day') return true;
+    if ($path === '/api/tickets/current-shift') return true;
+    if ($path === '/api/tickets/previous-shifts') return true;
+    if ($path === '/api/tickets/search') return true;
+    if ($path === '/api/tickets/lookup') return true;
+    if ($path === '/api/stats/meta') return true;
+    if ($path === '/api/stats/custom') return true;
+    if ($path === '/api/user-charts') return true;
+    if (strpos($path, '/api/stats/') === 0) return true;
+    return false;
+}
+
+function mysql_current_sync_ts()
+{
+    return file_exists(SYNC_TS_PATH) ? strval(trim(file_get_contents(SYNC_TS_PATH))) : '0';
+}
+
+function mysql_read_cache_load()
+{
+    if (!mysql_read_cache_allowed()) return null;
+    $cachePath = mysql_read_cache_path();
+    if (!file_exists($cachePath)) return null;
+    $raw = @file_get_contents($cachePath);
+    if ($raw === false || trim($raw) === '') return null;
+    $cache = json_decode($raw, true);
+    if (!is_array($cache) || !isset($cache['db']) || !is_array($cache['db'])) return null;
+    $createdAt = isset($cache['created_at']) ? floatval($cache['created_at']) : 0;
+    if ($createdAt <= 0 || (microtime(true) - $createdAt) > mysql_read_cache_ttl()) return null;
+    $cacheSyncTs = isset($cache['sync_ts']) ? strval($cache['sync_ts']) : '';
+    if ($cacheSyncTs !== mysql_current_sync_ts()) return null;
+    return $cache['db'];
+}
+
+function mysql_read_cache_store($db)
+{
+    if (!mysql_read_cache_allowed() || !is_array($db)) return;
+    $cachePath = mysql_read_cache_path();
+    $payload = array(
+        'created_at' => microtime(true),
+        'sync_ts' => mysql_current_sync_ts(),
+        'db' => $db
+    );
+    $dir = dirname($cachePath);
+    if (!is_dir($dir)) return;
+    $tmp = $cachePath . '.tmp.' . getmypid();
+    $json = json_encode($payload);
+    if ($json === false) return;
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) return;
+    @rename($tmp, $cachePath);
+}
+
+function mysql_read_cache_clear()
+{
+    $cachePath = mysql_read_cache_path();
+    if (file_exists($cachePath)) @unlink($cachePath);
+}
+
 function normalize_team($team)
 {
     $team = strtoupper(trim(strval($team)));
@@ -1459,10 +1563,16 @@ function load_json_db($defaultUsers)
 function load_db($defaultUsers)
 {
     if (is_local_dev_host()) {
+        $cachedDb = mysql_read_cache_load();
+        if (is_array($cachedDb)) {
+            set_active_storage_backend('mysql');
+            return $cachedDb;
+        }
         $mysqlDb = mysql_load_db($defaultUsers);
         if (is_array($mysqlDb)) {
             set_active_storage_backend('mysql');
             if (ensure_default_user_avatars($mysqlDb)) save_db($mysqlDb);
+            mysql_read_cache_store($mysqlDb);
             return $mysqlDb;
         }
         $localDb = load_json_db($defaultUsers);
@@ -1471,10 +1581,16 @@ function load_db($defaultUsers)
         return $localDb;
     }
 
+    $cachedDb = mysql_read_cache_load();
+    if (is_array($cachedDb)) {
+        set_active_storage_backend('mysql');
+        return $cachedDb;
+    }
     $mysqlDb = mysql_load_db($defaultUsers);
     if (is_array($mysqlDb)) {
         set_active_storage_backend('mysql');
         if (ensure_default_user_avatars($mysqlDb)) save_db($mysqlDb);
+        mysql_read_cache_store($mysqlDb);
         return $mysqlDb;
     }
     return null;
@@ -1494,6 +1610,7 @@ function ensure_runtime_db($defaultUsers)
 function touch_sync_ts()
 {
     @file_put_contents(SYNC_TS_PATH, sprintf('%.6f', microtime(true)));
+    mysql_read_cache_clear();
 }
 
 function save_db($db)
