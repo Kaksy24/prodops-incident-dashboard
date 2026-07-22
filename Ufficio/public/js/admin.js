@@ -36,6 +36,8 @@ const adminCategoryLogoGrid = document.getElementById('adminCategoryLogoGrid');
 const openUserCreateModalBtn = document.getElementById('openUserCreateModalBtn');
 const adminIncidentNameInput = document.getElementById('adminIncidentName');
 const adminIncidentPresetInput = document.getElementById('adminIncidentPreset');
+const adminIncidentPresetEditor = document.getElementById('adminIncidentPresetEditor');
+const adminIncidentPresetToolbar = document.getElementById('adminIncidentPresetToolbar');
 const adminSeverityDefaultSelect = document.getElementById('adminSeverityDefault');
 const adminSeverityModeSelect = document.getElementById('adminSeverityMode');
 const adminFabDefaultSelect = document.getElementById('adminFabDefault');
@@ -92,6 +94,8 @@ const uiColorsSyncKey = 'prodops_ui_colors_updated_at';
 const adminTabStorageKey = 'prodops_admin_tab';
 let currentPaletteId = 'blu';
 let currentDarkMode = false;
+const ADMIN_PRESET_INLINE_TAGS = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', UL: 'ul', OL: 'ol', LI: 'li' };
+const ADMIN_PRESET_TOOLBAR_CMDS = ['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList'];
 
 function releaseThemeSyncPending() {
   document.documentElement.classList.remove('theme-sync-pending');
@@ -1179,6 +1183,7 @@ function closeIncidentModal() {
   document.body.classList.remove('modal-open');
   editingIncidentId = null;
   adminIncidentForm?.reset();
+  adminPresetSetContent('');
   adminModalCloseTimer = setTimeout(() => {
     adminIncidentModal.classList.remove('show', 'closing');
     adminModalCloseTimer = null;
@@ -1196,6 +1201,7 @@ function openIncidentModal(incident) {
   editingIncidentId = Number(incident.id);
   adminIncidentNameInput.value = incident.name || '';
   adminIncidentPresetInput.value = incident.preset || '';
+  adminPresetSetContent(adminIncidentPresetInput.value || '');
   adminSeverityDefaultSelect.value = String(incident.severity_default || 1);
   adminSeverityModeSelect.value = incident.severity_mode || 'default';
   adminFabDefaultSelect.value = incident.fab_default || '';
@@ -1302,6 +1308,166 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function adminPresetBuildEditorHtml(storage) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(storage == null ? '' : storage);
+  const out = [];
+  adminPresetWalkBuild(tpl.content, out);
+  return out.join('');
+}
+
+function adminPresetWalkBuild(node, out) {
+  const nodes = node.childNodes || [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const child = nodes[i];
+    if (child.nodeType === 3) {
+      out.push(escapeHtml(child.nodeValue || '').replace(/\n/g, '<br>'));
+      continue;
+    }
+    if (child.nodeType !== 1) continue;
+    const tag = child.tagName;
+    if (tag === 'BR') { out.push('<br>'); continue; }
+    const wrap = ADMIN_PRESET_INLINE_TAGS[tag];
+    if (wrap) {
+      out.push('<' + wrap + '>');
+      adminPresetWalkBuild(child, out);
+      out.push('</' + wrap + '>');
+      continue;
+    }
+    if (tag === 'DIV' || tag === 'P') {
+      if (out.length) out.push('<br>');
+      adminPresetWalkBuild(child, out);
+      continue;
+    }
+    adminPresetWalkBuild(child, out);
+  }
+}
+
+function adminPresetSerializeNode(node, out) {
+  const nodes = node.childNodes || [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const child = nodes[i];
+    if (child.nodeType === 3) { out.push(escapeHtml(child.nodeValue || '')); continue; }
+    if (child.nodeType !== 1) continue;
+    const tag = child.tagName;
+    if (tag === 'BR') { out.push('\n'); continue; }
+    const wrap = ADMIN_PRESET_INLINE_TAGS[tag];
+    if (wrap) {
+      out.push('<' + wrap + '>');
+      adminPresetSerializeNode(child, out);
+      out.push('</' + wrap + '>');
+      continue;
+    }
+    if (tag === 'DIV' || tag === 'P') {
+      if (out.length) out.push('\n');
+      adminPresetSerializeNode(child, out);
+      continue;
+    }
+    adminPresetSerializeNode(child, out);
+  }
+}
+
+function adminPresetGetStorage() {
+  if (!adminIncidentPresetEditor) return adminIncidentPresetInput ? adminIncidentPresetInput.value : '';
+  const out = [];
+  adminPresetSerializeNode(adminIncidentPresetEditor, out);
+  let value = out.join('');
+  value = value.replace(/\n{3,}/g, '\n\n').replace(/\n/g, '<br>');
+  value = value.replace(/(?:<br>){3,}/g, '<br><br>').replace(/^(?:<br>)+|(?:<br>)+$/g, '');
+  return value.trim();
+}
+
+function adminPresetSyncFromEditor() {
+  if (adminIncidentPresetInput) adminIncidentPresetInput.value = adminPresetGetStorage();
+}
+
+function adminPresetSetContent(storage) {
+  if (!adminIncidentPresetEditor) {
+    if (adminIncidentPresetInput) adminIncidentPresetInput.value = String(storage || '');
+    return;
+  }
+  adminIncidentPresetEditor.innerHTML = adminPresetBuildEditorHtml(storage);
+  adminPresetSyncFromEditor();
+  adminPresetUpdateToolbarState();
+}
+
+function adminPresetUpdateToolbarState() {
+  if (!adminIncidentPresetToolbar) return;
+  const buttons = adminIncidentPresetToolbar.querySelectorAll('.desc-tool');
+  Array.prototype.forEach.call(buttons, function (btn) {
+    const cmd = btn.getAttribute('data-cmd');
+    if (ADMIN_PRESET_TOOLBAR_CMDS.indexOf(cmd) === -1) return;
+    let active = false;
+    try { active = document.queryCommandState(cmd); } catch (error) { active = false; }
+    btn.classList.toggle('is-active', !!active);
+  });
+}
+
+function adminPresetMoveCaretToEnd() {
+  if (!adminIncidentPresetEditor) return;
+  const range = document.createRange();
+  range.selectNodeContents(adminIncidentPresetEditor);
+  range.collapse(false);
+  const sel = window.getSelection();
+  if (!sel) return;
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function adminPresetInsertText(text) {
+  if (!adminIncidentPresetEditor) {
+    if (adminIncidentPresetInput) insertAtCursor(adminIncidentPresetInput, text);
+    return;
+  }
+  adminIncidentPresetEditor.focus();
+  const sel = window.getSelection();
+  let range = null;
+  if (sel && sel.rangeCount) {
+    const candidate = sel.getRangeAt(0);
+    if (adminIncidentPresetEditor.contains(candidate.commonAncestorContainer)) range = candidate;
+  }
+  if (!range) {
+    adminPresetMoveCaretToEnd();
+    if (sel && sel.rangeCount) range = sel.getRangeAt(0);
+  }
+  if (!range) return;
+  range.deleteContents();
+  const textNode = document.createTextNode(String(text || ''));
+  range.insertNode(textNode);
+  range.setStartAfter(textNode);
+  range.collapse(true);
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  adminPresetSyncFromEditor();
+  adminPresetUpdateToolbarState();
+}
+
+function initAdminPresetEditor() {
+  if (!adminIncidentPresetEditor || adminIncidentPresetEditor.dataset.adminPresetInit === '1') return;
+  adminIncidentPresetEditor.dataset.adminPresetInit = '1';
+  try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (error) {}
+  adminIncidentPresetEditor.addEventListener('input', adminPresetSyncFromEditor);
+  adminIncidentPresetEditor.addEventListener('keyup', adminPresetUpdateToolbarState);
+  adminIncidentPresetEditor.addEventListener('mouseup', adminPresetUpdateToolbarState);
+  adminIncidentPresetEditor.addEventListener('focus', adminPresetUpdateToolbarState);
+  if (adminIncidentPresetToolbar) {
+    adminIncidentPresetToolbar.addEventListener('mousedown', function (e) {
+      if (e.target.closest('.desc-tool')) e.preventDefault();
+    });
+    adminIncidentPresetToolbar.addEventListener('click', function (e) {
+      const btn = e.target.closest('.desc-tool');
+      if (!btn) return;
+      adminIncidentPresetEditor.focus();
+      try { document.execCommand(btn.getAttribute('data-cmd'), false, null); } catch (error) {}
+      adminPresetSyncFromEditor();
+      adminPresetUpdateToolbarState();
+    });
+  }
+  adminPresetSetContent(adminIncidentPresetInput ? adminIncidentPresetInput.value : '');
 }
 
 function normalizeGroupName(value) {
@@ -2579,6 +2745,7 @@ adminIncidentForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!editingIncidentId) return;
 
+  adminPresetSyncFromEditor();
   const nextName = (adminIncidentNameInput.value || '').trim();
   const preset = (adminIncidentPresetInput.value || '').trim();
   const severity_default = Number(adminSeverityDefaultSelect.value || 1);
@@ -2685,6 +2852,10 @@ userCreateForm?.addEventListener('submit', async (e) => {
 })();
 
 function insertAtCursor(textarea, text) {
+  if (textarea === adminIncidentPresetInput && adminIncidentPresetEditor) {
+    adminPresetInsertText(text);
+    return;
+  }
   const start = textarea.selectionStart ?? textarea.value.length;
   const end = textarea.selectionEnd ?? textarea.value.length;
   const before = textarea.value.slice(0, start);
@@ -2694,6 +2865,8 @@ function insertAtCursor(textarea, text) {
   textarea.setSelectionRange(pos, pos);
   textarea.focus();
 }
+
+initAdminPresetEditor();
 
 addPresetTextFieldBtn?.addEventListener('click', async () => {
   const label = await showPrompt('Assegna un nome al campo di testo libero da inserire nel ticket precompilato.', { title: 'Campo di testo', placeholder: 'Es. Entity', confirmText: 'Inserisci' });

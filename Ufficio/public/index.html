@@ -333,8 +333,9 @@
             <div id="fabButtons" class="fab-buttons"></div>
           </div>
           <div id="ticketSeverityGroup" class="severity-inline-group">
-            <label for="ticketSeverity">Severity</label>
+            <label for="ticketSeverity">Severity <span class="severity-info" tabindex="0" aria-label="Informazioni severity" role="button">i<span class="severity-info-popup" role="tooltip">La severity pesa il tempo speso e l'effort nella risoluzone della problematica. Scegli in maniera oculata la severity secondo il buon senso.</span></span></label>
             <select id="ticketSeverity" name="ticketSeverity" required>
+              <option value="">Seleziona severity</option>
               <option value="1">1 - Low</option>
               <option value="2">2 - Medium</option>
               <option value="3">3 - High</option>

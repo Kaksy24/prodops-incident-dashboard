@@ -344,7 +344,16 @@
         <input id="adminIncidentName" name="adminIncidentName" type="text" required />
 
         <label for="adminIncidentPreset">Testo ticket precompilato (opzionale)</label>
-        <textarea id="adminIncidentPreset" name="adminIncidentPreset" rows="5" placeholder="Lascia vuoto se non vuoi precompilato"></textarea>
+        <div id="adminIncidentPresetToolbar" class="desc-toolbar" aria-label="Toolbar formattazione preset">
+          <button type="button" class="desc-tool" data-cmd="bold" title="Grassetto"><strong>B</strong></button>
+          <button type="button" class="desc-tool" data-cmd="italic" title="Corsivo"><em>I</em></button>
+          <button type="button" class="desc-tool" data-cmd="underline" title="Sottolineato"><u>U</u></button>
+          <span class="desc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="desc-tool" data-cmd="insertUnorderedList" title="Lista puntata">• 1</button>
+          <button type="button" class="desc-tool" data-cmd="insertOrderedList" title="Lista numerata">1.</button>
+        </div>
+        <div id="adminIncidentPresetEditor" class="desc-editor" contenteditable="true" data-placeholder="Lascia vuoto se non vuoi precompilato"></div>
+        <textarea id="adminIncidentPreset" name="adminIncidentPreset" rows="5" placeholder="Lascia vuoto se non vuoi precompilato" hidden></textarea>
         <div class="form-actions" style="justify-content:flex-start; margin-top:-4px; margin-bottom:10px;">
           <button type="button" id="addPresetTextFieldBtn" class="secondary">+ Box testo</button>
           <button type="button" id="addPresetTextMultiFieldBtn" class="secondary">+ Box testo multiplo</button>

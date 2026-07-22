@@ -151,6 +151,7 @@ let currentUser = null;
 let previousShiftsLoaded = false;
 let previousShiftsLoading = false;
 let previousShiftsData = null;
+let previousShiftPinnedTickets = [];
 const PAGE_AUTO_REFRESH_MS = 3 * 60 * 1000;
 let pageAutoRefreshTimer = null;
 let currentShiftAutoRefreshBusy = false;
@@ -199,6 +200,10 @@ function colorForLabel(label) {
   const text = String(label || '');
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i);
   return colorByIndex(Math.abs(hash));
+}
+
+function isStrictAdminUser() {
+  return !!(currentUser && currentUser.role === 'admin');
 }
 
 function canUseBroadcastChannel() {
@@ -1231,6 +1236,8 @@ function getSubmitMissingReasons() {
     });
   }
   if (!fabValue.value) reasons.push('FAB');
+  var severityCfg = incidentIdToSeverityMap[String(incidentTypeInput.value || '')] || { severity_default: 1, severity_mode: 'default' };
+  if (severityCfg.severity_mode === 'user' && !String(ticketSeveritySelect && ticketSeveritySelect.value || '').trim()) reasons.push('Severity');
   if (!ticketTimestampInput.value) reasons.push('Orario');
   if (isGenericIncidentId(incidentTypeInput.value) && !(customIncidentNameInput && customIncidentNameInput.value.trim())) reasons.push('Nome incident');
   return reasons;
@@ -1252,6 +1259,10 @@ if (customIncidentNameInput) {
 }
 
 if (ticketTimestampInput) ticketTimestampInput.addEventListener('input', syncSubmitBtnState);
+if (ticketSeveritySelect) {
+  ticketSeveritySelect.addEventListener('change', syncSubmitBtnState);
+  ticketSeveritySelect.addEventListener('input', syncSubmitBtnState);
+}
 
 function openTicketReadModal(ticket) {
   const item = ticket || {};
@@ -1507,10 +1518,39 @@ function getLabelColor(group, label) {
   return normalizeHexColor(custom) || colorForLabel(normalizedLabel);
 }
 
+function getIncidentCategoryName(label) {
+  const rawLabel = String(label || '');
+  const direct = String(incidentCategoryMap[rawLabel] || '').trim();
+  if (direct) return direct;
+  const trimmed = rawLabel.trim();
+  if (trimmed && trimmed !== rawLabel) {
+    const trimmedDirect = String(incidentCategoryMap[trimmed] || '').trim();
+    if (trimmedDirect) return trimmedDirect;
+  }
+  const normalized = rawLabel.toLocaleLowerCase('it').trim();
+  if (!normalized) return '';
+  const incidentNames = Object.keys(incidentCategoryMap);
+  for (let index = 0; index < incidentNames.length; index += 1) {
+    const name = incidentNames[index];
+    if (String(name || '').toLocaleLowerCase('it').trim() === normalized) {
+      return String(incidentCategoryMap[name] || '').trim();
+    }
+  }
+  return '';
+}
+
 function getBarColor(chartId, label) {
   const chartKey = normalizeChartKey(chartId);
   const [theme, fallbackTheme] = themeFallbackOrder();
   const normalizedLabel = String(label || '');
+  if (chartKey === 'incidentYear') {
+    const categoryName = getIncidentCategoryName(normalizedLabel);
+    if (categoryName) {
+      const categoryColor = uiColors?.labels?.categories?.[theme]?.[categoryName] || uiColors?.labels?.categories?.[fallbackTheme]?.[categoryName];
+      if (normalizeHexColor(categoryColor)) return normalizeHexColor(categoryColor);
+      return getLabelColor('categories', categoryName);
+    }
+  }
   const custom = uiColors?.bars?.[chartKey]?.[theme]?.[normalizedLabel] || uiColors?.bars?.[chartKey]?.[fallbackTheme]?.[normalizedLabel];
   if (normalizeHexColor(custom)) return normalizeHexColor(custom);
   const group = chartGroupForId(chartKey);
@@ -1657,8 +1697,8 @@ function buildChartXls(title, stats) {
 
 async function buildChartPngBlob(title, stats) {
   const width = 1280;
-  const rowHeight = 60;
-  const height = Math.max(360, 160 + stats.length * rowHeight);
+  const rowHeight = 78;
+  const height = Math.max(380, 180 + stats.length * rowHeight);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -1683,12 +1723,12 @@ async function buildChartPngBlob(title, stats) {
   ctx.font = '600 18px Segoe UI, sans-serif';
   ctx.fillText('Export dashboard', 48, 92);
 
-  const left = 190;
+  const left = 78;
   const right = width - 60;
   const top = 130;
   const barHeight = 24;
-  const barGap = 22;
-  const barArea = right - left - 120;
+  const barGap = 54;
+  const barArea = right - left - 200;
 
   ctx.strokeStyle = grid;
   ctx.lineWidth = 1;
@@ -1709,7 +1749,7 @@ async function buildChartPngBlob(title, stats) {
 
     ctx.fillStyle = textColor;
     ctx.font = '600 22px Segoe UI, sans-serif';
-    ctx.fillText(label, 48, y + 18);
+    ctx.fillText(label, left, y - 10);
 
     ctx.fillStyle = isDark ? '#22344d' : '#dbe7f5';
     ctx.fillRect(left, y, barArea, barHeight);
@@ -1722,7 +1762,7 @@ async function buildChartPngBlob(title, stats) {
 
     ctx.fillStyle = textColor;
     ctx.font = '700 20px Segoe UI, sans-serif';
-    ctx.fillText(String(value), left + barArea + 14, y + 18);
+    ctx.fillText(String(value), left + barArea + 18, y + 18);
   });
 
   return new Promise((resolve) => {
@@ -2124,6 +2164,361 @@ function aggregateTicketsByDimension(tickets, dimension, meta) {
   return _aggregateBy(tickets, function(t) { return (t.fab || 'N/D').trim(); });
 }
 
+function normalizeAnalysisText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeAnalysisKey(value) {
+  return normalizeAnalysisText(value).toLowerCase();
+}
+
+function countTopValues(values, topN, minCount) {
+  const counts = {};
+  const labels = {};
+  (values || []).forEach(function(value) {
+    const normalized = normalizeAnalysisText(value);
+    const key = normalizeAnalysisKey(normalized);
+    if (!key) return;
+    counts[key] = (counts[key] || 0) + 1;
+    if (!labels[key]) labels[key] = normalized;
+  });
+  return Object.keys(counts).map(function(key) {
+    return { label: labels[key] || key, total: counts[key] || 0 };
+  }).sort(function(a, b) {
+    if ((b.total || 0) !== (a.total || 0)) return (b.total || 0) - (a.total || 0);
+    return String(a.label || '').localeCompare(String(b.label || ''), 'it');
+  }).filter(function(item) {
+    return (item.total || 0) >= Number(minCount || 1);
+  }).slice(0, topN || 5);
+}
+
+function matchesAnalysisField(label, aliases) {
+  const normalized = normalizeAnalysisKey(label);
+  if (!normalized) return false;
+  return (aliases || []).some(function(alias) {
+    return normalized.indexOf(alias) !== -1;
+  });
+}
+
+function buildCategoryDetailAnalysis(categoryName, tickets) {
+  const bucket = {
+    categoryName: categoryName || 'Categoria',
+    total: Array.isArray(tickets) ? tickets.length : 0,
+    incidentStats: [],
+    fields: {
+      macchina: [],
+      lotto: [],
+      operazione: [],
+      sequenza: []
+    }
+  };
+  if (!Array.isArray(tickets) || !tickets.length) return bucket;
+
+  bucket.incidentStats = _aggregateBy(tickets, function(t) {
+    return normalizeAnalysisText(t.incident_name || 'N/D') || 'N/D';
+  }).slice(0, 6);
+
+  tickets.forEach(function(ticket) {
+    const incidentId = String(ticket && ticket.incident_id != null ? ticket.incident_id : '');
+    const incidentName = normalizeAnalysisText(ticket && ticket.incident_name ? ticket.incident_name : '');
+    const presets = incidentIdToPresetMap[incidentId] || incidentPresetMap[incidentName] || [];
+    const template = Array.isArray(presets) && presets.length ? String(presets[0] || '') : '';
+    if (!template) return;
+    const extractedValues = extractPresetValuesFromMarkup(template, ticket.description || '');
+    const extractedByKey = {};
+    (extractedValues || []).forEach(function(item) {
+      extractedByKey[item.key] = item.value;
+    });
+    parsePresetTokens(template).forEach(function(token) {
+      const label = normalizeAnalysisText(token.label || '');
+      const value = normalizeAnalysisText(extractedByKey[token.key] || '');
+      if (!label || !value) return;
+      if (matchesAnalysisField(label, ['macchina', 'machine'])) bucket.fields.macchina.push(value);
+      if (matchesAnalysisField(label, ['lotto', 'box'])) bucket.fields.lotto.push(value);
+      if (matchesAnalysisField(label, ['operazione', 'operation'])) bucket.fields.operazione.push(value);
+      if (matchesAnalysisField(label, ['sequenza', 'sequence'])) bucket.fields.sequenza.push(value);
+    });
+  });
+
+  return bucket;
+}
+
+function extractTicketAnalysisData(ticket) {
+  const details = {
+    incident: normalizeAnalysisText(ticket && ticket.incident_name ? ticket.incident_name : 'N/D') || 'N/D',
+    fab: normalizeAnalysisText(ticket && ticket.fab ? ticket.fab : 'N/D') || 'N/D',
+    macchina: '',
+    lotto: '',
+    operazione: '',
+    sequenza: '',
+    motivo: ''
+  };
+  const incidentId = String(ticket && ticket.incident_id != null ? ticket.incident_id : '');
+  const incidentName = normalizeAnalysisText(ticket && ticket.incident_name ? ticket.incident_name : '');
+  const presets = incidentIdToPresetMap[incidentId] || incidentPresetMap[incidentName] || [];
+  const template = Array.isArray(presets) && presets.length ? String(presets[0] || '') : '';
+  if (!template) return details;
+
+  const extractedValues = extractPresetValuesFromMarkup(template, ticket.description || '');
+  const extractedByKey = {};
+  (extractedValues || []).forEach(function(item) {
+    extractedByKey[item.key] = normalizeAnalysisText(item.value || '');
+  });
+  parsePresetTokens(template).forEach(function(token) {
+    const label = normalizeAnalysisText(token.label || '');
+    const value = normalizeAnalysisText(extractedByKey[token.key] || '');
+    if (!label || !value) return;
+    if (!details.macchina && matchesAnalysisField(label, ['macchina', 'machine'])) details.macchina = value;
+    if (!details.lotto && matchesAnalysisField(label, ['lotto', 'box'])) details.lotto = value;
+    if (!details.operazione && matchesAnalysisField(label, ['operazione', 'operation'])) details.operazione = value;
+    if (!details.sequenza && matchesAnalysisField(label, ['sequenza', 'sequence'])) details.sequenza = value;
+    if (!details.motivo && matchesAnalysisField(label, ['motivo', 'motivazione', 'reason', 'causa'])) details.motivo = value;
+  });
+  return details;
+}
+
+function buildOccurrenceTableRows(tickets) {
+  const counts = {};
+  const labels = {};
+  (tickets || []).forEach(function(ticket) {
+    const details = extractTicketAnalysisData(ticket);
+    let elementType = '';
+    let elementValue = '';
+    let detailValue = '';
+    if (details.macchina) {
+      elementType = 'Macchina';
+      elementValue = details.macchina;
+      detailValue = details.motivo || details.incident;
+    } else if (details.lotto || details.operazione) {
+      elementType = 'Lotto';
+      elementValue = details.lotto || 'N/D';
+      detailValue = details.operazione || details.motivo || details.incident;
+    } else {
+      return;
+    }
+    const fabValue = details.fab || 'N/D';
+    const key = [elementType, normalizeAnalysisKey(elementValue), normalizeAnalysisKey(detailValue), normalizeAnalysisKey(fabValue)].join('|');
+    counts[key] = (counts[key] || 0) + 1;
+    if (!labels[key]) {
+      labels[key] = {
+        tipo: elementType,
+        elemento: elementValue,
+        dettaglio: detailValue,
+        fab: fabValue
+      };
+    }
+  });
+  return Object.keys(counts).map(function(key) {
+    return {
+      tipo: labels[key].tipo,
+      elemento: labels[key].elemento,
+      dettaglio: labels[key].dettaglio,
+      fab: labels[key].fab,
+      occorrenze: counts[key]
+    };
+  }).sort(function(a, b) {
+    if (b.occorrenze !== a.occorrenze) return b.occorrenze - a.occorrenze;
+    if (a.tipo !== b.tipo) return String(a.tipo).localeCompare(String(b.tipo), 'it');
+    if (a.elemento !== b.elemento) return String(a.elemento).localeCompare(String(b.elemento), 'it');
+    return String(a.dettaglio).localeCompare(String(b.dettaglio), 'it');
+  });
+}
+
+function buildDimensionDetailAnalysis(dimension, dimensionValue, tickets, meta) {
+  const valueLabel = dimensionValue || 'Voce';
+  const bucket = {
+    dimension: dimension,
+    dimensionValue: valueLabel,
+    total: Array.isArray(tickets) ? tickets.length : 0,
+    incidentStats: [],
+    categoryStats: [],
+    fabStats: [],
+    occurrenceRows: [],
+    fields: {
+      macchina: [],
+      lotto: [],
+      operazione: [],
+      sequenza: []
+    }
+  };
+  if (!Array.isArray(tickets) || !tickets.length) return bucket;
+
+  if (dimension === 'category') {
+    const categoryBucket = buildCategoryDetailAnalysis(valueLabel, tickets);
+    bucket.incidentStats = categoryBucket.incidentStats;
+    bucket.fields = categoryBucket.fields;
+    bucket.occurrenceRows = buildOccurrenceTableRows(tickets);
+    bucket.fabStats = _aggregateBy(tickets, function(t) {
+      return normalizeAnalysisText(t.fab || 'N/D') || 'N/D';
+    }).slice(0, 4);
+    return bucket;
+  }
+
+  const catMap = _buildIncidentCategoryMap(meta);
+  bucket.incidentStats = _aggregateBy(tickets, function(t) {
+    return normalizeAnalysisText(t.incident_name || 'N/D') || 'N/D';
+  }).slice(0, 6);
+  bucket.categoryStats = _aggregateBy(tickets, function(t) {
+    const categoryName = catMap[String(t.incident_id)] || catMap[String(t.incident_name || '')] || t.category || 'Altro';
+    return normalizeAnalysisText(categoryName) || 'Altro';
+  }).slice(0, 4);
+  bucket.fabStats = _aggregateBy(tickets, function(t) {
+    return normalizeAnalysisText(t.fab || 'N/D') || 'N/D';
+  }).slice(0, 4);
+  bucket.occurrenceRows = buildOccurrenceTableRows(tickets);
+
+  tickets.forEach(function(ticket) {
+    const details = extractTicketAnalysisData(ticket);
+    if (details.macchina) bucket.fields.macchina.push(details.macchina);
+    if (details.lotto) bucket.fields.lotto.push(details.lotto);
+    if (details.operazione) bucket.fields.operazione.push(details.operazione);
+    if (details.sequenza) bucket.fields.sequenza.push(details.sequenza);
+  });
+
+  return bucket;
+}
+
+function filterTicketsForDimensionValue(tickets, dimension, value, meta) {
+  const targetValue = normalizeAnalysisKey(value);
+  const catMap = _buildIncidentCategoryMap(meta);
+  return (tickets || []).filter(function(ticket) {
+    let ticketValue = '';
+    if (dimension === 'category') {
+      ticketValue = (ticket && ticket.category) || catMap[String(ticket && ticket.incident_id != null ? ticket.incident_id : '')] || catMap[String(ticket && ticket.incident_name ? ticket.incident_name : '')] || '';
+    } else if (dimension === 'incident') {
+      ticketValue = ticket && ticket.incident_name ? ticket.incident_name : '';
+    } else {
+      ticketValue = ticket && ticket.fab ? ticket.fab : '';
+    }
+    return normalizeAnalysisKey(ticketValue) === targetValue;
+  });
+}
+
+function addDimensionDetailSlide(deck, slideRefs, cfg, detail, palette) {
+  const slideBg = palette.slideBg;
+  const headerBg = palette.headerBg;
+  const headerMuted = palette.headerMuted;
+  const panelBg = palette.panelBg;
+  const borderColor = palette.borderColor;
+  const titleColor = palette.titleColor;
+  const mutedColor = palette.mutedColor;
+  const accentBlue = palette.accentBlue;
+  const accentTeal = palette.accentTeal;
+  const accentOrange = palette.accentOrange;
+  const detailSlide = deck.addSlide();
+  slideRefs.push(detailSlide);
+  detailSlide.background = { color: slideBg };
+  detailSlide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
+  detailSlide.addText((cfg.dimensionLabel + ' · ' + detail.dimensionValue).toUpperCase(), { x: 0.25, y: 0, w: 9.0, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 12, valign: 'middle', charSpacing: 1 });
+  detailSlide.addText(String(detail.total) + ' ticket', { x: 9.7, y: 0, w: 3.4, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
+  detailSlide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
+  detailSlide.addShape('rect', { x: 0.28, y: 0.82, w: 6.15, h: 5.95, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
+  detailSlide.addShape('rect', { x: 6.63, y: 0.82, w: 6.42, h: 5.95, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
+
+  const leftTitle = cfg.dimension === 'incident' ? 'FAB PIU COINVOLTE' : 'INCIDENT PIU FREQUENTI';
+  const leftStats = cfg.dimension === 'incident' ? detail.fabStats : detail.incidentStats;
+  const leftSuffix = ' ticket';
+  detailSlide.addText(leftTitle, { x: 0.52, y: 1.02, w: 5.6, h: 0.24, fontSize: 8, color: accentOrange, bold: true, charSpacing: 1.3 });
+  formatTopStatsLines(leftStats, leftSuffix).forEach(function(line, index) {
+    detailSlide.addText(line, { x: 0.52, y: 1.34 + index * 0.46, w: 5.45, h: 0.36, fontSize: 10, color: titleColor, bold: index === 0 });
+  });
+
+  const topRightSections = [];
+  if (cfg.dimension === 'category') {
+    topRightSections.push({ title: 'FAB principali', stats: detail.fabStats });
+  } else if (cfg.dimension === 'fab') {
+    topRightSections.push({ title: 'Categorie principali', stats: detail.categoryStats });
+  } else if (cfg.dimension === 'incident') {
+    topRightSections.push({ title: 'Categorie principali', stats: detail.categoryStats });
+  }
+
+  const frequentFields = [
+    { title: 'Macchine ricorrenti', stats: countTopValues(detail.fields.macchina, 3, 2) },
+    { title: 'Lotti ricorrenti', stats: countTopValues(detail.fields.lotto, 3, 2) },
+    { title: 'Operazioni ricorrenti', stats: countTopValues(detail.fields.operazione, 3, 2) },
+    { title: 'Sequenze ricorrenti', stats: countTopValues(detail.fields.sequenza, 3, 2) }
+  ];
+  const rightSections = topRightSections.concat(frequentFields).filter(function(section) {
+    return Array.isArray(section.stats) && section.stats.length;
+  }).slice(0, 4);
+  rightSections.forEach(function(section, sectionIndex) {
+    const baseY = 1.02 + sectionIndex * 1.36;
+    detailSlide.addText(section.title.toUpperCase(), { x: 6.88, y: baseY, w: 5.75, h: 0.22, fontSize: 7.6, color: accentBlue, bold: true, charSpacing: 1.1 });
+    formatTopStatsLines(section.stats, section.title.indexOf('ricorrenti') !== -1 ? ' occ.' : ' ticket').forEach(function(line, lineIndex) {
+      detailSlide.addText(line, { x: 6.88, y: baseY + 0.28 + lineIndex * 0.28, w: 5.7, h: 0.24, fontSize: 9.2, color: lineIndex === 0 ? titleColor : mutedColor, bold: lineIndex === 0 });
+    });
+  });
+
+  const summaryBits = [];
+  if (detail.incidentStats.length) summaryBits.push('Incident principale: ' + detail.incidentStats[0].label + ' (' + detail.incidentStats[0].total + ')');
+  if (detail.categoryStats.length) summaryBits.push('Categoria principale: ' + detail.categoryStats[0].label);
+  if (detail.fabStats.length) summaryBits.push('FAB principale: ' + detail.fabStats[0].label);
+  ['macchina', 'lotto', 'operazione', 'sequenza'].forEach(function(fieldKey) {
+    const top = countTopValues(detail.fields[fieldKey], 1, 2);
+    if (top.length) summaryBits.push(fieldKey.charAt(0).toUpperCase() + fieldKey.slice(1) + ' piu ricorrente: ' + top[0].label);
+  });
+  detailSlide.addShape('rect', { x: 0.28, y: 6.92, w: 12.77, h: 0.22, fill: { color: borderColor }, line: { color: borderColor } });
+  detailSlide.addText(summaryBits.length ? summaryBits.join('  ·  ') : 'Nessun pattern aggiuntivo disponibile per questa vista.', {
+    x: 0.35, y: 6.98, w: 12.55, h: 0.18, fontSize: 8, color: mutedColor, italic: true, align: 'center'
+  });
+}
+
+function addOccurrenceTableSlides(deck, slideRefs, cfg, detail, palette) {
+  const rows = Array.isArray(detail.occurrenceRows) ? detail.occurrenceRows : [];
+  if (!rows.length) return;
+  const pageSize = 10;
+  for (let start = 0; start < rows.length; start += pageSize) {
+    const pageRows = rows.slice(start, start + pageSize);
+    const slide = deck.addSlide();
+    slideRefs.push(slide);
+    slide.background = { color: palette.slideBg };
+    slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: palette.headerBg }, line: { color: palette.headerBg } });
+    slide.addText((cfg.dimensionLabel + ' · ' + detail.dimensionValue + ' · ANALISI OCCORRENZE').toUpperCase(), {
+      x: 0.25, y: 0, w: 10.7, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 11, valign: 'middle', charSpacing: 1
+    });
+    slide.addText('Righe ' + (start + 1) + '-' + (start + pageRows.length) + ' di ' + rows.length, {
+      x: 10.9, y: 0, w: 2.1, h: 0.52, color: palette.headerMuted, fontSize: 8, align: 'right', valign: 'middle'
+    });
+    slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: palette.accentTeal }, line: { color: palette.accentTeal } });
+
+    const cols = [
+      { key: 'tipo', label: 'Tipo', x: 0.35, w: 1.1 },
+      { key: 'elemento', label: 'Elemento', x: 1.5, w: 3.15 },
+      { key: 'dettaglio', label: 'Motivazione / Operazione', x: 4.75, w: 5.0 },
+      { key: 'fab', label: 'FAB', x: 9.9, w: 1.0 },
+      { key: 'occorrenze', label: 'Occ.', x: 11.15, w: 1.1 }
+    ];
+    slide.addShape('rect', { x: 0.32, y: 0.92, w: 12.3, h: 0.38, fill: { color: palette.panelBg }, line: { color: palette.borderColor, width: 0.5 } });
+    cols.forEach(function(col) {
+      slide.addText(col.label.toUpperCase(), {
+        x: col.x, y: 1.0, w: col.w, h: 0.16, fontSize: 7.5, color: palette.accentBlue, bold: true, charSpacing: 0.8
+      });
+    });
+
+    pageRows.forEach(function(row, index) {
+      const y = 1.34 + index * 0.52;
+      const fillColor = index % 2 === 0 ? palette.panelBg : palette.slideBg;
+      slide.addShape('rect', { x: 0.32, y: y - 0.06, w: 12.3, h: 0.42, fill: { color: fillColor }, line: { color: palette.borderColor, width: 0.25 } });
+      cols.forEach(function(col) {
+        const value = row[col.key] != null ? String(row[col.key]) : '';
+        slide.addText(value, {
+          x: col.x, y: y, w: col.w, h: 0.18, fontSize: col.key === 'dettaglio' ? 8.2 : 8.4,
+          color: col.key === 'occorrenze' ? palette.titleColor : palette.mutedColor,
+          bold: col.key === 'occorrenze' || (col.key === 'elemento' && row.occorrenze > 1),
+          fit: 'shrink'
+        });
+      });
+    });
+  }
+}
+
+function formatTopStatsLines(stats, suffix) {
+  if (!stats || !stats.length) return ['Nessuna ricorrenza rilevata'];
+  return stats.map(function(item, index) {
+    return (index + 1) + '. ' + item.label + ' (' + item.total + (suffix || '') + ')';
+  });
+}
+
 async function generatePowerPointReport(cfg) {
   if (typeof window.PptxGenJS !== 'function') {
     showToast('Il modulo PowerPoint non è stato caricato correttamente. Prova a ricaricare la pagina.', 'error', 'Funzione non disponibile');
@@ -2165,6 +2560,7 @@ async function generatePowerPointReport(cfg) {
     const createdAt = new Date();
     const fileDate = formatLocalDateStamp(createdAt);
     const generatedLabel = createdAt.toLocaleString('it-IT');
+    const slideRefs = [];
 
     function addFooter(slide, n, tot) {
       slide.addShape('rect', { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: footerBg }, line: { color: footerBg } });
@@ -2179,6 +2575,7 @@ async function generatePowerPointReport(cfg) {
 
     // ── SLIDE 1: COVER ──
     const cover = deck.addSlide();
+    slideRefs.push(cover);
     cover.background = { color: slideBg };
     cover.addShape('rect', { x: 0, y: 0, w: 4.5, h: 7.5, fill: { color: headerBg }, line: { color: headerBg } });
     cover.addShape('rect', { x: 4.5, y: 0, w: 0.035, h: 7.5, fill: { color: accentTeal }, line: { color: accentTeal } });
@@ -2216,10 +2613,10 @@ async function generatePowerPointReport(cfg) {
     buildRecurringIncidentsAnalysis(periodTickets, 5).forEach(function(line, idx) {
       cover.addText((idx + 1) + '.   ' + line, { x: 4.85, y: recY + 0.42 + idx * 0.3, w: 8.2, h: 0.26, fontSize: 10, color: titleColor });
     });
-    addFooter(cover, 1, 2);
 
     // ── SLIDE 2: ANALISI ──
     const slide = deck.addSlide();
+    slideRefs.push(slide);
     slide.background = { color: slideBg };
     const slideTitle = 'Ticket per ' + cfg.dimensionLabel + ' · ' + cfg.periodLabel;
     slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
@@ -2255,7 +2652,32 @@ async function generatePowerPointReport(cfg) {
         slide.addText('·  ' + rec, { x: 8.05, y: ry, w: 5.1, h: 0.26, fontSize: 9, color: titleColor });
       });
     }
-    addFooter(slide, 2, 2);
+
+    if (stats.length) {
+      const detailPalette = {
+        slideBg: slideBg,
+        headerBg: headerBg,
+        headerMuted: headerMuted,
+        panelBg: panelBg,
+        borderColor: borderColor,
+        titleColor: titleColor,
+        mutedColor: mutedColor,
+        accentBlue: accentBlue,
+        accentTeal: accentTeal,
+        accentOrange: accentOrange
+      };
+      stats.forEach(function(statRow) {
+        const dimensionValue = normalizeAnalysisText(statRow.label || 'Voce');
+        const detailTickets = filterTicketsForDimensionValue(periodTickets, cfg.dimension, dimensionValue, meta);
+        const detail = buildDimensionDetailAnalysis(cfg.dimension, dimensionValue, detailTickets, meta);
+        addDimensionDetailSlide(deck, slideRefs, cfg, detail, detailPalette);
+        addOccurrenceTableSlides(deck, slideRefs, cfg, detail, detailPalette);
+      });
+    }
+
+    slideRefs.forEach(function(ref, index) {
+      addFooter(ref, index + 1, slideRefs.length);
+    });
 
     await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
   } catch (err) {
@@ -3192,8 +3614,9 @@ function createExtraTicketCard(incidentId) {
           <div class="fab-buttons extra-fab-buttons"></div>
         </div>
         <div class="extra-severity-group severity-inline-group">
-          <label>Severity</label>
+          <label>Severity <span class="severity-info" tabindex="0" aria-label="Informazioni severity" role="button">i<span class="severity-info-popup" role="tooltip">La severity pesa il tempo speso e l'effort nella risoluzone della problematica. Scegli in maniera oculata la severity secondo il buon senso.</span></span></label>
           <select class="extra-severity">
+            <option value="">Seleziona severity</option>
             <option value="1">1 - Low</option>
             <option value="2">2 - Medium</option>
             <option value="3">3 - High</option>
@@ -3220,12 +3643,12 @@ function createExtraTicketCard(incidentId) {
   const severitySelect = panel.querySelector('.extra-severity');
   const severityGroup = panel.querySelector('.extra-severity-group');
   const severityHint = panel.querySelector('.extra-severity-hint');
-  severitySelect.value = String(severityCfg.severity_default || 1);
-    if (severityHint) {
-      severityHint.textContent = severityCfg.severity_mode === 'user'
-        ? ''
-        : 'Severity impostata di default dall\'admin.';
-    }
+  severitySelect.value = severityCfg.severity_mode === 'user' ? '' : String(severityCfg.severity_default || 1);
+  if (severityHint) {
+    severityHint.textContent = severityCfg.severity_mode === 'user'
+      ? 'Selezione obbligatoria.'
+      : 'Severity impostata di default dall\'admin.';
+  }
   if (severityCfg.severity_mode !== 'user') {
     panel.dataset.fixedSeverity = String(severityCfg.severity_default || 1);
     if (severityGroup) severityGroup.style.display = 'none';
@@ -3322,6 +3745,7 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
     const extraFab = panel.querySelector('.extra-fab')?.value || '';
     const extraDt = panel.querySelector('.extra-datetime')?.value || '';
     const userSeverity = panel.querySelector('.extra-severity')?.value;
+    const severityCfg = incidentIdToSeverityMap[String(incidentId)] || { severity_default: 1, severity_mode: 'default' };
     const extraSeverity = Number(userSeverity || panel.dataset.fixedSeverity || defaultSeverity || 1);
     const extraPinCheck = panel.querySelector('.extra-ticket-pin-check');
     const extraPinDate = panel.querySelector('.extra-ticket-pin-date');
@@ -3338,6 +3762,9 @@ function collectExtraTicketPayloads(incidentId, defaultSeverity) {
       if (!extraFab) missing.push('FAB');
       if (!extraDt) missing.push('data/ora');
       throw new Error(`Ticket extra ${index + 1} incompleto: manca ${missing.join(', ')}`);
+    }
+    if (severityCfg.severity_mode === 'user' && !String(userSeverity || '').trim()) {
+      throw new Error(`Ticket extra ${index + 1} incompleto: manca severity.`);
     }
     payloads.push({
       incident_id: incidentId,
@@ -3363,16 +3790,16 @@ function openModal(incidentId) {
   const presets = incidentIdToPresetMap[String(incidentIdNum)] || [];
   applyPresetTemplate(presets[0] || '');
   const severityCfg = incidentIdToSeverityMap[String(incidentIdNum)] || { severity_default: 1, severity_mode: 'default' };
-  ticketSeveritySelect.value = String(severityCfg.severity_default || 1);
   const userChoice = severityCfg.severity_mode === 'user';
+  ticketSeveritySelect.value = userChoice ? '' : String(severityCfg.severity_default || 1);
   if (ticketSeverityGroup) ticketSeverityGroup.style.display = userChoice ? '' : 'none';
   ticketSeveritySelect.disabled = !userChoice;
   ticketTimestampInput.disabled = false;
-    if (ticketSeverityHint) {
-      ticketSeverityHint.textContent = userChoice
-        ? ''
-        : 'Severity impostata di default dall\'admin.';
-    }
+  if (ticketSeverityHint) {
+    ticketSeverityHint.textContent = userChoice
+      ? 'Selezione obbligatoria.'
+      : 'Severity impostata di default dall\'admin.';
+  }
   ticketTimestampInput.value = toDatetimeLocalValue(new Date());
   editingTicketId = null;
   clearExtraTicketCards();
@@ -3855,7 +4282,7 @@ function attachLegendMoreTooltip(more, rows, targetId, totalAll, hideLegendValue
 // tooltip. Si ri-adatta al variare della dimensione del pannello (ResizeObserver).
 function setupDonutLegendFit(target, layout, legend, visual, sortedStats, targetId, hideLegendValue, totalAll, visualBox) {
   var total = sortedStats.length;
-  var LEGEND_MAX = 4;
+  var LEGEND_MAX = 6;
   var shown = sortedStats.slice(0, LEGEND_MAX);
   var hidden = sortedStats.slice(LEGEND_MAX);
   function clamp(value, min, max) {
@@ -3874,12 +4301,12 @@ function setupDonutLegendFit(target, layout, legend, visual, sortedStats, target
   }
   function resetLegendScale() {
     if (targetId === 'teamYearChart') {
-      layout.style.setProperty('--donut-legend-font-size', 'calc(.88rem * var(--chart-font-scale))');
-      layout.style.setProperty('--donut-legend-value-size', 'calc(.82rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-font-size', 'calc(.96rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-value-size', 'calc(.88rem * var(--chart-font-scale))');
       layout.style.setProperty('--donut-legend-row-gap', '9px');
     } else {
-      layout.style.setProperty('--donut-legend-font-size', 'calc(.78rem * var(--chart-font-scale))');
-      layout.style.setProperty('--donut-legend-value-size', 'calc(.74rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-font-size', 'calc(.9rem * var(--chart-font-scale))');
+      layout.style.setProperty('--donut-legend-value-size', 'calc(.84rem * var(--chart-font-scale))');
       layout.style.setProperty('--donut-legend-row-gap', '7px');
     }
     layout.style.setProperty('--donut-legend-min-height', '20px');
@@ -4128,9 +4555,14 @@ function renderPersonalLineChart(target, stats, targetAnnual, targetMonthly, opt
     var dotFill = dotColor ? dotColor : ('url(#' + ptGradId + ')');
     var badgeColor = dotColor ? dotColor : colA;
     if (val > 0) {
-      var badgeW = String(val).length > 1 ? 30 : 24;
-      var badge = '<rect x="' + (p.x - badgeW / 2).toFixed(1) + '" y="' + (p.y - 36).toFixed(1) + '" width="' + badgeW + '" height="19" rx="9.5" fill="' + badgeColor + '" opacity="0.93"/>';
-      var valText = '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - 26.5).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle" class="personal-chart-value">' + val + '</text>';
+      var valLen = String(val).length;
+      var badgeW = Math.max(34, 22 + (valLen * 12));
+      var badgeH = 24;
+      var badgeY = p.y - 44;
+      var badgeRadius = badgeH / 2;
+      var badgeFontSize = valLen >= 5 ? 13 : (valLen >= 4 ? 14 : 15);
+      var badge = '<rect x="' + (p.x - badgeW / 2).toFixed(1) + '" y="' + badgeY.toFixed(1) + '" width="' + badgeW + '" height="' + badgeH + '" rx="' + badgeRadius + '" fill="' + badgeColor + '" opacity="0.93"/>';
+      var valText = '<text x="' + p.x.toFixed(1) + '" y="' + (badgeY + (badgeH / 2) + 0.5).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle" class="personal-chart-value" style="font-size:' + badgeFontSize + 'px">' + val + '</text>';
       var dot = '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="7" fill="' + dotFill + '" stroke="#fff" stroke-width="2.5"/>';
       return badge + valText + dot;
     } else {
@@ -4780,9 +5212,8 @@ async function refreshCurrentShiftTickets() {
 
 function startCurrentShiftAutoRefresh() {
   if (pageAutoRefreshTimer) return;
-  pageAutoRefreshTimer = window.setTimeout(function() {
-    pageAutoRefreshTimer = null;
-    window.location.reload();
+  pageAutoRefreshTimer = window.setInterval(function() {
+    refreshCurrentShiftTickets().catch(function() {});
   }, PAGE_AUTO_REFRESH_MS);
 }
 
@@ -4911,31 +5342,195 @@ async function loadPreviousShifts() {
     data.shifts.forEach((shift) => {
       const block = document.createElement('section');
       block.className = 'previous-shift-block';
+      block._previousShiftTickets = Array.isArray(shift.tickets) ? shift.tickets.slice() : [];
+      block._previousShiftState = {
+        groupBy: 'category',
+        showSingles: false
+      };
+      const headingWrap = document.createElement('div');
+      headingWrap.className = 'previous-shift-heading';
       const heading = document.createElement('h4');
       heading.textContent = shift.label;
-      block.appendChild(heading);
+      headingWrap.appendChild(heading);
+      headingWrap.appendChild(buildPreviousShiftControls(block));
+      block.appendChild(headingWrap);
       const list = document.createElement('ul');
-      list.className = 'ticket-list';
-      const tickets = Array.isArray(shift.tickets) ? shift.tickets : [];
-      if (!tickets.length) {
-        const empty = document.createElement('li');
-        empty.className = 'muted';
-        empty.textContent = 'Nessun ticket registrato.';
-        list.appendChild(empty);
-      } else {
-        groupIdenticalTickets(tickets).forEach((group) => list.appendChild(buildTicketNode(group, null)));
-        requestAnimationFrame(() => decorateClampedDescriptions(list));
-      }
+      list.className = 'ticket-list previous-shift-ticket-list';
+      block._previousShiftList = list;
       block.appendChild(list);
+      renderPreviousShiftBlock(block);
       previousShiftsContent.appendChild(block);
     });
     fetchJson('/api/pinned-tickets').then(function(pins) {
+      previousShiftPinnedTickets = Array.isArray(pins) ? pins : [];
       decoratePinnedTickets(pins, previousShiftsContent);
     }).catch(function() {});
     previousShiftsLoaded = true;
   } finally {
     previousShiftsLoading = false;
   }
+}
+
+function buildPreviousShiftControls(block) {
+  var state = block._previousShiftState || { groupBy: 'category', showSingles: false };
+  var controls = document.createElement('div');
+  controls.className = 'previous-shift-controls';
+
+  var selectWrap = document.createElement('label');
+  selectWrap.className = 'previous-shift-control previous-shift-control-select';
+  selectWrap.innerHTML = '<span>Raggruppa</span>';
+  var select = document.createElement('select');
+  select.className = 'previous-shift-group-select';
+  [
+    { value: 'fab', label: 'FAB' },
+    { value: 'category', label: 'Categoria' },
+    { value: 'incident', label: 'Incident' }
+  ].forEach(function(optionData) {
+    var option = document.createElement('option');
+    option.value = optionData.value;
+    option.textContent = optionData.label;
+    if (state.groupBy === optionData.value) option.selected = true;
+    select.appendChild(option);
+  });
+  selectWrap.appendChild(select);
+  controls.appendChild(selectWrap);
+
+  var checkboxWrap = document.createElement('label');
+  checkboxWrap.className = 'previous-shift-control previous-shift-control-check';
+  var checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = !!state.showSingles;
+  var copy = document.createElement('span');
+  copy.textContent = 'Mostra tutti singoli';
+  checkboxWrap.appendChild(checkbox);
+  checkboxWrap.appendChild(copy);
+  controls.appendChild(checkboxWrap);
+
+  function syncControlsState() {
+    select.disabled = !!block._previousShiftState.showSingles;
+    controls.classList.toggle('show-singles-active', !!block._previousShiftState.showSingles);
+  }
+
+  select.addEventListener('change', function() {
+    block._previousShiftState.groupBy = String(this.value || 'category');
+    renderPreviousShiftBlock(block);
+  });
+  checkbox.addEventListener('change', function() {
+    block._previousShiftState.showSingles = !!this.checked;
+    syncControlsState();
+    renderPreviousShiftBlock(block);
+  });
+  syncControlsState();
+  return controls;
+}
+
+function _compactKeyForMode(mode, row) {
+  if (mode === 'incident') return String(row.dataset.incident || '').trim();
+  if (mode === 'fab') return String(row.dataset.fab || '').trim();
+  return String(row.dataset.category || '').trim();
+}
+
+function _compactLabelForModeValue(mode) {
+  if (mode === 'incident') return 'incident';
+  if (mode === 'fab') return 'FAB';
+  return 'categoria';
+}
+
+function renderPreviousShiftBlock(block) {
+  if (!block || !block._previousShiftList) return;
+  var list = block._previousShiftList;
+  var tickets = Array.isArray(block._previousShiftTickets) ? block._previousShiftTickets : [];
+  var state = block._previousShiftState || { groupBy: 'category', showSingles: false };
+  list.innerHTML = '';
+  list.className = 'ticket-list previous-shift-ticket-list';
+
+  if (!tickets.length) {
+    var empty = document.createElement('li');
+    empty.className = 'muted';
+    empty.textContent = 'Nessun ticket registrato.';
+    list.appendChild(empty);
+    return;
+  }
+
+  if (state.showSingles) {
+    tickets.forEach(function(ticket) {
+      list.appendChild(createTicketRowElement(ticket, false));
+    });
+  } else {
+    var previousRows = groupIdenticalTickets(tickets).map(function(group) {
+      return buildTicketNode(group, null);
+    });
+    buildCompactStacksForList(list, previousRows, state.groupBy);
+  }
+
+  decoratePinnedTickets(previousShiftPinnedTickets, list);
+  requestAnimationFrame(function() { decorateClampedDescriptions(list); });
+}
+
+function buildCompactStacksForList(listEl, entries, mode) {
+  if (!listEl) return;
+  var flatRows = Array.isArray(entries) ? entries.slice() : [];
+  var expanded = [];
+  flatRows.forEach(function(entry) {
+    if (!entry) return;
+    if (entry.classList && entry.classList.contains('ticket-dup-stack') && Array.isArray(entry._tsCards) && entry._tsCards.length) {
+      entry._tsCards.forEach(function(card) { expanded.push(card); });
+      return;
+    }
+    expanded.push(entry);
+  });
+
+  var groups = {};
+  var order = [];
+  expanded.forEach(function(row) {
+    var groupKey = _compactKeyForMode(mode, row);
+    groupKey = groupKey || '—';
+    if (!groups[groupKey]) {
+      groups[groupKey] = [];
+      order.push(groupKey);
+    }
+    groups[groupKey].push(row);
+  });
+
+  listEl.innerHTML = '';
+  listEl.classList.add('compact-visual', 'previous-shifts-compact-list');
+
+  if (!order.length) {
+    var empty = document.createElement('li');
+    empty.className = 'muted';
+    empty.textContent = 'Nessun ticket corrisponde al filtro.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  order.forEach(function(groupKey) {
+    var cards = groups[groupKey];
+    var stack = document.createElement('li');
+    stack.className = 'ticket-stack previous-ticket-stack' + (cards.length === 1 ? ' single' : '');
+    stack.dataset.stackKey = groupKey;
+    stack.dataset.category = mode === 'category' ? groupKey : String(cards[0].dataset.category || '');
+    stack.dataset.fab = mode === 'fab' ? groupKey : String(cards[0].dataset.fab || '');
+    stack.dataset.incident = mode === 'incident' ? groupKey : String(cards[0].dataset.incident || '');
+    stack._tsCards = cards;
+    stack.title = 'Compattato per ' + _compactLabelForModeValue(mode) + ': ' + groupKey;
+
+    var front = cards[0].cloneNode(true);
+    stack.appendChild(front);
+
+    if (cards.length > 1) {
+      var badge = document.createElement('span');
+      badge.className = 'ticket-stack-badge';
+      badge.textContent = String(cards.length);
+      stack.appendChild(badge);
+    }
+
+    stack.addEventListener('mouseenter', function() { _tsShowPopup(this); });
+    stack.addEventListener('mouseleave', function() {
+      _tsPopupTimer = setTimeout(_tsHidePopup, 110);
+    });
+
+    listEl.appendChild(stack);
+  });
 }
 
 setupChartExportControls();
@@ -6422,7 +7017,14 @@ ticketForm?.addEventListener('submit', async (e) => {
   // L'editor mantiene già i valori dei token come chip → 〈valore〉 nello storage.
   const description = descGetStorage();
   const fab = fabValue.value;
-  const severity = Number(ticketSeveritySelect.value || 1);
+  const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
+  const severityValue = String(ticketSeveritySelect.value || '').trim();
+  if (severityCfg.severity_mode === 'user' && !severityValue) {
+    showToast('Seleziona la severity prima di creare il ticket.', 'error', 'Severity obbligatoria');
+    syncSubmitBtnState();
+    return;
+  }
+  const severity = Number(severityValue || severityCfg.severity_default || 1);
   const ticket_time_local = ticketTimestampInput.value;
   const customIncidentName = getCustomIncidentNameForSubmit();
   if (!incident_id || !description || !fab || !ticket_time_local) {
@@ -6464,7 +7066,6 @@ ticketForm?.addEventListener('submit', async (e) => {
         pin_enabled: !!(_newPinCheck && _newPinCheck.checked && _newPinUntil && _newPinUntil.value),
         pin_until: (_newPinUntil && _newPinUntil.value) ? String(_newPinUntil.value) : ''
       }];
-      const severityCfg = incidentIdToSeverityMap[String(incident_id)] || { severity_default: 1, severity_mode: 'default' };
       payloads.push.apply(payloads, collectExtraTicketPayloads(incident_id, severityCfg.severity_default));
 
       const createdTickets = [];
@@ -7640,7 +8241,7 @@ previousShiftsContent?.addEventListener('click', async (e) => {
     createdAt: card.dataset.createdAt,
     severity: card.dataset.severity,
     category: card.dataset.category,
-    canEdit: card.dataset.canEdit === '1'
+    canEdit: (card.dataset.canEdit === '1') && isStrictAdminUser()
   });
 });
 
@@ -7678,6 +8279,26 @@ window.addEventListener('resize', () => {
 var _compactMode = '';
 var _compactFlatRows = [];
 var _tsPopupTimer = null;
+var _tsScrollLock = null;
+
+function _tsLockPageScroll() {
+  if (!document.body || (_tsScrollLock && _tsScrollLock.active)) return;
+  var docEl = document.documentElement;
+  var scrollbarGap = Math.max(0, window.innerWidth - docEl.clientWidth);
+  _tsScrollLock = {
+    active: true,
+    paddingRight: document.body.style.paddingRight || ''
+  };
+  document.body.classList.add('ticket-stack-popup-open');
+  if (scrollbarGap > 0) document.body.style.paddingRight = scrollbarGap + 'px';
+}
+
+function _tsUnlockPageScroll() {
+  if (!document.body || !_tsScrollLock || !_tsScrollLock.active) return;
+  document.body.classList.remove('ticket-stack-popup-open');
+  document.body.style.paddingRight = _tsScrollLock.paddingRight;
+  _tsScrollLock = null;
+}
 
 function _compactRestoreFlat() {
   ticketList.classList.remove('compact-visual');
@@ -7790,6 +8411,7 @@ function _tsShowPopup(stack) {
   tsPopup.style.left = left + 'px';
   tsPopup.style.top = top + 'px';
   tsPopup.style.maxWidth = approxW + 'px';
+  _tsLockPageScroll();
 }
 
 function _tsHidePopup() {
@@ -7798,6 +8420,7 @@ function _tsHidePopup() {
     tsPopup.innerHTML = '';
     tsPopup._anchorStack = null;
   }
+  _tsUnlockPageScroll();
 }
 
 if (tsPopup) {
@@ -7818,6 +8441,7 @@ if (tsPopup) {
     if (btn) { handleEditTicketButton(btn); _tsHidePopup(); return; }
     var card = e.target.closest('.ticket-row');
     if (!card) return;
+    var popupIsPreviousShift = !!(tsPopup && tsPopup._anchorStack && previousShiftsContent && previousShiftsContent.contains(tsPopup._anchorStack));
     openTicketReadModal({
       ticketId: card.dataset.ticketId,
       incidentId: card.dataset.incidentId,
@@ -7827,7 +8451,7 @@ if (tsPopup) {
       createdAt: card.dataset.createdAt,
       severity: card.dataset.severity,
       category: card.dataset.category,
-      canEdit: card.dataset.canEdit === '1'
+      canEdit: popupIsPreviousShift ? ((card.dataset.canEdit === '1') && isStrictAdminUser()) : (card.dataset.canEdit === '1')
     });
     _tsHidePopup();
   });

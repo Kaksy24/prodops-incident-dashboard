@@ -943,22 +943,32 @@ function mysql_ensure_schema($conn)
         }
     }
     $alterStatements = array(
-        "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8",
-        "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role",
-        "ALTER TABLE app_users ADD COLUMN group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps' AFTER team",
-        "ALTER TABLE app_users ADD COLUMN personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER group_name",
-        "ALTER TABLE app_users ADD COLUMN group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER personal_target",
-        "ALTER TABLE app_users ADD COLUMN last_login DATETIME NULL DEFAULT NULL AFTER group_target",
-        "ALTER TABLE app_users ADD COLUMN last_login_ip VARCHAR(45) NULL DEFAULT NULL AFTER last_login",
-        "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id",
-        "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id",
-        "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
-        "ALTER TABLE categories ADD COLUMN logo VARCHAR(255) NOT NULL DEFAULT '' AFTER name",
-        "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name",
-        "ALTER TABLE incidents ADD COLUMN name_mode VARCHAR(10) NOT NULL DEFAULT 'default' AFTER fab_default"
+        array('table' => null, 'column' => null, 'sql' => "CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(80) NOT NULL, setting_value LONGTEXT NOT NULL, PRIMARY KEY (setting_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8"),
+        array('table' => 'app_users', 'column' => 'team', 'sql' => "ALTER TABLE app_users ADD COLUMN team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER role"),
+        array('table' => 'app_users', 'column' => 'group_name', 'sql' => "ALTER TABLE app_users ADD COLUMN group_name VARCHAR(80) NOT NULL DEFAULT 'ProdOps' AFTER team"),
+        array('table' => 'app_users', 'column' => 'personal_target', 'sql' => "ALTER TABLE app_users ADD COLUMN personal_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER group_name"),
+        array('table' => 'app_users', 'column' => 'group_target', 'sql' => "ALTER TABLE app_users ADD COLUMN group_target SMALLINT UNSIGNED NOT NULL DEFAULT 20 AFTER personal_target"),
+        array('table' => 'app_users', 'column' => 'last_login', 'sql' => "ALTER TABLE app_users ADD COLUMN last_login DATETIME NULL DEFAULT NULL AFTER group_target"),
+        array('table' => 'app_users', 'column' => 'last_login_ip', 'sql' => "ALTER TABLE app_users ADD COLUMN last_login_ip VARCHAR(45) NULL DEFAULT NULL AFTER last_login"),
+        array('table' => 'tickets', 'column' => 'incident_name', 'sql' => "ALTER TABLE tickets ADD COLUMN incident_name VARCHAR(180) NOT NULL DEFAULT '' AFTER incident_id"),
+        array('table' => 'tickets', 'column' => 'owner_team', 'sql' => "ALTER TABLE tickets ADD COLUMN owner_team VARCHAR(1) NOT NULL DEFAULT 'A' AFTER owner_user_id"),
+        array('table' => 'categories', 'column' => 'hidden', 'sql' => "ALTER TABLE categories ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"),
+        array('table' => 'categories', 'column' => 'logo', 'sql' => "ALTER TABLE categories ADD COLUMN logo VARCHAR(255) NOT NULL DEFAULT '' AFTER name"),
+        array('table' => 'incidents', 'column' => 'hidden', 'sql' => "ALTER TABLE incidents ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0 AFTER name"),
+        array('table' => 'incidents', 'column' => 'name_mode', 'sql' => "ALTER TABLE incidents ADD COLUMN name_mode VARCHAR(10) NOT NULL DEFAULT 'default' AFTER fab_default")
     );
-    foreach ($alterStatements as $statement) {
-        if (@mysqli_query($conn, $statement)) continue;
+    foreach ($alterStatements as $migration) {
+        if (!empty($migration['table']) && !empty($migration['column'])) {
+            $table = str_replace('`', '``', strval($migration['table']));
+            $column = str_replace('`', '``', strval($migration['column']));
+            $check = @mysqli_query($conn, "SHOW COLUMNS FROM `" . $table . "` LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
+            if ($check) {
+                $exists = @mysqli_fetch_assoc($check);
+                @mysqli_free_result($check);
+                if ($exists) continue;
+            }
+        }
+        if (@mysqli_query($conn, $migration['sql'])) continue;
         $errno = function_exists('mysqli_errno') ? @mysqli_errno($conn) : 0;
         if ($errno !== 1060) {
             return false;

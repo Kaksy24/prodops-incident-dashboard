@@ -522,7 +522,7 @@ function renderSearchModal(ticket, editing) {
   if (searchModalTitle) searchModalTitle.textContent = ticket.incidentName || 'Dettaglio Ticket';
   if (searchModalBody) searchModalBody.innerHTML = renderSearchModalBodyContent(ticket, editing);
   if (searchModalEditBtn) {
-    searchModalEditBtn.style.display = ticket.canEdit ? '' : 'none';
+    searchModalEditBtn.style.display = (ticket.canEdit && isAdminUser()) ? '' : 'none';
     searchModalEditBtn.textContent = editing ? 'Salva testo' : 'Modifica testo';
     searchModalEditBtn.disabled = false;
   }
@@ -555,7 +555,7 @@ function openSearchModal(ticket) {
     createdAt: String(ticket.createdAt || ''),
     severity: Number(ticket.severity || 1),
     ownerUsername: String(ticket.ownerUsername || ''),
-    canEdit: !!ticket.canEdit
+    canEdit: !!ticket.canEdit && isAdminUser()
   };
   searchModalEditMode = false;
   renderSearchModal(activeSearchModalTicket, false);
@@ -590,7 +590,7 @@ function closeSearchModal() {
 }
 
 function isAdminUser() {
-  return currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor');
+  return currentUser && currentUser.role === 'admin';
 }
 
 async function deleteSearchTicket(ticketId, triggerBtn) {
@@ -726,6 +726,10 @@ function renderSearchTickets(tickets) {
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
       '</div>';
 
+    if (!isAdminUser()) {
+      const editBtn = li.querySelector('.ticket-edit-btn');
+      if (editBtn) editBtn.remove();
+    }
     ul.appendChild(li);
   });
 
@@ -1071,7 +1075,7 @@ function applyTicketSearchListeners() {
       severity: card.dataset.severity,
       category: card.dataset.category,
       ownerUsername: card.dataset.ownerUsername || '',
-      canEdit: card.dataset.canEdit === '1'
+      canEdit: (card.dataset.canEdit === '1') && isAdminUser()
     });
   });
 
