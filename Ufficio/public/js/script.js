@@ -153,8 +153,15 @@ let previousShiftsLoading = false;
 let previousShiftsData = null;
 let previousShiftPinnedTickets = [];
 const PAGE_AUTO_REFRESH_MS = 3 * 60 * 1000;
+const CHARTS_AUTO_REFRESH_MS = 15 * 60 * 1000;
+const CHART_FETCH_SPACING_MS = 180;
+const CHART_FETCH_CONCURRENCY = 2;
 let pageAutoRefreshTimer = null;
+let chartsAutoRefreshTimer = null;
 let currentShiftAutoRefreshBusy = false;
+let chartsRefreshBusy = false;
+let chartsRefreshQueued = false;
+let customChartLoadChain = Promise.resolve();
 let currentShiftOwnerFilter = 'all';
 let currentShiftSortKey = 'time';
 let currentShiftSortDir = 'desc';
@@ -724,6 +731,26 @@ function renderDescriptionHtml(raw) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runQueuedTasks(tasks, concurrency, spacingMs) {
+  tasks = Array.isArray(tasks) ? tasks : [];
+  concurrency = Math.max(1, parseInt(concurrency, 10) || 1);
+  spacingMs = Math.max(0, parseInt(spacingMs, 10) || 0);
+  var nextIndex = 0;
+  var results = new Array(tasks.length);
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      var idx = nextIndex++;
+      if (idx > 0 && spacingMs > 0) await delay(spacingMs);
+      results[idx] = await tasks[idx]();
+    }
+  }
+  var workers = [];
+  var count = Math.min(concurrency, tasks.length);
+  for (var i = 0; i < count; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
 }
 
 const chartTypeStorageKey = 'prodops_chart_types';
@@ -1572,7 +1599,7 @@ async function loadUiColors() {
 async function syncUiColorsAfterAdminChange() {
   await loadUiColors();
   await loadDayTickets();
-  await loadCharts();
+  await refreshCharts('colors');
   if (previousShiftsContent && !previousShiftsContent.hidden) {
     previousShiftsLoaded = false;
     await loadPreviousShifts();
@@ -1599,7 +1626,7 @@ function unlockModalScroll() {
 
 async function refreshColorSensitiveViews() {
   await loadDayTickets();
-  await loadCharts();
+  await refreshCharts('colors');
   refreshCustomCharts();
   if (previousShiftsContent && !previousShiftsContent.hidden) {
     previousShiftsLoaded = false;
@@ -4863,7 +4890,7 @@ function setupChartTypeControls() {
         refreshChartResizeControls(panel);
       }
       saveUserCharts().catch(console.error);
-      loadCharts().catch(() => {});
+      refreshCharts('type').catch(() => {});
     });
   });
 }
@@ -5577,13 +5604,19 @@ function buildYearStatsUrl(basePath, mode, customRange) {
 
 async function loadCharts() {
   try {
-    const [fabYear, catYear, teamYear, incidentYear, userYear] = await Promise.all([
-      fetchJson(buildYearStatsUrl('/api/stats/fab', fabYearMode, chartCustomRanges.fabYear)),
-      fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)),
-      fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)),
-      fetchJson(buildYearStatsUrl('/api/stats/incident', incidentYearMode, chartCustomRanges.incidentYear)),
-      fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear))
-    ]);
+    const chartJobs = [
+      function() { return fetchJson(buildYearStatsUrl('/api/stats/fab', fabYearMode, chartCustomRanges.fabYear)); },
+      function() { return fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)); },
+      function() { return fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)); },
+      function() { return fetchJson(buildYearStatsUrl('/api/stats/incident', incidentYearMode, chartCustomRanges.incidentYear)); },
+      function() { return fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear)); }
+    ];
+    const chartResults = await runQueuedTasks(chartJobs, CHART_FETCH_CONCURRENCY, CHART_FETCH_SPACING_MS);
+    const fabYear = chartResults[0];
+    const catYear = chartResults[1];
+    const teamYear = chartResults[2];
+    const incidentYear = chartResults[3];
+    const userYear = chartResults[4];
     renderChart(fabYearChart, fabYear.stats);
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
@@ -5598,6 +5631,7 @@ async function loadCharts() {
     // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
     // di drill-down mensile (annuale di default, o giorno per giorno).
     if (personalMineChart) await loadPersonalChartData(personalMineChart);
+    if (personalMineChart && personalGroupChart) await delay(CHART_FETCH_SPACING_MS);
     if (personalGroupChart) await loadPersonalChartData(personalGroupChart);
   } catch (error) {
     console.error(error);
@@ -5605,6 +5639,32 @@ async function loadCharts() {
       if (target) target.innerHTML = '<p class="muted">Impossibile caricare il grafico.</p>';
     });
   }
+}
+
+async function refreshCharts(reason) {
+  if (chartsRefreshBusy) {
+    chartsRefreshQueued = true;
+    return;
+  }
+  chartsRefreshBusy = true;
+  try {
+    await loadCharts();
+  } finally {
+    chartsRefreshBusy = false;
+    if (chartsRefreshQueued) {
+      chartsRefreshQueued = false;
+      deferWork(function() {
+        refreshCharts(reason || 'queued').catch(console.error);
+      });
+    }
+  }
+}
+
+function startChartsAutoRefresh() {
+  if (chartsAutoRefreshTimer) return;
+  chartsAutoRefreshTimer = window.setInterval(function() {
+    refreshCharts('periodic').catch(function() {});
+  }, CHARTS_AUTO_REFRESH_MS);
 }
 
 // ===== Grafici personalizzati (custom charts) =====
@@ -6068,7 +6128,7 @@ function renderCustomChartCard(def) {
     def.type = normalizeChartType(typeSelect.value);
     chartTypes[customChartKey(def)] = def.type;
     const target = document.getElementById(customChartElementId(def));
-    if (target) await loadCustomChartData(def, target, activeWindow);
+    if (target) await queueCustomChartData(def, target, activeWindow);
     await saveUserCharts();
   });
   controlsRow.appendChild(typeSelect);
@@ -6090,7 +6150,7 @@ function renderCustomChartCard(def) {
       toggleRow.querySelectorAll('.range-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       const t = getChartDiv();
-      if (t) loadCustomChartData(def, t, activeWindow);
+      if (t) queueCustomChartData(def, t, activeWindow);
     });
     toggleRow.appendChild(btn);
   });
@@ -6106,8 +6166,16 @@ function renderCustomChartCard(def) {
   chartTypes[customChartKey(def)] = def.type || 'column';
 
   attachChartDragHandle(panel);
-  loadCustomChartData(def, chartDiv, activeWindow);
+  queueCustomChartData(def, chartDiv, activeWindow);
   return panel;
+}
+
+function queueCustomChartData(def, target, activeWindow) {
+  customChartLoadChain = customChartLoadChain
+    .catch(function() {})
+    .then(function() { return delay(CHART_FETCH_SPACING_MS); })
+    .then(function() { return loadCustomChartData(def, target, activeWindow); });
+  return customChartLoadChain;
 }
 
 async function loadCustomChartData(def, target, activeWindow) {
@@ -6169,7 +6237,7 @@ function refreshCustomCharts() {
       // Trova la finestra attiva corrente dal pulsante attivo nel toggle row
       const panel = target.closest('.custom-chart-panel');
       const activeBtn = panel ? panel.querySelector('.toggle-row .range-btn.active') : null;
-      loadCustomChartData(def, target, activeBtn ? defWindows(def).find((w) => windowLabel(w) === activeBtn.textContent) : undefined);
+      queueCustomChartData(def, target, activeBtn ? defWindows(def).find((w) => windowLabel(w) === activeBtn.textContent) : undefined);
     }
   });
 }
@@ -6960,7 +7028,7 @@ document.querySelectorAll('.chart-range-select').forEach((select) => {
     const mode = select.value;
     clearChartRangeActiveState(target);
     setChartMode(target, mode);
-    await loadCharts();
+    await refreshCharts('range');
     saveUserCharts();
   });
 });
@@ -7001,7 +7069,7 @@ document.querySelectorAll('.range-calendar-wrap').forEach((wrap) => {
     btn.classList.add('active');
     setChartMode(target, 'custom');
     closePopover();
-    await loadCharts();
+    await refreshCharts('range');
     saveUserCharts();
   });
 
@@ -7118,7 +7186,7 @@ ticketForm?.addEventListener('submit', async (e) => {
     if (deleteTicketBtn) deleteTicketBtn.style.display = 'none';
     closeModal();
     await loadDayTickets(createdTicketIds);
-    await loadCharts();
+    await refreshCharts('ticket-save');
   } catch (error) {
     const message = String(error?.message || 'Errore durante il salvataggio ticket');
     showToast('Impossibile creare il ticket: ' + message, 'error', 'Creazione ticket fallita');
@@ -7590,11 +7658,12 @@ function setupChartDragDrop() {
       if (!previousShiftsLoaded && previousShiftsContent && !previousShiftsContent.hidden) {
         await loadPreviousShifts();
       }
-      await loadCharts();
+      await refreshCharts('initial');
     } catch (error) {
       console.error(error);
     }
   });
+  startChartsAutoRefresh();
 })();
 
 function applyTheme(paletteId, darkMode) {
@@ -8176,7 +8245,7 @@ window.addEventListener('storage', (event) => {
   if (event.key === chartTypeStorageKey) {
     loadChartTypes();
     setupChartTypeControls();
-    loadCharts().catch(() => {});
+    refreshCharts('storage').catch(() => {});
     refreshCustomCharts();
   }
 });
@@ -8186,7 +8255,7 @@ document.addEventListener('visibilitychange', () => {
     syncUiColorsAfterAdminChange().catch(() => {});
     loadChartTypes();
     setupChartTypeControls();
-    loadCharts().catch(() => {});
+    refreshCharts('visible').catch(() => {});
     refreshCustomCharts();
   }
 });
@@ -8258,7 +8327,7 @@ if (deleteTicketBtn) {
     descSetPlain('');
     closeModal();
     await loadDayTickets();
-    await loadCharts();
+    await refreshCharts('ticket-delete');
   });
 }
 
