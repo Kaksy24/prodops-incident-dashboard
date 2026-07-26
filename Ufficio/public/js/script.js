@@ -1242,6 +1242,7 @@ descInitEditor();
   ticketSubmitBtn.parentNode.appendChild(tip);
 
   ticketSubmitBtn.addEventListener('mouseenter', function () {
+    markTicketMissingFields(true);
     if (!ticketSubmitBtn.disabled) { tip.style.display = 'none'; return; }
     var missing = (ticketSubmitBtn.getAttribute('data-missing') || '').split('\n').filter(Boolean);
     if (!missing.length) { tip.style.display = 'none'; return; }
@@ -1249,33 +1250,78 @@ descInitEditor();
       missing.map(function (m) { return '<li>' + escapeHtml(m) + '</li>'; }).join('') + '</ul>';
     tip.style.display = '';
   });
-  ticketSubmitBtn.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+  ticketSubmitBtn.addEventListener('mouseleave', function () { tip.style.display = 'none'; clearTicketMissingFields(); });
 })();
 
-function getSubmitMissingReasons() {
+function getSubmitMissingDetails() {
   var reasons = [];
-  if (!Number(incidentTypeInput.value || 0)) reasons.push('Tipo di incident');
-  if (!descGetText()) reasons.push('Descrizione');
+  if (!Number(incidentTypeInput.value || 0)) reasons.push({ key: 'incident', label: 'Tipo di incident' });
+  if (!descGetText()) reasons.push({ key: 'description', label: 'Descrizione' });
   var incompletePreset = getIncompletePresetFields(presetInlineComposer);
   if (incompletePreset.length) {
     incompletePreset.forEach(function (f) {
-      reasons.push(f.dataset.presetLabel || f.getAttribute('aria-label') || 'Campo preset');
+      reasons.push({ key: 'preset', label: f.dataset.presetLabel || f.getAttribute('aria-label') || 'Campo preset', field: f });
     });
   }
-  if (!fabValue.value) reasons.push('FAB');
+  if (!fabValue.value) reasons.push({ key: 'fab', label: 'FAB' });
   var severityCfg = incidentIdToSeverityMap[String(incidentTypeInput.value || '')] || { severity_default: 1, severity_mode: 'default' };
-  if (severityCfg.severity_mode === 'user' && !String(ticketSeveritySelect && ticketSeveritySelect.value || '').trim()) reasons.push('Severity');
-  if (!ticketTimestampInput.value) reasons.push('Orario');
-  if (isGenericIncidentId(incidentTypeInput.value) && !(customIncidentNameInput && customIncidentNameInput.value.trim())) reasons.push('Nome incident');
+  if (severityCfg.severity_mode === 'user' && !String(ticketSeveritySelect && ticketSeveritySelect.value || '').trim()) reasons.push({ key: 'severity', label: 'Severity' });
+  if (!ticketTimestampInput.value) reasons.push({ key: 'time', label: 'Orario' });
+  if (isGenericIncidentId(incidentTypeInput.value) && !(customIncidentNameInput && customIncidentNameInput.value.trim())) reasons.push({ key: 'customName', label: 'Nome incident' });
   return reasons;
+}
+
+function getSubmitMissingReasons() {
+  return getSubmitMissingDetails().map(function (item) { return item.label; });
+}
+
+function clearTicketMissingFields() {
+  if (!ticketForm) return;
+  ticketForm.querySelectorAll('.ticket-field-missing').forEach(function (el) {
+    el.classList.remove('ticket-field-missing');
+    el.removeAttribute('data-missing-label');
+  });
+}
+
+function ticketMissingTargetForDetail(detail) {
+  if (!detail) return null;
+  if (detail.field) {
+    return detail.field.closest('.sd-wrap, label, .preset-text-row, .preset-multi-options, div') || detail.field;
+  }
+  if (detail.key === 'incident') return ticketModalTitle || incidentTypeInput;
+  if (detail.key === 'description') return document.getElementById('descriptionEditor') || descriptionInput;
+  if (detail.key === 'preset') return presetInlineComposer;
+  if (detail.key === 'fab') return document.querySelector('.fab-section') || fabValue;
+  if (detail.key === 'severity') return document.getElementById('ticketSeverityGroup') || ticketSeveritySelect;
+  if (detail.key === 'time') return ticketTimestampInput ? (ticketTimestampInput.closest('.datetime-block') || ticketTimestampInput) : null;
+  if (detail.key === 'customName') return customIncidentNameGroup || customIncidentNameInput;
+  return null;
+}
+
+function markTicketMissingFields(force) {
+  if (!ticketForm || ticketForm.dataset.readMode === '1') return;
+  clearTicketMissingFields();
+  var details = getSubmitMissingDetails();
+  if (!force && !details.length) return;
+  details.forEach(function (detail) {
+    var target = ticketMissingTargetForDetail(detail);
+    if (!target) return;
+    target.classList.add('ticket-field-missing');
+    target.setAttribute('data-missing-label', detail.label);
+  });
 }
 
 function syncSubmitBtnState() {
   if (!ticketSubmitBtn || ticketSubmitBusy || ticketForm.dataset.readMode === '1') return;
-  var reasons = getSubmitMissingReasons();
-  var valid = !reasons.length;
+  var details = getSubmitMissingDetails();
+  var reasons = details.map(function (item) { return item.label; });
+  var valid = !details.length;
   ticketSubmitBtn.disabled = !valid;
   ticketSubmitBtn.setAttribute('data-missing', valid ? '' : reasons.join('\n'));
+  // L'highlight dei campi mancanti si mostra SOLO quando il mouse è sul bottone
+  // "Crea Ticket" (vedi mouseenter/mouseleave), non mentre si compila il form.
+  if (ticketSubmitBtn.matches(':hover')) markTicketMissingFields(true);
+  else clearTicketMissingFields();
 }
 
 if (customIncidentNameInput) {
@@ -1696,7 +1742,7 @@ function getChartExportPayload(targetId) {
 }
 
 function buildChartCsv(title, stats) {
-  const BOM = '﻿';
+  const BOM = '\uFEFF';
   const grandTotal = stats.reduce(function(s, item) { return s + Number(item.total || 0); }, 0);
   const e = function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
   const now = new Date();
@@ -2731,7 +2777,7 @@ async function generateCsvReport(cfg) {
   const now = new Date();
   const stamp = formatLocalDateStamp(now);
   const generatedAt = now.toLocaleString('it-IT');
-  const BOM = '﻿';
+  const BOM = '\uFEFF';
   const csvEsc = function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"'; };
   const catMap = _buildIncidentCategoryMap(meta);
 
@@ -2776,7 +2822,7 @@ async function generateCsvReport(cfg) {
       String(t.id || ''), dateStr, timeStr, category,
       String(t.incident_name || ''), String(t.fab || ''),
       String(t.severity || 1), String(t.owner_team || ''),
-      String(t.owner_username || ''), String(t.description || '')
+      (isStrictAdminUser() ? String(t.owner_username || '') : ''), String(t.description || '')
     ]));
   });
 
@@ -4235,9 +4281,16 @@ function renderPieOrDonutChart(target, stats, isDonut) {
       acc += slice.pct;
       const item = sortedStats[i];
       const pct = totalAll > 0 ? Math.round((item.total / totalAll) * 100) : 0;
-      return { start, end: acc, color: slice.color, label: chartItemLabel(item), value: item.total, pct: pct };
+      return { start, end: acc, color: slice.color, label: chartItemLabel(item), valueLabel: item.label, value: item.total, pct: pct };
     });
-    attachPieTooltip(visual, sliceRanges, hideLegendValue);
+    visual.classList.add('chart-clickable');
+    attachPieTooltip(visual, sliceRanges, hideLegendValue, function(slice) {
+      if (!slice || !slice.valueLabel) return;
+      handleChartElementClick({
+        getAttribute: function(name) { return name === 'data-chart-label' ? slice.valueLabel : null; },
+        closest: function(selector) { return selector === '[id]' ? target : null; }
+      });
+    });
   }
 
   if (isDonut) {
@@ -4430,7 +4483,7 @@ function getPieTooltipEl() {
   return el;
 }
 
-function attachPieTooltip(visual, sliceRanges, valueIsPercentOnly) {
+function attachPieTooltip(visual, sliceRanges, valueIsPercentOnly, onSliceClick) {
   const tip = getPieTooltipEl();
   function pctForEvent(e) {
     const rect = visual.getBoundingClientRect();
@@ -4460,7 +4513,16 @@ function attachPieTooltip(visual, sliceRanges, valueIsPercentOnly) {
     tip.style.top = (e.clientY + 14) + 'px';
     tip.classList.add('visible');
   }
+  function onClick(e) {
+    if (typeof onSliceClick !== 'function') return;
+    const pct = pctForEvent(e);
+    if (pct == null) return;
+    const slice = sliceRanges.find((s) => pct >= s.start && pct < s.end) || sliceRanges[sliceRanges.length - 1];
+    if (!slice) return;
+    onSliceClick(slice, e);
+  }
   visual.addEventListener('mousemove', onMove);
+  visual.addEventListener('click', onClick);
   visual.addEventListener('mouseleave', function() { tip.classList.remove('visible'); });
 }
 
@@ -4968,10 +5030,20 @@ async function loadCategories() {
 function getAvatarBadge(username) {
   try {
     const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
-    const emoji = username && all[username] ? all[username] : null;
-    if (!emoji) return '';
+    const emoji = username && all[username] ? all[username] : '👤';
     return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
   } catch { return ''; }
+}
+
+function enforceTicketOwnerNameVisibility(root) {
+  if (isStrictAdminUser()) return;
+  const scope = root || document;
+  scope.querySelectorAll('.ticket-row-owner').forEach(function(ownerEl) {
+    ownerEl.querySelectorAll('strong').forEach(function(node) { node.remove(); });
+    Array.from(ownerEl.childNodes).forEach(function(node) {
+      if (node.nodeType === 3) node.nodeValue = '';
+    });
+  });
 }
 
 function resolveTicketDisplayIncidentName(ticket) {
@@ -4994,6 +5066,7 @@ function createTicketRowElement(t, isAnimated) {
   const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
   const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
   const ownerUsername = String(t.owner_username || t.ownerUsername || '');
+  const visibleOwnerUsername = isStrictAdminUser() ? ownerUsername : '';
   const li = document.createElement('li');
   li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
   li.dataset.ticketId = String(t.id);
@@ -5007,7 +5080,7 @@ function createTicketRowElement(t, isAnimated) {
   li.dataset.canEdit = t.can_edit ? '1' : '0';
   li.dataset.ownerUserId = String(t.owner_user_id || '');
   li.dataset.ownerTeam = String(t.owner_team || '').toUpperCase();
-  li.dataset.ownerUsername = ownerUsername;
+  li.dataset.ownerUsername = visibleOwnerUsername;
   li.style.setProperty('--ticket-accent', categoryColor);
   li.innerHTML =
     '<div class="ticket-row-top">' +
@@ -5020,9 +5093,10 @@ function createTicketRowElement(t, isAnimated) {
       '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
-      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + '<strong>' + escapeHtml(ownerUsername) + '</strong></span>' : '') +
+      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + (visibleOwnerUsername ? '<strong>' + escapeHtml(visibleOwnerUsername) + '</strong>' : '') + '</span>' : '') +
       '<span class="ticket-row-datetime"><strong>' + dayMonth + ' ' + hhmm + '</strong></span>' +
     '</div>';
+  enforceTicketOwnerNameVisibility(li);
   return li;
 }
 
@@ -5609,7 +5683,7 @@ async function loadCharts() {
       function() { return fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)); },
       function() { return fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)); },
       function() { return fetchJson(buildYearStatsUrl('/api/stats/incident', incidentYearMode, chartCustomRanges.incidentYear)); },
-      function() { return fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear)); }
+      function() { return isStrictAdminUser() ? fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear)) : Promise.resolve(null); }
     ];
     const chartResults = await runQueuedTasks(chartJobs, CHART_FETCH_CONCURRENCY, CHART_FETCH_SPACING_MS);
     const fabYear = chartResults[0];
@@ -5621,13 +5695,13 @@ async function loadCharts() {
     renderChart(catYearChart, catYear.stats);
     renderChart(teamYearChart, teamYear.stats);
     renderChart(incidentYearChart, incidentYear.stats);
-    if (userYearChart) renderChart(userYearChart, userYear.stats);
+    if (userYear && userYearChart) renderChart(userYearChart, userYear.stats);
     // Config per il filtro-ticket al click su un elemento del grafico.
     if (fabYearChart) fabYearChart._chartFilter = { dimension: 'fab', scope: 'all', getWindow: function () { return fabYearMode; }, start: (chartCustomRanges.fabYear || {}).start || '', end: (chartCustomRanges.fabYear || {}).end || '' };
     if (catYearChart) catYearChart._chartFilter = { dimension: 'category', scope: 'all', getWindow: function () { return catYearMode; }, start: (chartCustomRanges.catYear || {}).start || '', end: (chartCustomRanges.catYear || {}).end || '' };
     if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; }, start: (chartCustomRanges.teamYear || {}).start || '', end: (chartCustomRanges.teamYear || {}).end || '' };
     if (incidentYearChart) incidentYearChart._chartFilter = { dimension: 'incident', scope: 'all', getWindow: function () { return incidentYearMode; }, start: (chartCustomRanges.incidentYear || {}).start || '', end: (chartCustomRanges.incidentYear || {}).end || '' };
-    if (userYearChart) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; }, start: (chartCustomRanges.userYear || {}).start || '', end: (chartCustomRanges.userYear || {}).end || '' };
+    if (userYearChart && userYear) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; }, start: (chartCustomRanges.userYear || {}).start || '', end: (chartCustomRanges.userYear || {}).end || '' };
     // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
     // di drill-down mensile (annuale di default, o giorno per giorno).
     if (personalMineChart) await loadPersonalChartData(personalMineChart);
@@ -5986,11 +6060,14 @@ function applyPanelOrder() {
   if (addCard) grid.appendChild(addCard);
 }
 
+const ADMIN_ONLY_PANELS = ['chartPanelTeam', 'chartPanelUser'];
+
 function applyDefaultPanelVisibility() {
   DEFAULT_CHART_PANELS.forEach((def) => {
     const panel = document.getElementById(def.id);
     if (!panel) return;
-    const hidden = hiddenDefaultPanels.includes(def.id);
+    const adminOnly = ADMIN_ONLY_PANELS.includes(def.id) && !isStrictAdminUser();
+    const hidden = adminOnly || hiddenDefaultPanels.includes(def.id);
     panel.style.display = hidden ? 'none' : '';
   });
 }
@@ -6304,6 +6381,7 @@ function openAddChartModal() {
   defSelect.className = 'add-chart-select';
 
   DEFAULT_CHART_PANELS.forEach((def) => {
+    if (ADMIN_ONLY_PANELS.includes(def.id) && !isStrictAdminUser()) return;
     const opt = document.createElement('option');
     opt.value = def.id;
     const alreadyVisible = !hiddenDefaultPanels.includes(def.id);

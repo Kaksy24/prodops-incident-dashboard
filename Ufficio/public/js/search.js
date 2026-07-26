@@ -3,8 +3,7 @@ const openAdminBtn = document.getElementById('openAdminBtn');
 function getAvatarBadge(username) {
   try {
     const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
-    const emoji = username && all[username] ? all[username] : null;
-    if (!emoji) return '';
+    const emoji = username && all[username] ? all[username] : '👤';
     return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
   } catch { return ''; }
 }
@@ -492,7 +491,7 @@ async function fetchJson(url, options) {
   const res = await fetch(appUrl(url), options);
   if (res.status === 401) { window.location.href = appUrl('/login.html'); throw new Error('Login richiesta'); }
   if (res.status === 403) { showToast('Non hai i permessi necessari per questa operazione. Contatta un amministratore.', 'error', 'Accesso negato'); throw new Error('Accesso non consentito'); }
-  const text = (await res.text()).replace(/^﻿+/, '');
+  const text = (await res.text()).replace(/^\uFEFF+/, '');
   try { return JSON.parse(text); } catch { throw new Error('Risposta JSON non valida'); }
 }
 
@@ -515,7 +514,7 @@ function renderSearchModalBodyContent(ticket, editing) {
       ? '<textarea id="searchModalEditTextarea" rows="9" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:180px;margin-bottom:12px;resize:vertical">' + escapeHtml(ticket.description || '') + '</textarea>'
       : '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' + renderDescriptionHtml(ticket.description || '') + '</div>') +
     (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
-    (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
+    (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + (isAdminUser() ? escapeHtml(ticket.ownerUsername) : '') + '</p>' : '');
 }
 
 function renderSearchModal(ticket, editing) {
@@ -684,6 +683,7 @@ function renderSearchTickets(tickets) {
     const dayMonth = isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
     const hhmm = isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
     const ownerUsername = String(t.owner_username || '');
+    const visibleOwnerUsername = isAdminUser() ? ownerUsername : '';
 
     const monthKey = isNaN(d.getTime()) ? null : d.getFullYear() + '-' + (d.getMonth() + 1);
     if (monthKey && monthKey !== prevMonthKey) {
@@ -705,7 +705,7 @@ function renderSearchTickets(tickets) {
     li.dataset.createdAt = String(t.created_at || '');
     li.dataset.severity = String(t.severity || '');
     li.dataset.category = category;
-    li.dataset.ownerUsername = ownerUsername;
+    li.dataset.ownerUsername = visibleOwnerUsername;
     li.dataset.canEdit = t.can_edit ? '1' : '0';
     li.style.setProperty('--ticket-accent', categoryColor);
 
@@ -720,7 +720,7 @@ function renderSearchTickets(tickets) {
         '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
       '</div>' +
       '<div class="ticket-row-footer">' +
-        (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(ownerUsername) + '</span>' : '') +
+        (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + (visibleOwnerUsername ? escapeHtml(visibleOwnerUsername) : '') + '</span>' : '') +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
         (t.can_edit ? '<button type="button" class="ticket-edit-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Modifica testo ticket" aria-label="Modifica testo ticket">✎</button>' : '') +
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
@@ -776,9 +776,17 @@ async function loadCategories() {
 function populateAdvancedSearchFilters(meta) {
   const users = Array.isArray(meta?.users) ? meta.users.slice() : [];
   const teams = Array.isArray(meta?.teams) ? meta.teams.slice() : [];
-  refillSelect(ticketSearchUserSelect, 'Tutti', users);
+  const canSeeUsers = isAdminUser();
+  const userFilterWrap = ticketSearchUserSelect ? ticketSearchUserSelect.closest('div') : null;
+  if (userFilterWrap) userFilterWrap.hidden = !canSeeUsers;
+  if (canSeeUsers) {
+    refillSelect(ticketSearchUserSelect, 'Tutti', users);
+  } else if (ticketSearchUserSelect) {
+    refillSelect(ticketSearchUserSelect, 'Tutti', []);
+    ticketSearchUserSelect.value = '';
+  }
   refillSelect(ticketSearchTeamSelect, 'Tutti', teams);
-  ticketSearchUserHandle = syncSearchableSelect(ticketSearchUserSelect, ticketSearchUserHandle);
+  ticketSearchUserHandle = canSeeUsers ? syncSearchableSelect(ticketSearchUserSelect, ticketSearchUserHandle) : null;
   ticketSearchTeamHandle = syncSearchableSelect(ticketSearchTeamSelect, ticketSearchTeamHandle);
 
   advancedPresetFilterControls.forEach((entry) => {
@@ -860,7 +868,7 @@ async function runTicketSearch() {
   const filterFab = ticketSearchFabSelect?.value || '';
   const filterCategory = ticketSearchCategorySelect?.value || '';
   const filterIncidentId = ticketSearchIncidentSelect?.value || '';
-  const filterOwner = ticketSearchUserSelect?.value || '';
+  const filterOwner = isAdminUser() ? (ticketSearchUserSelect?.value || '') : '';
   const filterTeam = ticketSearchTeamSelect?.value || '';
   const activePresetFilters = advancedPresetFilterControls
     .map((entry) => ({ key: entry.key, label: entry.label, value: entry.select?.value || '' }))

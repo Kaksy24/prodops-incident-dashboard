@@ -13,6 +13,69 @@ Allineamento `v1.13.27` — **allineamento locale <-> origin dopo il rebase**: i
 | `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | `.menu-category.open .incident-list` → `max-height: 3000px; overflow-y: auto`; `.admin-catalog .menu-category.open .incident-list` → `max-height: 5000px`; `body.quickbar-page .menu-category.open .incident-list` → `max-height: 3000px; overflow-y: auto`. Ora anche il pannello admin catalog gestisce categorie enormi senza clipping. |
 | `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.27**. |
 
+Informativa privacy GDPR + consenso post-login:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/privacy.html` | **Nuovo file.** Pagina informativa privacy ex Art. 13 GDPR con 9 sezioni: titolare, dati trattati (tabella con basi giuridiche per ciascun dato), base giuridica, modalità, retention, destinatari, diritti interessato, cookie, nota Art. 4 Statuto Lavoratori. |
+| `Ufficio/public/js/privacy-consent.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/privacy-consent.js` | **Nuovo file.** Popup modale post-login: controlla se l'utente ha acconsentito (`GET /api/privacy-consent`); se no, mostra modale con "Acconsento" (salva via `POST /api/privacy-consent`) o "Rifiuto" (logout e redirect al login). |
+| `Ufficio/public/js/login.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/login.js` | Gestione errore `disabled`. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili modale consenso privacy (overlay, card, pulsanti, dark mode), pagina informativa privacy (tabella, tipografia, layout responsive), link "Privacy" nel badge versione. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Link "Privacy" nel badge versione. Include `privacy-consent.js` nelle pagine autenticate (index, admin, search, quickbar). |
+| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Nuova route `GET /privacy.html` (senza autenticazione). Nuovi endpoint `GET /api/privacy-consent` e `POST /api/privacy-consent`. Salvataggio consensi in `app_settings` chiave `privacy_consents` (mappa username → timestamp). `GET /api/users` include campo `privacy_consent` (timestamp o null) per ogni utente. |
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Nuova colonna "Privacy" nella tabella gestione utenti: mostra "Accettata" (verde, con tooltip data) o "Non accettata" (rosso) per ogni utente. |
+
+Grafico "Ticket Utenti" ripristinato + visibilità admin-only:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuovo pannello `chartPanelUser` (Ticket Utenti) con select range e calendario personalizzato. Cache-busting/badge **v1.13.40**. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Ripristinato grafico "Ticket Utenti" (`userYear`): fetch da `/api/stats/user`, registrato in `DEFAULT_CHART_PANELS`, `PANEL_TITLE_ELEMENTS`, `panelChartTargetKey`. Pannelli "Ticket per Team" e "Ticket Utenti" nascosti ai non-admin (`ADMIN_ONLY_PANELS`): `applyDefaultPanelVisibility` li forza `display:none`, il fetch userYear non parte, e non compaiono nel wizard "Ripristina grafici". |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting **v1.13.40** (allineamento `?v=` su tutti gli asset). |
+
+Fix inserimento preset alla posizione del cursore (admin — editor incident):
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Nell'editor "Testo ticket precompilato" i pulsanti preset (`+ Box testo`, `+ Menu tendina`, ecc.) inserivano il token sempre all'inizio invece che alla posizione del cursore: il dialog `showPrompt` toglie il focus al contenteditable e la selezione andava persa. Nuovo `adminPresetSavedRange` salvato su keyup/mouseup/blur/input; `adminPresetInsertText` dà priorità al range salvato rispetto alla selezione live (che dopo `focus()` risulta collassata a inizio editor). |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.41** (allineamento `?v=` su tutti gli asset). |
+
+Stile menu tendina preset creazione ticket:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Nei menu a tendina del composer ticket (`#presetInlineComposer` / `.preset-inline-composer`) le opzioni reali sono più grandi e leggibili; le azioni speciali `+ Inserimento custom` e `+ Proponi nuovo elemento` sono più piccole e compatte. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.42** (allineamento `?v=` su tutti gli asset). |
+
+Adattamento scritte category/FAB nelle card ticket:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | La riga superiore delle card ticket (`categoria | FAB`) usa ora font responsive alla larghezza della card e regole di shrink/ellipsis su categoria e FAB, evitando tagli nei temi con font più larghi come Papiro. Applicato anche a popup/stack duplicati. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.43** (allineamento `?v=` su tutti gli asset). |
+
+Fix barra colore superiore card ticket:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | La linea colore sopra la card ticket ora resta interna al bordo (`top/left/right: 1px`) e usa radius ridotto, evitando che sembri uscire dal bordo nei temi con bordo marcato. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.44** (allineamento `?v=` su tutti gli asset). |
+
+Evidenzia campi mancanti + drill-down ciambelle:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Il check del bottone `Crea Ticket` ora illumina direttamente le sezioni mancanti nel form. Gli spicchi dei grafici a ciambella sono cliccabili: il click calcola lo spicchio sotto il mouse e apre Cerca ticket filtrato per quella voce. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili `ticket-field-missing` per evidenziare i campi obbligatori mancanti e hover sulle ciambelle cliccabili. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.45** (allineamento `?v=` su tutti gli asset). |
+
+Ripristino palette colori utenti in admin:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Ripristinato il gruppo palette `Utenti` nell'editor colori admin e il caricamento preview da `/api/stats/user/current-year?mode=months`. La modifica riguarda solo l'admin colori; il grafico utenti resta nascosto agli operatori. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.46** (allineamento `?v=` su tutti gli asset). |
+
 ## Gia deployato
 
 Deploy confermato in data `2026-07-19` (**v1.13.26** — navbar quickbar: incident oltre il sesto in una categoria venivano tagliati) per i seguenti file:

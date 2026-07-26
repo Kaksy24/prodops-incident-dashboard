@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps Ticket Manager</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.37" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.47" />
   <script>document.documentElement.classList.add('theme-sync-pending');
     try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.37" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.47" />
 </head>
 <body>
   <div class="app-layout">
@@ -23,7 +23,13 @@
         <a class="sidebar-link-btn" href="./search.html">Cerca ticket</a>
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
-      <div class="sidebar-footer">Powered by Antonio Di Bella 2026</div>
+      <div class="sidebar-footer">
+        <span class="ai-act-info">
+          <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+          <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+        </span>
+        <span>Powered by Antonio Di Bella 2026</span>
+      </div>
       </div>
     </aside>
 
@@ -417,9 +423,10 @@
       </div>
     </div>
   </div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.37"></script>
-  <script src="./public/js/toast.js?v=1.13.37"></script>
-  <script src="./public/js/script.js?v=1.13.37"></script>
-  <div class="app-version-badge">v1.13.37</div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.47"></script>
+  <script src="./public/js/toast.js?v=1.13.47"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.47"></script>
+  <script src="./public/js/script.js?v=1.13.47"></script>
+  <div class="app-version-badge">v1.13.47 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

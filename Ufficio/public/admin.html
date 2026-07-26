@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.37" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.47" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.37" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.47" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.37" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.47" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -28,7 +28,13 @@
         <button id="backToDashboardBtn" class="admin-toggle-btn" type="button">Dashboard</button>
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
-      <div class="sidebar-footer">Powered by Antonio Di Bella 2026</div>
+      <div class="sidebar-footer">
+        <span class="ai-act-info">
+          <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+          <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+        </span>
+        <span>Powered by Antonio Di Bella 2026</span>
+      </div>
       </div>
     </aside>
 
@@ -401,8 +407,9 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.37"></script>
-  <script src="./public/js/admin.js?v=1.13.37"></script>
-  <div class="app-version-badge">v1.13.37</div>
+  <script src="./public/js/toast.js?v=1.13.47"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.47"></script>
+  <script src="./public/js/admin.js?v=1.13.47"></script>
+  <div class="app-version-badge">v1.13.47 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

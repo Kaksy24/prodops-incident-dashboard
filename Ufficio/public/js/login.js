@@ -39,5 +39,8 @@ if (passwordInput) {
 if (new URLSearchParams(window.location.search).get('error') === '1') {
   loginError.textContent = 'Credenziali non valide';
 }
+if (new URLSearchParams(window.location.search).get('error') === 'disabled') {
+  loginError.textContent = 'Account disabilitato. Contatta l\'amministratore.';
+}
 
-redirectIfLoggedIn().catch(() => {});
+redirectIfLoggedIn().catch(function () {});

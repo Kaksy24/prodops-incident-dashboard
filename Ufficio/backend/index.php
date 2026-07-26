@@ -162,6 +162,7 @@ function mysql_read_cache_allowed()
     if ($path === '/api/stats/meta') return true;
     if ($path === '/api/stats/custom') return true;
     if ($path === '/api/user-charts') return true;
+    if ($path === '/api/privacy-consent') return true;
     if (strpos($path, '/api/stats/') === 0) return true;
     return false;
 }
@@ -1211,7 +1212,7 @@ function mysql_load_db($defaultUsers)
         }
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','disabled_users')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','disabled_users','privacy_consents')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
@@ -1224,6 +1225,7 @@ function mysql_load_db($defaultUsers)
             if ($row['setting_key'] === 'user_charts') $db['user_charts'] = $parsed;
             if ($row['setting_key'] === 'pinned_tickets') $db['pinned_tickets'] = $parsed;
             if ($row['setting_key'] === 'disabled_users') $db['disabled_users'] = $parsed;
+            if ($row['setting_key'] === 'privacy_consents') $db['privacy_consents'] = $parsed;
         }
         mysqli_free_result($rs);
     }
@@ -1289,6 +1291,8 @@ function mysql_save_db($db)
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('pinned_tickets', '$pinnedJson')")) { $ok = false; }
         $disabledJson = mysql_escape($conn, json_encode(isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('disabled_users', '$disabledJson')")) { $ok = false; }
+        $privacyJson = mysql_escape($conn, json_encode(isset($db['privacy_consents']) && is_array($db['privacy_consents']) ? $db['privacy_consents'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('privacy_consents', '$privacyJson')")) { $ok = false; }
     }
 
     if ($ok && isset($db['preset_options']) && is_array($db['preset_options'])) {
@@ -2057,6 +2061,11 @@ if ($path === '/quickbar.html') {
     readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'quickbar.html');
     exit;
 }
+if ($path === '/privacy.html') {
+    readfile(dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'privacy.html');
+    exit;
+}
+
 if ($path === '/login.html') {
     $u = read_auth_user();
     if ($u) {
@@ -2220,6 +2229,22 @@ if ($path === '/api/me' && $method === 'GET') {
 }
 
 
+if ($path === '/api/privacy-consent' && $method === 'GET') {
+    $consents = isset($db['privacy_consents']) && is_array($db['privacy_consents']) ? $db['privacy_consents'] : array();
+    $username = strtolower(trim($user['username']));
+    $consented = isset($consents[$username]) && $consents[$username] !== '';
+    json_response(array('consented' => $consented), 200);
+}
+
+if ($path === '/api/privacy-consent' && $method === 'POST') {
+    $consents = isset($db['privacy_consents']) && is_array($db['privacy_consents']) ? $db['privacy_consents'] : array();
+    $username = strtolower(trim($user['username']));
+    $consents[$username] = date('Y-m-d H:i:s');
+    $db['privacy_consents'] = $consents;
+    save_db($db);
+    json_response(array('ok' => true), 200);
+}
+
 function allowed_avatars() {
     return allowed_avatars_list();
 }
@@ -2306,15 +2331,22 @@ if ($path === '/api/admin/db-export' && $method === 'GET') {
 if ($path === '/api/users' && $method === 'GET') {
     require_api_auth('admin');
     $disabledList = isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array();
+    $privacyConsents = isset($db['privacy_consents']) && is_array($db['privacy_consents']) ? $db['privacy_consents'] : array();
     $out = array();
     if (supabase_enabled()) {
         $resp = sb_select('app_users', 'id,username,role,team,group_name,personal_target,group_target', array(), 'id.asc');
         if ($resp['ok'] && is_array($resp['data'])) {
-            foreach ($resp['data'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null);
+            foreach ($resp['data'] as $u) {
+                $pcKey = strtolower(trim($u['username']));
+                $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null, 'privacy_consent' => isset($privacyConsents[$pcKey]) ? strval($privacyConsents[$pcKey]) : null);
+            }
             json_response($out, 200);
         }
     }
-    foreach ($db['users'] as $u) $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null);
+    foreach ($db['users'] as $u) {
+        $pcKey = strtolower(trim($u['username']));
+        $out[] = array('id' => intval($u['id']), 'username' => $u['username'], 'role' => $u['role'], 'team' => normalize_team(isset($u['team']) ? $u['team'] : 'A'), 'group_name' => isset($u['group_name']) ? strval($u['group_name']) : 'ProdOps', 'personal_target' => normalize_personal_target(isset($u['personal_target']) ? $u['personal_target'] : 20), 'group_target' => normalize_group_target(isset($u['group_target']) ? $u['group_target'] : 20), 'disabled' => in_array(intval($u['id']), $disabledList), 'last_login' => (isset($u['last_login']) && $u['last_login'] !== null && $u['last_login'] !== '') ? strval($u['last_login']) : null, 'privacy_consent' => isset($privacyConsents[$pcKey]) ? strval($privacyConsents[$pcKey]) : null);
+    }
     json_response($out, 200);
 }
 

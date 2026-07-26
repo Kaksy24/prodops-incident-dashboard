@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Informativa Privacy - ProdOps Ticket Manager</title>
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.47" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.47" />
+</head>
+<body class="privacy-page">
+  <div class="privacy-container">
+    <header class="privacy-header">
+      <a href="./login.html" class="privacy-back-link" aria-label="Torna al login">&larr; Torna al login</a>
+      <h1>Informativa sul trattamento dei dati personali</h1>
+      <p class="privacy-subtitle">ai sensi dell'Art. 13 del Regolamento UE 2016/679 (GDPR)</p>
+    </header>
+
+    <main class="privacy-body">
+
+      <section>
+        <h2>1. Titolare del trattamento</h2>
+        <p>Il Titolare del trattamento dei dati personali raccolti tramite l'applicazione <strong>ProdOps Ticket Manager</strong> è il datore di lavoro, nella persona del legale rappresentante dell'azienda presso cui lo strumento è in uso.</p>
+        <p>Per informazioni o richieste relative al trattamento dei dati, rivolgersi all'ufficio IT o al Responsabile della Protezione dei Dati (DPO) aziendale, ove nominato.</p>
+      </section>
+
+      <section>
+        <h2>2. Dati personali trattati</h2>
+        <p>L'applicazione raccoglie e tratta le seguenti categorie di dati personali:</p>
+        <table class="privacy-table">
+          <thead>
+            <tr><th>Dato</th><th>Finalità</th><th>Base giuridica</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Ticket creati</strong> (contenuto, data, FAB, severity, autore)</td>
+              <td>Gestione operativa degli interventi tecnici (finalità primaria dello strumento)</td>
+              <td>Esecuzione del rapporto di lavoro (Art. 6.1.b GDPR)</td>
+            </tr>
+            <tr>
+              <td><strong>Conteggio ticket</strong> — numero di ticket inseriti e avanzamento rispetto al target mensile, visibili nella dashboard</td>
+              <td>Monitoraggio dell'attività del team e pianificazione delle risorse</td>
+              <td>Legittimo interesse del Titolare (Art. 6.1.f GDPR), nel rispetto dell'Art. 4 L. 300/1970</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>3. Base giuridica del trattamento</h2>
+        <p>Il trattamento dei dati è fondato su:</p>
+        <ul>
+          <li><strong>Art. 6.1.b GDPR</strong> — necessità per l'esecuzione del contratto di lavoro: l'applicazione è uno strumento di lavoro necessario per la gestione degli interventi tecnici;</li>
+          <li><strong>Art. 6.1.f GDPR</strong> — legittimo interesse del Titolare: il monitoraggio statistico dell'attività operativa è finalizzato alla pianificazione delle risorse e all'organizzazione del lavoro;</li>
+          <li><strong>Art. 6.1.a GDPR</strong> — consenso dell'interessato: l'accesso all'applicazione è subordinato all'accettazione della presente informativa.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>4. Modalità del trattamento</h2>
+        <p>I dati sono trattati con strumenti informatici, con misure di sicurezza adeguate a prevenire la perdita, l'accesso non autorizzato o il trattamento illecito. In particolare:</p>
+        <ul>
+          <li>L'autenticazione avviene tramite LDAP aziendale — nessuna password è conservata dall'applicazione;</li>
+          <li>La sessione utente è gestita tramite cookie tecnico firmato (HMAC), con flag <code>HttpOnly</code>, della durata di 8 ore;</li>
+          <li>L'input utente è sanitizzato per prevenire attacchi XSS;</li>
+          <li>L'accesso alle funzionalità è regolato da un sistema di ruoli (utente, supervisore, amministratore).</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>5. Periodo di conservazione</h2>
+        <ul>
+          <li><strong>Ticket</strong>: conservati per finalità operative e di storicizzazione degli interventi;</li>
+          <li><strong>Dati dell'account</strong>: conservati per tutta la durata del rapporto di lavoro e cancellati alla cessazione dello stesso, salvo obblighi di legge.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>6. Destinatari dei dati</h2>
+        <p>I dati personali non sono ceduti a terzi. Possono accedervi:</p>
+        <ul>
+          <li>Il personale autorizzato dell'ufficio IT, in qualità di amministratore del sistema;</li>
+          <li>I supervisori, limitatamente ai dati operativi dei ticket del proprio ambito;</li>
+          <li>Eventuali responsabili esterni del trattamento (fornitori di hosting/database), vincolati da specifici accordi contrattuali ai sensi dell'Art. 28 GDPR.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>7. Diritti dell'interessato</h2>
+        <p>Ai sensi degli Artt. 15-22 del GDPR, l'interessato ha diritto di:</p>
+        <ul>
+          <li>Accedere ai propri dati personali e ottenerne copia;</li>
+          <li>Rettificare dati inesatti o incompleti;</li>
+          <li>Richiedere la cancellazione dei dati (diritto all'oblio), nei limiti previsti dalla legge;</li>
+          <li>Limitare il trattamento in presenza delle condizioni di cui all'Art. 18 GDPR;</li>
+          <li>Opporsi al trattamento fondato sul legittimo interesse;</li>
+          <li>Proporre reclamo all'Autorità Garante per la Protezione dei Dati Personali.</li>
+        </ul>
+        <p>Per esercitare i propri diritti, l'interessato può rivolgersi al Titolare del trattamento o al DPO aziendale tramite i canali interni.</p>
+      </section>
+
+      <section>
+        <h2>8. Cookie</h2>
+        <p>L'applicazione utilizza esclusivamente un <strong>cookie tecnico</strong> (<code>prodops_auth</code>) necessario per il funzionamento dell'autenticazione. Non vengono utilizzati cookie di profilazione, analytics o di terze parti. Il cookie tecnico non richiede consenso ai sensi dell'Art. 122 del D.Lgs. 196/2003 e del Provvedimento del Garante dell'8 maggio 2014.</p>
+      </section>
+
+      <section>
+        <h2>9. Nota sull'Art. 4 dello Statuto dei Lavoratori</h2>
+        <p>Le statistiche per utente visibili nell'applicazione sono finalizzate alla pianificazione operativa e all'organizzazione del lavoro. Lo strumento non è impiegato per il controllo a distanza dell'attività lavorativa. L'utilizzo delle funzionalità statistiche è conforme all'Art. 4 della L. 300/1970 come modificato dal D.Lgs. 151/2015, in quanto strumento di lavoro necessario per la prestazione lavorativa.</p>
+      </section>
+
+    </main>
+
+    <footer class="privacy-footer">
+      <p>Ultimo aggiornamento: luglio 2026</p>
+    </footer>
+  </div>
+</body>
+</html>

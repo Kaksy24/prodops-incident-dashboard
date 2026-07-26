@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.37" />
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.37" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.47" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.47" />
 </head>
 <body class="login-page">
   <div class="login-bg-grid" aria-hidden="true"></div>
@@ -14,7 +14,7 @@
   <main class="login-shell">
     <section class="login-panel">
       <div class="login-logo-wrap">
-        <img class="brand-logo login-brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.37" alt="PRODOPS Ticket Manager" />
+        <img class="brand-logo login-brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.47" alt="PRODOPS Ticket Manager" />
       </div>
       <form id="loginForm" class="login-form" action="./api/login" method="post">
         <label for="username">Utente <span class="login-label-note">(login LDAP)</span></label>
@@ -27,9 +27,13 @@
         <p id="loginError" class="login-error" role="alert"></p>
         <button class="primary login-submit-btn" type="submit">Accedi</button>
       </form>
+      <div class="login-ai-act-info ai-act-info">
+        <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+        <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+      </div>
     </section>
   </main>
-  <script src="./public/js/login.js?v=1.13.37"></script>
-  <div class="app-version-badge">v1.13.37</div>
+  <script src="./public/js/login.js?v=1.13.47"></script>
+  <div class="app-version-badge">v1.13.47 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

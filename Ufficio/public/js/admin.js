@@ -1416,23 +1416,48 @@ function adminPresetMoveCaretToEnd() {
   sel.addRange(range);
 }
 
+// Memorizza l'ultima posizione valida del cursore dentro l'editor: l'apertura
+// del dialog showPrompt (quando si aggiunge un campo preset) toglie il focus al
+// contenteditable e la selezione va persa, per cui senza questo il token finiva
+// sempre all'inizio invece che dove stava il cursore.
+let adminPresetSavedRange = null;
+
+function adminPresetSaveRange() {
+  if (!adminIncidentPresetEditor) return;
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const candidate = sel.getRangeAt(0);
+  if (adminIncidentPresetEditor.contains(candidate.commonAncestorContainer)) {
+    adminPresetSavedRange = candidate.cloneRange();
+  }
+}
+
 function adminPresetInsertText(text) {
   if (!adminIncidentPresetEditor) {
     if (adminIncidentPresetInput) insertAtCursor(adminIncidentPresetInput, text);
     return;
   }
-  adminIncidentPresetEditor.focus();
   const sel = window.getSelection();
   let range = null;
-  if (sel && sel.rangeCount) {
+  // Priorità al range salvato: dopo il prompt il focus()/selezione live viene
+  // ripristinato collassato a inizio editor, che sembra "valido" ma non è dove
+  // stava davvero il cursore. Il range salvato su keyup/mouseup/blur è affidabile.
+  if (adminPresetSavedRange && adminIncidentPresetEditor.contains(adminPresetSavedRange.commonAncestorContainer)) {
+    range = adminPresetSavedRange.cloneRange();
+  } else if (sel && sel.rangeCount) {
     const candidate = sel.getRangeAt(0);
     if (adminIncidentPresetEditor.contains(candidate.commonAncestorContainer)) range = candidate;
   }
+  adminIncidentPresetEditor.focus();
   if (!range) {
     adminPresetMoveCaretToEnd();
     if (sel && sel.rangeCount) range = sel.getRangeAt(0);
   }
   if (!range) return;
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
   range.deleteContents();
   const textNode = document.createTextNode(String(text || ''));
   range.insertNode(textNode);
@@ -1442,6 +1467,7 @@ function adminPresetInsertText(text) {
     sel.removeAllRanges();
     sel.addRange(range);
   }
+  adminPresetSavedRange = range.cloneRange();
   adminPresetSyncFromEditor();
   adminPresetUpdateToolbarState();
 }
@@ -1450,10 +1476,11 @@ function initAdminPresetEditor() {
   if (!adminIncidentPresetEditor || adminIncidentPresetEditor.dataset.adminPresetInit === '1') return;
   adminIncidentPresetEditor.dataset.adminPresetInit = '1';
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (error) {}
-  adminIncidentPresetEditor.addEventListener('input', adminPresetSyncFromEditor);
-  adminIncidentPresetEditor.addEventListener('keyup', adminPresetUpdateToolbarState);
-  adminIncidentPresetEditor.addEventListener('mouseup', adminPresetUpdateToolbarState);
+  adminIncidentPresetEditor.addEventListener('input', function () { adminPresetSyncFromEditor(); adminPresetSaveRange(); });
+  adminIncidentPresetEditor.addEventListener('keyup', function () { adminPresetUpdateToolbarState(); adminPresetSaveRange(); });
+  adminIncidentPresetEditor.addEventListener('mouseup', function () { adminPresetUpdateToolbarState(); adminPresetSaveRange(); });
   adminIncidentPresetEditor.addEventListener('focus', adminPresetUpdateToolbarState);
+  adminIncidentPresetEditor.addEventListener('blur', adminPresetSaveRange);
   if (adminIncidentPresetToolbar) {
     adminIncidentPresetToolbar.addEventListener('mousedown', function (e) {
       if (e.target.closest('.desc-tool')) e.preventDefault();
@@ -1582,6 +1609,7 @@ function renderUsers() {
           </label>
         </td>
         <td class="user-lastlogin-cell">${formatLastLogin(user.last_login)}</td>
+        <td class="user-privacy-cell">${user.privacy_consent ? '<span class="user-privacy-yes" title="' + escapeHtml(formatLastLogin(user.privacy_consent)) + '">Accettata</span>' : '<span class="user-privacy-no">Non accettata</span>'}</td>
         <td>
           <div class="user-actions-cell">
             <button type="button" class="save-user-btn primary" data-user-id="${Number(user.id)}">Salva</button>
@@ -1601,7 +1629,7 @@ function renderUsers() {
     <div class="users-table-wrap">
       <table class="users-table">
         <thead>
-          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Stato</th><th>Ultimo accesso</th><th>Azioni</th></tr>
+          <tr><th>Utente</th><th>Ruolo</th><th>Team</th><th>Gruppo</th><th>Stato</th><th>Ultimo accesso</th><th>Privacy</th><th>Azioni</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
