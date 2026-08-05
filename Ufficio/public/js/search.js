@@ -399,6 +399,9 @@ function renderDescriptionHtml(raw) {
 function defaultUiColors() {
   return {
     labels: { categories: { light: {}, dark: {} }, fabs: { light: {}, dark: {} } },
+    settings: {
+      admin_usernames_visible: true
+    },
     layout: {
       panel_height_min: 400,
       panel_height_preferred: 52,
@@ -438,6 +441,7 @@ function normalizeUiColors(input) {
       }
     });
   }
+  out.settings.admin_usernames_visible = input?.settings?.admin_usernames_visible === false ? false : true;
   return out;
 }
 
@@ -514,7 +518,7 @@ function renderSearchModalBodyContent(ticket, editing) {
       ? '<textarea id="searchModalEditTextarea" rows="9" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:180px;margin-bottom:12px;resize:vertical">' + escapeHtml(ticket.description || '') + '</textarea>'
       : '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' + renderDescriptionHtml(ticket.description || '') + '</div>') +
     (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
-    (ticket.ownerUsername ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + (isAdminUser() ? escapeHtml(ticket.ownerUsername) : '') + '</p>' : '');
+    (ticket.ownerUsername && canDisplayAdminUsernames() ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
 }
 
 function renderSearchModal(ticket, editing) {
@@ -590,6 +594,11 @@ function closeSearchModal() {
 
 function isAdminUser() {
   return currentUser && currentUser.role === 'admin';
+}
+
+function canDisplayAdminUsernames() {
+  const settings = (uiColors && uiColors.settings) ? uiColors.settings : {};
+  return isAdminUser() && settings.admin_usernames_visible !== false;
 }
 
 async function deleteSearchTicket(ticketId, triggerBtn) {
@@ -683,7 +692,7 @@ function renderSearchTickets(tickets) {
     const dayMonth = isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
     const hhmm = isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
     const ownerUsername = String(t.owner_username || '');
-    const visibleOwnerUsername = isAdminUser() ? ownerUsername : '';
+    const visibleOwnerUsername = canDisplayAdminUsernames() ? ownerUsername : '';
 
     const monthKey = isNaN(d.getTime()) ? null : d.getFullYear() + '-' + (d.getMonth() + 1);
     if (monthKey && monthKey !== prevMonthKey) {
@@ -720,7 +729,7 @@ function renderSearchTickets(tickets) {
         '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
       '</div>' +
       '<div class="ticket-row-footer">' +
-        (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + (visibleOwnerUsername ? escapeHtml(visibleOwnerUsername) : '') + '</span>' : '') +
+        (visibleOwnerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(visibleOwnerUsername) + '</span>' : '') +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
         (t.can_edit ? '<button type="button" class="ticket-edit-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Modifica testo ticket" aria-label="Modifica testo ticket">✎</button>' : '') +
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
@@ -776,7 +785,7 @@ async function loadCategories() {
 function populateAdvancedSearchFilters(meta) {
   const users = Array.isArray(meta?.users) ? meta.users.slice() : [];
   const teams = Array.isArray(meta?.teams) ? meta.teams.slice() : [];
-  const canSeeUsers = isAdminUser();
+  const canSeeUsers = canDisplayAdminUsernames();
   const userFilterWrap = ticketSearchUserSelect ? ticketSearchUserSelect.closest('div') : null;
   if (userFilterWrap) userFilterWrap.hidden = !canSeeUsers;
   if (canSeeUsers) {
@@ -868,7 +877,7 @@ async function runTicketSearch() {
   const filterFab = ticketSearchFabSelect?.value || '';
   const filterCategory = ticketSearchCategorySelect?.value || '';
   const filterIncidentId = ticketSearchIncidentSelect?.value || '';
-  const filterOwner = isAdminUser() ? (ticketSearchUserSelect?.value || '') : '';
+  const filterOwner = canDisplayAdminUsernames() ? (ticketSearchUserSelect?.value || '') : '';
   const filterTeam = ticketSearchTeamSelect?.value || '';
   const activePresetFilters = advancedPresetFilterControls
     .map((entry) => ({ key: entry.key, label: entry.label, value: entry.select?.value || '' }))
@@ -982,6 +991,11 @@ async function runChartLookup(sp) {
   const value = sp.get('value') || '';
   const start = sp.get('start') || '';
   const end = sp.get('end') || '';
+  if (dimension === 'user' && !canDisplayAdminUsernames()) {
+    if (ticketSearchSummary) ticketSearchSummary.textContent = 'Ricerca per utente non disponibile: la visualizzazione dei nomi utenti e\' disattivata.';
+    if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+    return;
+  }
 
   // Riflette i filtri nei controlli visibili, dove possibile.
   if (dimension === 'fab' && ticketSearchFabSelect) ticketSearchFabSelect.value = value;

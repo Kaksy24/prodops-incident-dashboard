@@ -556,7 +556,9 @@ function default_ui_colors()
         'settings' => array(
             'personal_axis_max' => 0,
             'personal_axis_max_mine' => 0,
-            'personal_axis_max_group' => 0
+            'personal_axis_max_group' => 0,
+            'dashboard_add_chart_enabled' => true,
+            'admin_usernames_visible' => true
         ),
         'layout' => array(
             'panel_height_min' => 400,
@@ -673,6 +675,8 @@ function normalize_ui_colors($colors)
         $out['settings']['personal_axis_max_group'] = isset($colors['settings']['personal_axis_max_group'])
             ? normalize_axis_max_setting($colors['settings']['personal_axis_max_group'])
             : 0;
+        $out['settings']['dashboard_add_chart_enabled'] = (isset($colors['settings']['dashboard_add_chart_enabled']) && $colors['settings']['dashboard_add_chart_enabled'] === false) ? false : true;
+        $out['settings']['admin_usernames_visible'] = (isset($colors['settings']['admin_usernames_visible']) && $colors['settings']['admin_usernames_visible'] === false) ? false : true;
     }
     return $out;
 }
@@ -2853,6 +2857,17 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
         json_response(array('error' => 'Categoria non trovata'), 404);
     }
     if ($method === 'DELETE') {
+        $moveToIncidentId = isset($payload['move_to_incident_id']) ? intval($payload['move_to_incident_id']) : 0;
+        $moveToIncidentName = '';
+        if ($moveToIncidentId > 0) {
+            foreach ($db['incidents'] as $targetInc) {
+                if (intval($targetInc['id']) === $moveToIncidentId && intval($targetInc['category_id']) !== $id) {
+                    $moveToIncidentName = isset($targetInc['name']) ? strval($targetInc['name']) : '';
+                    break;
+                }
+            }
+            if ($moveToIncidentName === '') json_response(array('error' => 'Incident destinazione non valido'), 400);
+        }
         $removedNames = array();
         $removedIncidentIds = array();
         foreach ($db['incidents'] as $inc) {
@@ -2871,7 +2886,18 @@ if (preg_match('#^/api/categories/(\d+)$#', $path, $m)) {
             }
         }
         if ($ticketCount > 0) {
-            json_response(array('error' => 'Categoria con ticket collegati', 'ticket_count' => $ticketCount), 409);
+            if ($moveToIncidentId <= 0) {
+                json_response(array('error' => 'Categoria con ticket collegati', 'ticket_count' => $ticketCount), 409);
+            }
+            foreach ($db['tickets'] as &$ticketToMove) {
+                $tid = isset($ticketToMove['incident_id']) ? intval($ticketToMove['incident_id']) : 0;
+                $ticketIncidentName = isset($ticketToMove['incident_name']) ? strval($ticketToMove['incident_name']) : '';
+                if (($tid > 0 && in_array($tid, $removedIncidentIds, true)) || ($tid <= 0 && in_array($ticketIncidentName, $removedNames, true))) {
+                    $ticketToMove['incident_id'] = $moveToIncidentId;
+                    $ticketToMove['incident_name'] = $moveToIncidentName;
+                }
+            }
+            unset($ticketToMove);
         }
         $newCategories = array();
         foreach ($db['categories'] as $cat) {
@@ -2984,7 +3010,20 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
         if ($name === '' && $hidden === null) json_response(array('error' => 'Dati non validi'), 400);
         foreach ($db['incidents'] as &$inc) {
             if (intval($inc['id']) === $id) {
-                if ($name !== '') $inc['name'] = $name;
+                $oldName = isset($inc['name']) ? strval($inc['name']) : '';
+                if ($name !== '') {
+                    $inc['name'] = $name;
+                    if ($oldName !== '' && $name !== $oldName && isset($db['tickets']) && is_array($db['tickets'])) {
+                        foreach ($db['tickets'] as &$ticketToUpdate) {
+                            $ticketIncidentId = isset($ticketToUpdate['incident_id']) ? intval($ticketToUpdate['incident_id']) : 0;
+                            $ticketIncidentName = isset($ticketToUpdate['incident_name']) ? strval($ticketToUpdate['incident_name']) : '';
+                            if ($ticketIncidentId === $id || ($ticketIncidentId <= 0 && strcasecmp($ticketIncidentName, $oldName) === 0)) {
+                                $ticketToUpdate['incident_name'] = $name;
+                            }
+                        }
+                        unset($ticketToUpdate);
+                    }
+                }
                 if ($hidden !== null) $inc['hidden'] = $hidden;
                 if (isset($payload['severity_default'])) $inc['severity_default'] = intval($payload['severity_default']);
                 if (isset($payload['severity_mode'])) $inc['severity_mode'] = strval($payload['severity_mode']);
@@ -2998,27 +3037,64 @@ if (preg_match('#^/api/incidents/(\d+)$#', $path, $m)) {
     }
     if ($method === 'DELETE') {
         $incidentName = '';
-        $new = array();
-        foreach ($db['incidents'] as $inc) {
-            if (intval($inc['id']) === $id) {
-                $incidentName = $inc['name'];
-                continue;
-            }
-            $new[] = $inc;
-        }
-        $db['incidents'] = $new;
-        if ($incidentName !== '') {
-            $tickets = array();
-            foreach ($db['tickets'] as $t) {
-                $tid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
-                if ($tid > 0) {
-                    if ($tid !== $id) $tickets[] = $t;
-                } else if ($t['incident_name'] !== $incidentName) {
-                    $tickets[] = $t;
+        $moveToIncidentId = isset($payload['move_to_incident_id']) ? intval($payload['move_to_incident_id']) : 0;
+        $moveToIncidentName = '';
+        if ($moveToIncidentId > 0) {
+            if ($moveToIncidentId === $id) json_response(array('error' => 'Incident destinazione non valido'), 400);
+            foreach ($db['incidents'] as $targetInc) {
+                if (intval($targetInc['id']) === $moveToIncidentId) {
+                    $moveToIncidentName = isset($targetInc['name']) ? strval($targetInc['name']) : '';
+                    break;
                 }
             }
-            $db['tickets'] = $tickets;
+            if ($moveToIncidentName === '') json_response(array('error' => 'Incident destinazione non valido'), 400);
         }
+        foreach ($db['incidents'] as $inc) {
+            if (intval($inc['id']) === $id) {
+                $incidentName = isset($inc['name']) ? strval($inc['name']) : '';
+                break;
+            }
+        }
+        if ($incidentName !== '') {
+            $linkedTicketCount = 0;
+            $tickets = isset($db['tickets']) && is_array($db['tickets']) ? $db['tickets'] : array();
+            foreach ($tickets as $t) {
+                $tid = isset($t['incident_id']) ? intval($t['incident_id']) : 0;
+                $ticketIncidentName = '';
+                if (isset($t['incident_name'])) {
+                    $ticketIncidentName = trim(strval($t['incident_name']));
+                } else if (isset($t['incidentName'])) {
+                    $ticketIncidentName = trim(strval($t['incidentName']));
+                }
+                if ($tid === $id || ($tid <= 0 && $ticketIncidentName !== '' && strcasecmp($ticketIncidentName, $incidentName) === 0)) {
+                    $linkedTicketCount++;
+                }
+            }
+            if ($linkedTicketCount > 0) {
+                if ($moveToIncidentId <= 0) {
+                    json_response(array(
+                        'error' => 'Incident con ticket collegati',
+                        'ticket_count' => $linkedTicketCount
+                    ), 409);
+                }
+                foreach ($db['tickets'] as &$ticketToMove) {
+                    $tid = isset($ticketToMove['incident_id']) ? intval($ticketToMove['incident_id']) : 0;
+                    $ticketIncidentName = isset($ticketToMove['incident_name']) ? trim(strval($ticketToMove['incident_name'])) : '';
+                    if ($tid === $id || ($tid <= 0 && $ticketIncidentName !== '' && strcasecmp($ticketIncidentName, $incidentName) === 0)) {
+                        $ticketToMove['incident_id'] = $moveToIncidentId;
+                        $ticketToMove['incident_name'] = $moveToIncidentName;
+                    }
+                }
+                unset($ticketToMove);
+            }
+        } else {
+            json_response(array('error' => 'Incident non trovato'), 404);
+        }
+        $new = array();
+        foreach ($db['incidents'] as $inc) {
+            if (intval($inc['id']) !== $id) $new[] = $inc;
+        }
+        $db['incidents'] = $new;
         save_db($db);
         json_response(array('ok' => true), 200);
     }

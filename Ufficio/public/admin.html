@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.47" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.57" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.47" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.57" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.47" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.57" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -194,6 +194,26 @@
                       </button>
                     </div>
                   </div>
+                </div>
+                <div class="admin-dashboard-settings-card">
+                  <div class="admin-subcard-head">
+                    <strong>Funzioni dashboard</strong>
+                    <p class="muted">Attiva o disattiva le azioni disponibili nella dashboard per gli utenti.</p>
+                  </div>
+                  <label class="admin-toggle-setting-row" for="adminAddChartEnabled">
+                    <span>
+                      <strong>Mostra "Aggiungi grafico"</strong>
+                      <small>Se disattivato, il card per creare nuovi grafici non compare in dashboard.</small>
+                    </span>
+                    <input id="adminAddChartEnabled" class="admin-toggle-setting-input" type="checkbox" checked />
+                  </label>
+                  <label class="admin-toggle-setting-row" for="adminUsernamesVisible">
+                    <span>
+                      <strong>Mostra nomi utenti agli admin</strong>
+                      <small>Se disattivato, username, filtro utente e grafico utenti vengono nascosti anche agli admin.</small>
+                    </span>
+                    <input id="adminUsernamesVisible" class="admin-toggle-setting-input" type="checkbox" checked />
+                  </label>
                 </div>
               </div>
             </section>
@@ -407,9 +427,9 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.47"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.47"></script>
-  <script src="./public/js/admin.js?v=1.13.47"></script>
-  <div class="app-version-badge">v1.13.47 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
+  <script src="./public/js/toast.js?v=1.13.57"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.57"></script>
+  <script src="./public/js/admin.js?v=1.13.57"></script>
+  <div class="app-version-badge">v1.13.57 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

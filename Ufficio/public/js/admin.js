@@ -66,6 +66,8 @@ const uiColorThemeToggleBtn = document.getElementById('uiColorThemeToggleBtn');
 const saveColorSettingsBtn = document.getElementById('saveColorSettingsBtn');
 const adminPersonalAxisMaxMineInput = document.getElementById('adminPersonalAxisMaxMineInput');
 const adminPersonalAxisMaxGroupInput = document.getElementById('adminPersonalAxisMaxGroupInput');
+const adminAddChartEnabledInput = document.getElementById('adminAddChartEnabled');
+const adminUsernamesVisibleInput = document.getElementById('adminUsernamesVisible');
 const layoutInputs = {
   panel_height_min: document.getElementById('layoutPanelHeightMin'),
   panel_height_preferred: document.getElementById('layoutPanelHeightPreferred'),
@@ -270,7 +272,9 @@ function defaultUiColors() {
     settings: {
       personal_axis_max: 0,
       personal_axis_max_mine: 0,
-      personal_axis_max_group: 0
+      personal_axis_max_group: 0,
+      dashboard_add_chart_enabled: true,
+      admin_usernames_visible: true
     },
     layout: {
       panel_height_min: 400,
@@ -348,6 +352,8 @@ function normalizeUiColors(input) {
     ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
   out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
     ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
+  out.settings.dashboard_add_chart_enabled = input?.settings?.dashboard_add_chart_enabled === false ? false : true;
+  out.settings.admin_usernames_visible = input?.settings?.admin_usernames_visible === false ? false : true;
   if (input?.layout && typeof input.layout === 'object') {
     Object.keys(defaults.layout).forEach((lk) => {
       if (input.layout[lk] != null) {
@@ -362,6 +368,11 @@ function normalizeUiColors(input) {
 function ensureAdminUiColors() {
   if (!adminUiColors) adminUiColors = defaultUiColors();
   adminUiColors = normalizeUiColors(adminUiColors);
+}
+
+function canAdminDisplayUsernamesSetting() {
+  ensureAdminUiColors();
+  return adminUiColors?.settings?.admin_usernames_visible !== false;
 }
 
 function colorForLabel(label) {
@@ -1030,6 +1041,7 @@ function renderAdminColorLists() {
   ensureAdminUiColors();
   adminChartsPreview.innerHTML = '';
   adminColorGroups.forEach((config) => {
+    if (config.group === 'users' && !canAdminDisplayUsernamesSetting()) return;
     const labels = collectAdminGroupLabels(config.group, config.statsKey);
     const section = document.createElement('section');
     section.className = 'panel admin-color-list-card';
@@ -1079,6 +1091,8 @@ function renderColorSettings() {
   ensureAdminUiColors();
   if (adminPersonalAxisMaxMineInput) adminPersonalAxisMaxMineInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_mine || 0) || 0);
   if (adminPersonalAxisMaxGroupInput) adminPersonalAxisMaxGroupInput.value = String(Number(adminUiColors?.settings?.personal_axis_max_group || 0) || 0);
+  if (adminAddChartEnabledInput) adminAddChartEnabledInput.checked = adminUiColors?.settings?.dashboard_add_chart_enabled !== false;
+  if (adminUsernamesVisibleInput) adminUsernamesVisibleInput.checked = adminUiColors?.settings?.admin_usernames_visible !== false;
   const layoutDefaults = defaultUiColors().layout;
   Object.keys(layoutInputs).forEach((key) => {
     if (layoutInputs[key]) layoutInputs[key].value = String(adminUiColors?.layout?.[key] || layoutDefaults[key]);
@@ -1091,18 +1105,20 @@ function renderColorSettings() {
 async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   adminUiColors = normalizeUiColors(data.ui_colors || data || {});
+  renderCurrentAdminBadge();
   renderColorSettings();
 }
 
 async function loadAdminChartsPreviewData() {
   try {
+    const includeUserStats = canAdminDisplayUsernamesSetting();
     const [fabYear, catYear, teamYear, incidentYear, severityYear, userYear] = await Promise.all([
       fetchJson('/api/stats/fab/current-year?mode=months'),
       fetchJson('/api/stats/category/current-year?mode=months'),
       fetchJson('/api/stats/team/current-year?mode=months'),
       fetchJson('/api/stats/incident/current-year?mode=months'),
       fetchJson('/api/stats/severity/current-year?mode=months'),
-      fetchJson('/api/stats/user/current-year?mode=months')
+      includeUserStats ? fetchJson('/api/stats/user/current-year?mode=months') : Promise.resolve({ stats: [] })
     ]);
     adminChartStats = {
       fabYear: fabYear.stats || [],
@@ -1133,6 +1149,12 @@ async function saveUiColors() {
   }
   if (adminPersonalAxisMaxGroupInput) {
     adminUiColors.settings.personal_axis_max_group = cleanAxisInput(adminPersonalAxisMaxGroupInput);
+  }
+  if (adminAddChartEnabledInput) {
+    adminUiColors.settings.dashboard_add_chart_enabled = !!adminAddChartEnabledInput.checked;
+  }
+  if (adminUsernamesVisibleInput) {
+    adminUiColors.settings.admin_usernames_visible = !!adminUsernamesVisibleInput.checked;
   }
   if (!adminUiColors.layout) adminUiColors.layout = {};
   Object.keys(layoutInputs).forEach((key) => {
@@ -1287,16 +1309,19 @@ async function fetchJson(url, options, attempt = 0) {
     throw new Error('Risposta temporaneamente non disponibile');
   }
   if (!res.ok) {
+    let parsedError = '';
     try {
       const parsed = JSON.parse(text);
-      throw new Error(parsed.error || text);
-    } catch {
-      if (attempt < 2) {
-        await delay(450 * (attempt + 1));
-        return fetchJson(url, options, attempt + 1);
-      }
-      throw new Error(text);
+      parsedError = parsed.error || text;
+    } catch (ex) {}
+    if (parsedError) {
+      throw new Error(parsedError);
     }
+    if (attempt < 2) {
+      await delay(450 * (attempt + 1));
+      return fetchJson(url, options, attempt + 1);
+    }
+    throw new Error(text);
   }
   return JSON.parse(text);
 }
@@ -1521,11 +1546,28 @@ async function loadCurrentAdmin() {
   try {
     const data = await fetchJson('/api/me');
     currentAdminUser = data.user || null;
-    if (currentAdminBadge) currentAdminBadge.textContent = currentAdminUser ? `${currentAdminUser.username} - ${currentAdminUser.team || 'A'}` : 'Profilo non disponibile';
+    renderCurrentAdminBadge();
   } catch (error) {
     currentAdminUser = null;
     if (currentAdminBadge) currentAdminBadge.textContent = 'Profilo non disponibile';
   }
+}
+
+function adminUserDisplayName(user) {
+  if (canAdminDisplayUsernamesSetting()) return String(user && user.username ? user.username : '');
+  const id = Number(user && user.id ? user.id : 0);
+  return id > 0 ? 'Utente #' + id : 'Utente';
+}
+
+function adminUsernameOrIdDisplay(username, id) {
+  if (canAdminDisplayUsernamesSetting() && String(username || '').trim()) return String(username || '').trim();
+  const numericId = Number(id || 0);
+  return numericId > 0 ? 'utente #' + numericId : 'utente';
+}
+
+function renderCurrentAdminBadge() {
+  if (!currentAdminBadge) return;
+  currentAdminBadge.textContent = currentAdminUser ? `${adminUserDisplayName(currentAdminUser)} - ${currentAdminUser.team || 'A'}` : 'Profilo non disponibile';
 }
 
 function renderUsers() {
@@ -1535,8 +1577,9 @@ function renderUsers() {
   const teamFilter = String(userTeamFilter?.value || '');
   const adminCount = adminUsersCache.filter((user) => String(user.role || '') === 'admin').length;
   const activeTeams = new Set(adminUsersCache.map((user) => String(user.team || 'A')));
+  const showUsernames = canAdminDisplayUsernamesSetting();
   const users = adminUsersCache.filter((user) => {
-    const matchesSearch = !search || String(user.username || '').toLowerCase().includes(search) || String(user.id).includes(search);
+    const matchesSearch = !search || (showUsernames && String(user.username || '').toLowerCase().includes(search)) || String(user.id).includes(search);
     return matchesSearch && (!roleFilter || user.role === roleFilter) && (!teamFilter || user.team === teamFilter);
   });
 
@@ -1568,8 +1611,10 @@ function renderUsers() {
     const roleLocked = isSelf || lastAdmin;
     const deleteLocked = isSelf || lastAdmin;
     const lockReason = isSelf ? 'Il tuo ruolo non puo essere modificato qui' : 'Deve restare almeno un amministratore';
-    const username = escapeHtml(user.username);
-    const initial = escapeHtml(String(user.username || '?').charAt(0).toUpperCase());
+    const displayUsername = adminUserDisplayName(user);
+    const username = escapeHtml(displayUsername);
+    const realUsername = escapeHtml(user.username);
+    const initial = escapeHtml(showUsernames ? String(user.username || '?').charAt(0).toUpperCase() : '#');
     const currentGroup = normalizeGroupName(user.group_name || 'ProdOps');
     const isDisabled = user.disabled === true;
     const groupInList = uniqueGroups.includes(currentGroup);
@@ -1613,7 +1658,7 @@ function renderUsers() {
         <td>
           <div class="user-actions-cell">
             <button type="button" class="save-user-btn primary" data-user-id="${Number(user.id)}">Salva</button>
-            <button type="button" class="delete-user-btn" data-user-id="${Number(user.id)}" data-username="${username}" ${deleteLocked ? `disabled title="${lockReason}"` : ''}>Elimina</button>
+            <button type="button" class="delete-user-btn" data-user-id="${Number(user.id)}" data-username="${username}" data-real-username="${realUsername}" ${deleteLocked ? `disabled title="${lockReason}"` : ''}>Elimina</button>
           </div>
         </td>
       </tr>
@@ -1880,7 +1925,7 @@ async function loadPresetOptionRequests() {
         <div class="preset-request-main">
           <span class="preset-request-field">${escapeHtml(request.field_label || request.field_key)}</span>
           <strong>${escapeHtml(request.value)}</strong>
-          <span class="muted">Proposto da ${escapeHtml(request.requested_by_username || `utente #${request.requested_by_user_id}`)}${Number(request.incident_id) > 0 ? ` - Incident #${Number(request.incident_id)}` : ''}</span>
+          <span class="muted">Proposto da ${escapeHtml(adminUsernameOrIdDisplay(request.requested_by_username, request.requested_by_user_id))}${Number(request.incident_id) > 0 ? ` - Incident #${Number(request.incident_id)}` : ''}</span>
         </div>
         <div class="preset-request-actions">
           <button type="button" class="reject-preset-request-btn" data-request-id="${Number(request.id)}">Rifiuta</button>
@@ -2106,6 +2151,7 @@ async function applyPresetOptionFormatSetting(fieldKey, mode, triggerInput) {
 
   if (triggerInput) triggerInput.disabled = true;
   try {
+    await setPresetOptionFormatMode(fieldKey, mode);
     for (var i = 0; i < plan.updates.length; i += 1) {
       await fetchJson('/api/admin/preset-options', {
         method: 'PUT',
@@ -2117,7 +2163,6 @@ async function applyPresetOptionFormatSetting(fieldKey, mode, triggerInput) {
         })
       });
     }
-    await setPresetOptionFormatMode(fieldKey, mode);
     showToast('Formato applicato a ' + plan.updates.length + ' elementi del menu "' + fieldKey + '". I nuovi elementi useranno "' + getPresetFormatLabel(mode) + '".', 'success', 'Lista aggiornata');
     await loadPresetOptionsManager();
   } catch (error) {
@@ -2515,6 +2560,155 @@ async function loadAdminMenu(state = captureAdminUiState()) {
   restoreAdminUiState(state);
 }
 
+function getIncidentMoveTargets(options) {
+  options = options || {};
+  const excludeIncidentId = Number(options.excludeIncidentId || 0);
+  const excludeCategoryId = Number(options.excludeCategoryId || 0);
+  const targets = [];
+  (adminCategoriesCache || []).forEach((cat) => {
+    const categoryId = Number(cat.id || 0);
+    if (excludeCategoryId > 0 && categoryId === excludeCategoryId) return;
+    (cat.incidents || []).forEach((inc) => {
+      const incidentId = Number(inc.id || 0);
+      if (!incidentId || incidentId === excludeIncidentId) return;
+      targets.push({
+        id: incidentId,
+        label: String(cat.name || 'Categoria') + ' > ' + String(inc.name || 'Incident')
+      });
+    });
+  });
+  return targets;
+}
+
+function showIncidentMoveDialog(message, targets, options) {
+  options = options || {};
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'prodops-confirm-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'prodops-confirm-dialog prodops-move-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'prodops-confirm-title';
+    titleEl.textContent = options.title || 'Sposta ticket collegati';
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'prodops-confirm-msg';
+    msgEl.textContent = message || '';
+
+    const select = document.createElement('select');
+    select.className = 'prodops-prompt-input prodops-move-select';
+    targets.forEach((target) => {
+      const option = document.createElement('option');
+      option.value = String(target.id);
+      option.textContent = target.label;
+      select.appendChild(option);
+    });
+
+    const hint = document.createElement('p');
+    hint.className = 'prodops-move-hint';
+    hint.textContent = 'I ticket verranno ricollegati alla destinazione scelta prima di eliminare l\'elemento selezionato.';
+
+    const actions = document.createElement('div');
+    actions.className = 'prodops-confirm-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'secondary prodops-confirm-btn';
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Annulla';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'danger prodops-confirm-btn';
+    confirmBtn.type = 'button';
+    confirmBtn.textContent = options.confirmText || 'Sposta e elimina';
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    dialog.appendChild(titleEl);
+    dialog.appendChild(msgEl);
+    dialog.appendChild(select);
+    dialog.appendChild(hint);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    let done = false;
+    function close(result) {
+      if (done) return;
+      done = true;
+      overlay.classList.add('prodops-confirm-out');
+      setTimeout(() => {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      }, 200);
+      resolve(result);
+    }
+
+    cancelBtn.addEventListener('click', () => close(null));
+    confirmBtn.addEventListener('click', () => close(Number(select.value || 0) || null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', function onKey(e) {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', onKey);
+        close(null);
+      }
+    });
+
+    requestAnimationFrame(() => {
+      overlay.classList.add('prodops-confirm-in');
+      select.focus();
+    });
+  });
+}
+
+async function requestAdminDelete(type, id, moveToIncidentId) {
+  const body = moveToIncidentId ? JSON.stringify({ move_to_incident_id: Number(moveToIncidentId) }) : null;
+  const options = { method: 'DELETE' };
+  if (body) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = body;
+  }
+  const path = type === 'category' ? `/api/categories/${id}` : `/api/incidents/${id}`;
+  const res = await fetch(appUrl(path), options);
+  const text = (await res.text()).replace(/^\uFEFF+/, '');
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (ex) {}
+  if (res.ok) return data;
+  const err = new Error(data.error || 'Errore eliminazione');
+  err.status = res.status;
+  err.data = data;
+  throw err;
+}
+
+async function deleteAdminEntityWithMoveOption(type, id, name) {
+  try {
+    await requestAdminDelete(type, id, 0);
+    return true;
+  } catch (error) {
+    if (Number(error.status || 0) !== 409) throw error;
+    const count = Number(error.data?.ticket_count || 0);
+    const targets = getIncidentMoveTargets({
+      excludeIncidentId: type === 'incident' ? id : 0,
+      excludeCategoryId: type === 'category' ? id : 0
+    });
+    if (!targets.length) {
+      showToast('Ci sono ' + count + ' ticket collegati ma non esiste un incident alternativo valido su cui spostarli.', 'warning', 'Spostamento non disponibile');
+      return false;
+    }
+    const targetId = await showIncidentMoveDialog(
+      'Ci sono ' + count + ' ticket collegati a "' + name + '". Scegli dove spostarli prima di eliminare.',
+      targets,
+      { title: type === 'category' ? 'Sposta ticket categoria' : 'Sposta ticket incident' }
+    );
+    if (!targetId) return false;
+    await requestAdminDelete(type, id, targetId);
+    showToast('Ticket spostati e ' + (type === 'category' ? 'categoria eliminata.' : 'incident eliminato.'), 'success', 'Eliminazione completata');
+    return true;
+  }
+}
+
 function bindAdminActions() {
   document.querySelectorAll('.tiny-edit').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
@@ -2571,6 +2765,16 @@ function bindAdminActions() {
         const type = btn.dataset.type;
         const id = Number(btn.dataset.id);
         const name = btn.dataset.name || '';
+        if (type === 'category') {
+          if (!(await showConfirm('La categoria "' + name + '" e tutti gli incident collegati verranno eliminati definitivamente. Se ci sono ticket associati potrai spostarli prima della cancellazione.', { title: 'Elimina categoria', type: 'error', confirmText: 'Continua', cancelText: 'Annulla' }))) return;
+          if (await deleteAdminEntityWithMoveOption(type, id, name)) await loadAdminMenu();
+          return;
+        }
+        if (type === 'incident') {
+          if (!(await showConfirm('L\'incident "' + name + '" verra eliminato definitivamente. Se ci sono ticket associati potrai spostarli prima della cancellazione.', { title: 'Elimina incident', type: 'error', confirmText: 'Continua', cancelText: 'Annulla' }))) return;
+          if (await deleteAdminEntityWithMoveOption(type, id, name)) await loadAdminMenu();
+          return;
+        }
         if (type === 'category') {
           if (!(await showConfirm('La categoria "' + name + '" e tutti gli incident collegati verranno eliminati definitivamente.', { title: 'Elimina categoria', type: 'error', confirmText: 'Elimina', cancelText: 'Annulla' }))) return;
           const res = await fetch(appUrl(`/api/categories/${id}`), { method: 'DELETE' });
@@ -2868,13 +3072,19 @@ userCreateForm?.addEventListener('submit', async (e) => {
   }
   loadChartTypes();
   syncAdminColorToggle();
+  if (!isModerator) {
+    try {
+      await loadUiColors();
+    } catch (error) {
+      showToast('Impossibile caricare le impostazioni grafiche: ' + (error.message || error), 'warning', 'Impostazioni non disponibili');
+    }
+  }
   await Promise.allSettled([
     loadAdminMenu(null),
     isModerator ? Promise.resolve() : loadUsers(),
     isModerator ? Promise.resolve() : loadGroupTargets(),
     loadPresetOptionRequests(),
     loadPresetOptionsManager(),
-    isModerator ? Promise.resolve() : loadUiColors(),
     isModerator ? Promise.resolve() : loadAdminChartsPreviewData()
   ]);
 })();
@@ -3061,6 +3271,15 @@ Object.keys(layoutInputs).forEach((key) => {
 [adminPersonalAxisMaxMineInput, adminPersonalAxisMaxGroupInput].forEach((input) => {
   input?.addEventListener('input', renderAdminDashboardLayoutPreview);
   input?.addEventListener('change', renderAdminDashboardLayoutPreview);
+});
+
+adminUsernamesVisibleInput?.addEventListener('change', () => {
+  ensureAdminUiColors();
+  adminUiColors.settings.admin_usernames_visible = !!adminUsernamesVisibleInput.checked;
+  renderCurrentAdminBadge();
+  renderUsers();
+  loadPresetOptionRequests();
+  renderColorSettings();
 });
 
 saveColorSettingsBtn?.addEventListener('click', async () => {

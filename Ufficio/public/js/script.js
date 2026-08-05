@@ -213,6 +213,11 @@ function isStrictAdminUser() {
   return !!(currentUser && currentUser.role === 'admin');
 }
 
+function canDisplayAdminUsernames() {
+  const settings = (uiColors && uiColors.settings) ? uiColors.settings : {};
+  return isStrictAdminUser() && settings.admin_usernames_visible !== false;
+}
+
 function canUseBroadcastChannel() {
   return typeof BroadcastChannel !== 'undefined';
 }
@@ -1411,7 +1416,9 @@ function defaultUiColors() {
     settings: {
       personal_axis_max: 0,
       personal_axis_max_mine: 0,
-      personal_axis_max_group: 0
+      personal_axis_max_group: 0,
+      dashboard_add_chart_enabled: true,
+      admin_usernames_visible: true
     },
     layout: {
       panel_height_min: 400,
@@ -1492,6 +1499,8 @@ function normalizeUiColors(input) {
     ? cleanAxisMax(input.settings.personal_axis_max_mine) : 0;
   out.settings.personal_axis_max_group = input?.settings?.personal_axis_max_group != null
     ? cleanAxisMax(input.settings.personal_axis_max_group) : 0;
+  out.settings.dashboard_add_chart_enabled = input?.settings?.dashboard_add_chart_enabled === false ? false : true;
+  out.settings.admin_usernames_visible = input?.settings?.admin_usernames_visible === false ? false : true;
   if (input?.layout && typeof input.layout === 'object') {
     Object.keys(defaults.layout).forEach((lk) => {
       if (input.layout[lk] != null) {
@@ -1528,6 +1537,22 @@ function applyDashboardChartTitles() {
   Object.keys(titleMap).forEach((key) => {
     if (titleMap[key]) titleMap[key].textContent = getDashboardChartTitle(key);
   });
+}
+
+function isAddChartDashboardEnabled() {
+  const settings = (uiColors && uiColors.settings) ? uiColors.settings : {};
+  return settings.dashboard_add_chart_enabled !== false;
+}
+
+function applyDashboardFeatureSettings() {
+  const addCard = document.getElementById('addChartCard');
+  const enabled = isAddChartDashboardEnabled();
+  if (addCard) {
+    addCard.hidden = !enabled;
+    addCard.style.display = enabled ? '' : 'none';
+    addCard.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+  }
+  if (currentUser) updateCurrentUserPill();
 }
 
 function applyLayoutCustomProperties() {
@@ -1638,12 +1663,15 @@ async function loadUiColors() {
   const data = await fetchJson('/api/ui-colors');
   uiColors = normalizeUiColors(data.ui_colors || data || {});
   applyDashboardChartTitles();
+  applyDashboardFeatureSettings();
+  if (typeof applyDefaultPanelVisibility === 'function') applyDefaultPanelVisibility();
   applyLayoutCustomProperties();
   return uiColors;
 }
 
 async function syncUiColorsAfterAdminChange() {
   await loadUiColors();
+  applyDefaultPanelVisibility();
   await loadDayTickets();
   await refreshCharts('colors');
   if (previousShiftsContent && !previousShiftsContent.hidden) {
@@ -2639,7 +2667,7 @@ async function generatePowerPointReport(cfg) {
       slide.addShape('rect', { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: footerBg }, line: { color: footerBg } });
       slide.addText(
         'ProdOps Dashboard  ·  ' + cfg.periodLabel +
-        (currentUser && currentUser.username ? '  ·  ' + currentUser.username : '') +
+        (currentUser && currentUser.username && canDisplayAdminUsernames() ? '  ·  ' + currentUser.username : '') +
         '  ·  ' + generatedLabel,
         { x: 0.25, y: 7.22, w: 11.8, h: 0.28, fontSize: 7, color: footerText, valign: 'middle' }
       );
@@ -2661,7 +2689,7 @@ async function generatePowerPointReport(cfg) {
     cover.addText(cfg.dimensionLabel, { x: 0.4, y: 3.47, w: 3.7, h: 0.38, fontSize: 13, color: 'FFFFFF', bold: true });
     cover.addText('GENERATO IL', { x: 0.4, y: 3.99, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
     cover.addText(generatedLabel, { x: 0.4, y: 4.24, w: 3.7, h: 0.3, fontSize: 10.5, color: 'FFFFFF' });
-    if (currentUser && currentUser.username) {
+    if (currentUser && currentUser.username && canDisplayAdminUsernames()) {
       cover.addText('UTENTE', { x: 0.4, y: 4.72, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
       cover.addText(currentUser.username, { x: 0.4, y: 4.97, w: 3.7, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
     }
@@ -2822,7 +2850,7 @@ async function generateCsvReport(cfg) {
       String(t.id || ''), dateStr, timeStr, category,
       String(t.incident_name || ''), String(t.fab || ''),
       String(t.severity || 1), String(t.owner_team || ''),
-      (isStrictAdminUser() ? String(t.owner_username || '') : ''), String(t.description || '')
+      (canDisplayAdminUsernames() ? String(t.owner_username || '') : ''), String(t.description || '')
     ]));
   });
 
@@ -4085,12 +4113,18 @@ async function loadCurrentUser() {
   const data = await fetchJson('/api/me');
   currentUser = data.user;
   if (openAdminBtn) openAdminBtn.style.display = (currentUser?.role === 'admin' || currentUser?.role === 'moderator') ? '' : 'none';
+  updateCurrentUserPill();
+  // Idrata la cache locale con gli avatar di tutti gli utenti (per i badge nei ticket, cross-browser).
+  if (window._hydrateAvatars) window._hydrateAvatars();
+}
+
+function updateCurrentUserPill() {
   const pill = document.getElementById('userPill');
   const pillName = document.getElementById('userPillName');
   const pillTeam = document.getElementById('userPillTeam');
   const pillRole = document.getElementById('userPillRole');
   if (pill && pillName && currentUser) {
-    pillName.textContent = currentUser.username || '';
+    pillName.textContent = canDisplayAdminUsernames() ? (currentUser.username || '') : 'Profilo';
     if (pillTeam) {
       const team = currentUser.team ? 'Team ' + currentUser.team : '';
       pillTeam.textContent = team;
@@ -4111,8 +4145,6 @@ async function loadCurrentUser() {
     if (window._applyUserAvatar) window._applyUserAvatar(avatarToShow);
     pill.onclick = function() { if (window._openAvatarPicker) window._openAvatarPicker(); };
   }
-  // Idrata la cache locale con gli avatar di tutti gli utenti (per i badge nei ticket, cross-browser).
-  if (window._hydrateAvatars) window._hydrateAvatars();
 }
 
 function formatCustomRangeLabel(range) {
@@ -5036,13 +5068,10 @@ function getAvatarBadge(username) {
 }
 
 function enforceTicketOwnerNameVisibility(root) {
-  if (isStrictAdminUser()) return;
+  if (canDisplayAdminUsernames()) return;
   const scope = root || document;
   scope.querySelectorAll('.ticket-row-owner').forEach(function(ownerEl) {
-    ownerEl.querySelectorAll('strong').forEach(function(node) { node.remove(); });
-    Array.from(ownerEl.childNodes).forEach(function(node) {
-      if (node.nodeType === 3) node.nodeValue = '';
-    });
+    ownerEl.remove();
   });
 }
 
@@ -5066,7 +5095,7 @@ function createTicketRowElement(t, isAnimated) {
   const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
   const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
   const ownerUsername = String(t.owner_username || t.ownerUsername || '');
-  const visibleOwnerUsername = isStrictAdminUser() ? ownerUsername : '';
+  const visibleOwnerUsername = canDisplayAdminUsernames() ? ownerUsername : '';
   const li = document.createElement('li');
   li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
   li.dataset.ticketId = String(t.id);
@@ -5093,7 +5122,7 @@ function createTicketRowElement(t, isAnimated) {
       '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
-      (ownerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + (visibleOwnerUsername ? '<strong>' + escapeHtml(visibleOwnerUsername) + '</strong>' : '') + '</span>' : '') +
+      (visibleOwnerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + '<strong>' + escapeHtml(visibleOwnerUsername) + '</strong></span>' : '') +
       '<span class="ticket-row-datetime"><strong>' + dayMonth + ' ' + hhmm + '</strong></span>' +
     '</div>';
   enforceTicketOwnerNameVisibility(li);
@@ -5683,7 +5712,7 @@ async function loadCharts() {
       function() { return fetchJson(buildYearStatsUrl('/api/stats/category', catYearMode, chartCustomRanges.catYear)); },
       function() { return fetchJson(buildYearStatsUrl('/api/stats/team', teamYearMode, chartCustomRanges.teamYear)); },
       function() { return fetchJson(buildYearStatsUrl('/api/stats/incident', incidentYearMode, chartCustomRanges.incidentYear)); },
-      function() { return isStrictAdminUser() ? fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear)) : Promise.resolve(null); }
+      function() { return canDisplayAdminUsernames() ? fetchJson(buildYearStatsUrl('/api/stats/user', userYearMode, chartCustomRanges.userYear)) : Promise.resolve(null); }
     ];
     const chartResults = await runQueuedTasks(chartJobs, CHART_FETCH_CONCURRENCY, CHART_FETCH_SPACING_MS);
     const fabYear = chartResults[0];
@@ -5702,6 +5731,10 @@ async function loadCharts() {
     if (teamYearChart) teamYearChart._chartFilter = { dimension: 'team', scope: 'all', getWindow: function () { return teamYearMode; }, start: (chartCustomRanges.teamYear || {}).start || '', end: (chartCustomRanges.teamYear || {}).end || '' };
     if (incidentYearChart) incidentYearChart._chartFilter = { dimension: 'incident', scope: 'all', getWindow: function () { return incidentYearMode; }, start: (chartCustomRanges.incidentYear || {}).start || '', end: (chartCustomRanges.incidentYear || {}).end || '' };
     if (userYearChart && userYear) userYearChart._chartFilter = { dimension: 'user', scope: 'all', getWindow: function () { return userYearMode; }, start: (chartCustomRanges.userYear || {}).start || '', end: (chartCustomRanges.userYear || {}).end || '' };
+    else if (userYearChart) {
+      userYearChart.innerHTML = '';
+      userYearChart._chartFilter = null;
+    }
     // Grafici personali/gruppo: caricati dai loader che rispettano lo stato
     // di drill-down mensile (annuale di default, o giorno per giorno).
     if (personalMineChart) await loadPersonalChartData(personalMineChart);
@@ -6067,8 +6100,9 @@ function applyDefaultPanelVisibility() {
     const panel = document.getElementById(def.id);
     if (!panel) return;
     const adminOnly = ADMIN_ONLY_PANELS.includes(def.id) && !isStrictAdminUser();
+    const usernameHidden = def.id === 'chartPanelUser' && !canDisplayAdminUsernames();
     const hidden = adminOnly || hiddenDefaultPanels.includes(def.id);
-    panel.style.display = hidden ? 'none' : '';
+    panel.style.display = (hidden || usernameHidden) ? 'none' : '';
   });
 }
 
@@ -6130,6 +6164,7 @@ function renderAllCustomCharts() {
     attachChartDragHandle(panel);
   });
   refreshChartEditAffordances();
+  applyDashboardFeatureSettings();
 }
 
 function syncPanelOrderFromGrid() {
@@ -6333,6 +6368,7 @@ function buildCustomSelect(options, value) {
 }
 
 function openAddChartModal() {
+  if (!isAddChartDashboardEnabled()) return;
   const overlay = document.createElement('div');
   overlay.className = 'report-modal-overlay';
   function closeOverlay() { overlay.remove(); document.removeEventListener('keydown', onKey); }
@@ -6382,6 +6418,7 @@ function openAddChartModal() {
 
   DEFAULT_CHART_PANELS.forEach((def) => {
     if (ADMIN_ONLY_PANELS.includes(def.id) && !isStrictAdminUser()) return;
+    if (def.id === 'chartPanelUser' && !canDisplayAdminUsernames()) return;
     const opt = document.createElement('option');
     opt.value = def.id;
     const alreadyVisible = !hiddenDefaultPanels.includes(def.id);
