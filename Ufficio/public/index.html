@@ -4,16 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps Ticket Manager</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.57" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
   <script>document.documentElement.classList.add('theme-sync-pending');
     try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.57" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><button id="userPill" class="user-pill" type="button" style="display:none" title="Impostazioni utente" aria-label="Impostazioni utente"><span class="user-pill-icon" id="userPillAvatarWrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span class="user-pill-info"><span id="userPillName"></span><span class="user-pill-sep"></span><span class="user-pill-meta"><span id="userPillTeam"></span><span class="user-pill-dot" aria-hidden="true">·</span><span id="userPillRole"></span></span></span></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="userPill" class="user-pill" type="button" style="display:none" title="Impostazioni utente" aria-label="Impostazioni utente"><span class="user-pill-icon" id="userPillAvatarWrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span class="user-pill-info"><span id="userPillName"></span><span class="user-pill-sep"></span><span class="user-pill-meta"><span id="userPillTeam"></span><span id="userPillRole"></span></span></span></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <nav class="menu" id="menu"></nav>
       <div class="sidebar-actions">
         <button id="openQuickbarBtn" class="sidebar-link-btn quickbar-launch-btn" type="button">Apri Quickbar</button>
@@ -24,11 +24,13 @@
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
       <div class="sidebar-footer">
-        <span class="ai-act-info">
-          <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
-          <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+        <span class="sidebar-footer-powered">
+          <span>Powered by Antonio Di Bella 2026</span>
+          <span class="ai-act-info">
+            <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+            <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+          </span>
         </span>
-        <span>Powered by Antonio Di Bella 2026</span>
       </div>
       </div>
     </aside>
@@ -37,7 +39,7 @@
       <div class="previous-shifts-row">
         <section class="panel previous-shifts-panel">
         <div class="previous-shifts-header">
-          <button id="importantTicketsBtn" class="important-tickets-btn" type="button">📌 Ticket Importanti</button>
+          <button id="importantTicketsBtn" class="important-tickets-btn" type="button">&#128204; Ticket Importanti</button>
           <button id="previousShiftsToggle" class="section-toggle" type="button" aria-expanded="false">
             <span class="section-toggle-main">
               <span>Ticket turni precedenti</span>
@@ -81,7 +83,7 @@
                         <option value="incident">Incident</option>
                         <option value="fab">FAB</option>
                       </select>
-                      <button type="button" id="currentShiftSortDir" class="sort-dir-btn" title="Inverti ordine" aria-label="Inverti ordine">↓</button>
+                      <button type="button" id="currentShiftSortDir" class="sort-dir-btn" title="Inverti ordine" aria-label="Inverti ordine">v</button>
                     </div>
                   </div>
                 </div>
@@ -148,6 +150,7 @@
               <option value="q3">Q3</option>
               <option value="q4">Q4</option>
               <option value="day" selected>24h</option>
+              <option value="month">Mese corrente</option>
               <option value="t1">T1</option>
               <option value="t2">T2</option>
               <option value="t3">T3</option>
@@ -155,7 +158,7 @@
           </div>
           <div class="toggle-row">
             <div class="range-calendar-wrap" data-target="fabYear">
-              <button type="button" class="range-calendar-btn" data-target="fabYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <button type="button" class="range-calendar-btn" data-target="fabYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">Cal</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -178,6 +181,7 @@
               <option value="q3">Q3</option>
               <option value="q4">Q4</option>
               <option value="day" selected>24h</option>
+              <option value="month">Mese corrente</option>
               <option value="t1">T1</option>
               <option value="t2">T2</option>
               <option value="t3">T3</option>
@@ -185,7 +189,7 @@
           </div>
           <div class="toggle-row">
             <div class="range-calendar-wrap" data-target="catYear">
-              <button type="button" class="range-calendar-btn" data-target="catYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <button type="button" class="range-calendar-btn" data-target="catYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">Cal</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -208,6 +212,7 @@
               <option value="q3">Q3</option>
               <option value="q4">Q4</option>
               <option value="day" selected>24h</option>
+              <option value="month">Mese corrente</option>
               <option value="t1">T1</option>
               <option value="t2">T2</option>
               <option value="t3">T3</option>
@@ -215,7 +220,7 @@
           </div>
           <div class="toggle-row">
             <div class="range-calendar-wrap" data-target="teamYear">
-              <button type="button" class="range-calendar-btn" data-target="teamYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <button type="button" class="range-calendar-btn" data-target="teamYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">Cal</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -238,6 +243,7 @@
               <option value="q3">Q3</option>
               <option value="q4">Q4</option>
               <option value="day" selected>24h</option>
+              <option value="month">Mese corrente</option>
               <option value="t1">T1</option>
               <option value="t2">T2</option>
               <option value="t3">T3</option>
@@ -245,7 +251,7 @@
           </div>
           <div class="toggle-row">
             <div class="range-calendar-wrap" data-target="incidentYear">
-              <button type="button" class="range-calendar-btn" data-target="incidentYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <button type="button" class="range-calendar-btn" data-target="incidentYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">Cal</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -268,6 +274,7 @@
               <option value="q3">Q3</option>
               <option value="q4">Q4</option>
               <option value="day" selected>24h</option>
+              <option value="month">Mese corrente</option>
               <option value="t1">T1</option>
               <option value="t2">T2</option>
               <option value="t3">T3</option>
@@ -275,7 +282,7 @@
           </div>
           <div class="toggle-row">
             <div class="range-calendar-wrap" data-target="userYear">
-              <button type="button" class="range-calendar-btn" data-target="userYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">📅</button>
+              <button type="button" class="range-calendar-btn" data-target="userYear" title="Periodo personalizzato" aria-label="Periodo personalizzato">Cal</button>
               <div class="range-calendar-popover" hidden>
                 <label>Da <input type="date" class="range-calendar-start" /></label>
                 <label>A <input type="date" class="range-calendar-end" /></label>
@@ -302,9 +309,17 @@
         <h3 id="ticketModalTitle">Nuovo Ticket</h3>
         <div id="ticketPinWrap" class="ticket-pin-wrap" style="display:none">
           <label class="ticket-pin-label">
-            <input type="checkbox" id="ticketPinCheck"> 📌 PIN
+            <input type="checkbox" id="ticketPinCheck"> <span aria-hidden="true">&#128204;</span> Metti in evidenza
           </label>
-          <input type="date" id="ticketPinUntil" class="ticket-pin-date" style="display:none">
+          <span id="ticketPinSummary" class="ticket-pin-summary" hidden></span>
+          <div id="ticketPinDatePopover" class="ticket-pin-date-popover" hidden>
+            <strong>Fino a che giorno vuoi mettere in evidenza il ticket?</strong>
+            <input type="date" id="ticketPinUntil" class="ticket-pin-date">
+            <span id="ticketPinHint" class="ticket-pin-hint">Il ticket sara' pinnato fino alle 23:59 del giorno selezionato.</span>
+            <div class="ticket-pin-date-actions">
+              <button type="button" id="ticketPinConfirmBtn" class="primary ticket-pin-confirm-btn">Conferma PIN</button>
+            </div>
+          </div>
         </div>
         <button class="close-modal" type="button">x</button>
       </div>
@@ -375,10 +390,25 @@
   <div class="modal" id="importantTicketsModal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-panel important-tickets-panel">
       <div class="modal-header">
-        <h3>📌 Ticket Importanti</h3>
+        <h3>Ticket Importanti</h3>
         <button type="button" id="closeImportantTicketsBtn" class="close-modal-btn">x</button>
       </div>
       <div id="importantTicketsList" class="important-tickets-list"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="importantTicketsAckModal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-panel important-tickets-ack-panel">
+      <div class="modal-header">
+        <div>
+          <h3>Ticket importanti da leggere</h3>
+          <p class="important-tickets-ack-subtitle">Leggi i ticket importanti non ancora confermati.</p>
+        </div>
+      </div>
+      <div id="importantTicketsAckList" class="important-tickets-ack-list"></div>
+      <div class="important-tickets-ack-actions">
+        <button type="button" id="importantTicketsAckBtn" class="primary">Conferma lettura</button>
+      </div>
     </div>
   </div>
 
@@ -389,7 +419,7 @@
           <h3>Impostazioni profilo</h3>
           <p class="user-settings-subtitle">Personalizza l'aspetto della dashboard</p>
         </div>
-        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">×</button>
+        <button type="button" id="closeUserSettingsBtn" class="close-modal-btn">x</button>
       </div>
       <div class="user-settings-body user-settings-two-col">
         <div class="user-settings-col-left">
@@ -397,14 +427,14 @@
             <label class="user-settings-label" for="themeSelect">Tema</label>
             <div class="user-settings-select-wrap">
               <select id="themeSelect" class="user-settings-select"></select>
-              <span class="user-settings-select-caret" aria-hidden="true">▾</span>
+              <span class="user-settings-select-caret" aria-hidden="true">v</span>
             </div>
             <p class="user-settings-hint">Cambia colori, font e stile della dashboard.</p>
           </div>
           <div class="user-settings-field">
             <label class="user-settings-label" for="panelScaleSlider">Dimensione grafici</label>
             <div class="panel-scale-control">
-              <button type="button" id="panelScaleDown" class="panel-scale-btn" aria-label="Rimpicciolisci">−</button>
+              <button type="button" id="panelScaleDown" class="panel-scale-btn" aria-label="Rimpicciolisci">-</button>
               <input type="range" id="panelScaleSlider" class="panel-scale-slider" min="70" max="150" step="5" value="100" aria-label="Dimensione pannelli e grafici">
               <button type="button" id="panelScaleUp" class="panel-scale-btn" aria-label="Ingrandisci">+</button>
               <span id="panelScaleValue" class="panel-scale-value">100%</span>
@@ -423,10 +453,10 @@
       </div>
     </div>
   </div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.57"></script>
-  <script src="./public/js/toast.js?v=1.13.57"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.57"></script>
-  <script src="./public/js/script.js?v=1.13.57"></script>
-  <div class="app-version-badge">v1.13.57 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.81"></script>
+  <script src="./public/js/toast.js?v=1.13.81"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
+  <script src="./public/js/script.js?v=1.13.81"></script>
+  <div class="app-version-badge">v1.13.81 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

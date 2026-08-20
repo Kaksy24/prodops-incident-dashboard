@@ -4,18 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cerca Ticket Storici</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.57" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.57" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><a href="./index.html" aria-label="Vai alla Dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.57" alt="PRODOPS Ticket Manager" /></a><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><a href="./index.html" aria-label="Vai alla Dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.81" alt="PRODOPS Ticket Manager" /></a><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <section class="sidebar-pinned-panel" id="searchPinnedPanel">
         <div class="sidebar-pinned-head">
-          <h4>📌 Ticket pinnati</h4>
+          <h4>Ticket pinnati</h4>
           <span id="searchPinnedCount" class="sidebar-pinned-count">0</span>
         </div>
         <div id="searchPinnedList" class="sidebar-pinned-list">
@@ -28,11 +28,13 @@
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
       <div class="sidebar-footer">
-        <span class="ai-act-info">
-          <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
-          <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+        <span class="sidebar-footer-powered">
+          <span>Powered by Antonio Di Bella 2026</span>
+          <span class="ai-act-info">
+            <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+            <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+          </span>
         </span>
-        <span>Powered by Antonio Di Bella 2026</span>
       </div>
       </div>
     </aside>
@@ -44,11 +46,17 @@
           <p class="muted">Cerca per parole chiave, date o entrambe per ritrovare vecchi ticket.</p>
         </div>
         <form id="ticketSearchForm" class="ticket-search-form">
-          <div class="ticket-search-grid">
-            <div>
+          <div class="ticket-search-top-row">
+            <div class="ticket-search-query-field">
               <label for="ticketSearchQuery">Parole chiave</label>
               <input id="ticketSearchQuery" type="text" placeholder="Es. reset, malware, FAB, categoria..." />
             </div>
+            <label class="ticket-search-mine-filter" for="ticketSearchMine">
+              <input id="ticketSearchMine" type="checkbox" />
+              <span>I miei ticket</span>
+            </label>
+          </div>
+          <div class="ticket-search-filter-row">
             <div>
               <label for="ticketSearchFrom">Da data</label>
               <input id="ticketSearchFrom" type="date" />
@@ -56,17 +64,6 @@
             <div>
               <label for="ticketSearchTo">A data</label>
               <input id="ticketSearchTo" type="date" />
-            </div>
-            <div>
-              <label for="ticketSearchFab">FAB</label>
-              <select id="ticketSearchFab">
-                <option value="">Tutti</option>
-                <option value="M5">M5</option>
-                <option value="L1">L1</option>
-                <option value="EWS">EWS</option>
-                <option value="WSIC">WSIC</option>
-                <option value="NRK">NRK</option>
-              </select>
             </div>
             <div>
               <label for="ticketSearchCategory">Categoria</label>
@@ -80,6 +77,17 @@
                 <option value="">Tutti</option>
               </select>
             </div>
+          </div>
+          <div class="ticket-search-fab-row">
+            <span class="field-label">FAB</span>
+            <div id="ticketSearchFabButtons" class="ticket-search-fab-buttons" role="group" aria-label="Filtro FAB">
+              <button type="button" class="ticket-search-fab-btn" data-fab="M5" aria-pressed="false">M5</button>
+              <button type="button" class="ticket-search-fab-btn" data-fab="L1" aria-pressed="false">L1</button>
+              <button type="button" class="ticket-search-fab-btn" data-fab="EWS" aria-pressed="false">EWS</button>
+              <button type="button" class="ticket-search-fab-btn" data-fab="WSIC" aria-pressed="false">WSIC</button>
+              <button type="button" class="ticket-search-fab-btn" data-fab="NRK" aria-pressed="false">NRK</button>
+            </div>
+            <input id="ticketSearchFab" type="hidden" value="" />
           </div>
           <details id="ticketSearchAdvanced" class="ticket-search-advanced">
             <summary>Filtri avanzati</summary>
@@ -123,9 +131,9 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.57"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.57"></script>
-  <script src="./public/js/search.js?v=1.13.57"></script>
-  <div class="app-version-badge">v1.13.57 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
+  <script src="./public/js/toast.js?v=1.13.81"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
+  <script src="./public/js/search.js?v=1.13.81"></script>
+  <div class="app-version-badge">v1.13.81 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

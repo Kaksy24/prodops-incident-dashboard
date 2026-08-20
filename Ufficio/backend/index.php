@@ -524,6 +524,101 @@ function remove_pinned_ticket_by_id(&$db, $ticketId)
         if (intval(isset($p['id']) ? $p['id'] : 0) !== intval($ticketId)) $kept[] = $p;
     }
     $db['pinned_tickets'] = $kept;
+    cleanup_pinned_ticket_acknowledgements($db);
+}
+
+function active_pinned_tickets(&$db)
+{
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $today = date('Y-m-d');
+    $ticketsById = array();
+    $incidentById = array();
+    $categoryById = array();
+    foreach (isset($db['tickets']) && is_array($db['tickets']) ? $db['tickets'] : array() as $ticket) {
+        $tid = intval(isset($ticket['id']) ? $ticket['id'] : 0);
+        if ($tid > 0) $ticketsById[$tid] = $ticket;
+    }
+    foreach (isset($db['categories']) && is_array($db['categories']) ? $db['categories'] : array() as $cat) {
+        $cid = intval(isset($cat['id']) ? $cat['id'] : 0);
+        if ($cid > 0) $categoryById[$cid] = isset($cat['name']) ? strval($cat['name']) : '';
+    }
+    foreach (isset($db['incidents']) && is_array($db['incidents']) ? $db['incidents'] : array() as $inc) {
+        $iid = intval(isset($inc['id']) ? $inc['id'] : 0);
+        if ($iid > 0) $incidentById[$iid] = $inc;
+    }
+    $active = array();
+    foreach ($pins as $p) {
+        if (!isset($p['pinUntil']) || strval($p['pinUntil']) < $today) continue;
+        $pin = $p;
+        $id = intval(isset($pin['id']) ? $pin['id'] : 0);
+        if ($id > 0 && isset($ticketsById[$id])) {
+            $ticket = $ticketsById[$id];
+            $incidentId = intval(isset($ticket['incident_id']) ? $ticket['incident_id'] : (isset($pin['incidentId']) ? $pin['incidentId'] : 0));
+            if (!isset($pin['incidentId']) || intval($pin['incidentId']) <= 0) $pin['incidentId'] = $incidentId;
+            if (!isset($pin['incidentName']) || trim(strval($pin['incidentName'])) === '') {
+                $pin['incidentName'] = isset($ticket['incident_name']) ? strval($ticket['incident_name']) : '';
+                if ($pin['incidentName'] === '' && $incidentId > 0 && isset($incidentById[$incidentId]['name'])) $pin['incidentName'] = strval($incidentById[$incidentId]['name']);
+            }
+            if (!isset($pin['description']) || trim(strval($pin['description'])) === '') $pin['description'] = isset($ticket['description']) ? strval($ticket['description']) : '';
+            if (!isset($pin['fab']) || trim(strval($pin['fab'])) === '') $pin['fab'] = isset($ticket['fab']) ? strval($ticket['fab']) : '';
+            if (!isset($pin['createdAt']) || trim(strval($pin['createdAt'])) === '') $pin['createdAt'] = isset($ticket['created_at']) ? strval($ticket['created_at']) : '';
+            if (!isset($pin['severity'])) $pin['severity'] = isset($ticket['severity']) ? intval($ticket['severity']) : 1;
+            if (!isset($pin['category']) || trim(strval($pin['category'])) === '') {
+                $catName = '';
+                if ($incidentId > 0 && isset($incidentById[$incidentId]['category_id'])) {
+                    $catId = intval($incidentById[$incidentId]['category_id']);
+                    if ($catId > 0 && isset($categoryById[$catId])) $catName = $categoryById[$catId];
+                }
+                $pin['category'] = $catName;
+            }
+        }
+        $active[] = $pin;
+    }
+    $changed = count($active) !== count($pins) || json_encode($active) !== json_encode($pins);
+    if ($changed) $db['pinned_tickets'] = $active;
+    if (cleanup_pinned_ticket_acknowledgements($db)) $changed = true;
+    return array($active, $changed);
+}
+
+function pinned_ticket_ack_key($pin)
+{
+    $id = isset($pin['id']) ? intval($pin['id']) : 0;
+    $pinUntil = isset($pin['pinUntil']) ? strval($pin['pinUntil']) : '';
+    return $id . '|' . $pinUntil;
+}
+
+function cleanup_pinned_ticket_acknowledgements(&$db)
+{
+    $changed = false;
+    if (!isset($db['pinned_ticket_acknowledgements']) || !is_array($db['pinned_ticket_acknowledgements'])) {
+        $db['pinned_ticket_acknowledgements'] = array();
+        return true;
+    }
+    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
+    $activeKeys = array();
+    foreach ($pins as $pin) {
+        if (isset($pin['pinUntil']) && strval($pin['pinUntil']) >= date('Y-m-d')) {
+            $activeKeys[pinned_ticket_ack_key($pin)] = true;
+        }
+    }
+    foreach ($db['pinned_ticket_acknowledgements'] as $username => $acks) {
+        if (!is_array($acks)) {
+            unset($db['pinned_ticket_acknowledgements'][$username]);
+            $changed = true;
+            continue;
+        }
+        foreach ($acks as $ackKey => $ackData) {
+            if (!isset($activeKeys[$ackKey])) {
+                unset($db['pinned_ticket_acknowledgements'][$username][$ackKey]);
+                $changed = true;
+            }
+        }
+        if (!count($db['pinned_ticket_acknowledgements'][$username])) {
+            unset($db['pinned_ticket_acknowledgements'][$username]);
+            $changed = true;
+        }
+    }
+    return $changed;
 }
 
 function default_ui_colors()
@@ -1106,6 +1201,7 @@ function mysql_load_db($defaultUsers)
         'ui_colors' => default_ui_colors(),
         'user_avatars' => array(),
         'user_charts' => array(),
+        'pinned_ticket_acknowledgements' => array(),
         'preset_options' => array(),
         'preset_option_requests' => array(),
         'preset_option_formats' => array(),
@@ -1216,7 +1312,7 @@ function mysql_load_db($defaultUsers)
         }
     }
 
-    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','disabled_users','privacy_consents')");
+    $rs = @mysqli_query($conn, "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('ui_colors','preset_option_requests','preset_option_formats','group_targets','user_avatars','user_charts','pinned_tickets','pinned_ticket_acknowledgements','disabled_users','privacy_consents')");
     if ($rs) {
         while ($row = mysqli_fetch_assoc($rs)) {
             $parsed = json_decode($row['setting_value'], true);
@@ -1228,6 +1324,7 @@ function mysql_load_db($defaultUsers)
             if ($row['setting_key'] === 'user_avatars') $db['user_avatars'] = $parsed;
             if ($row['setting_key'] === 'user_charts') $db['user_charts'] = $parsed;
             if ($row['setting_key'] === 'pinned_tickets') $db['pinned_tickets'] = $parsed;
+            if ($row['setting_key'] === 'pinned_ticket_acknowledgements') $db['pinned_ticket_acknowledgements'] = $parsed;
             if ($row['setting_key'] === 'disabled_users') $db['disabled_users'] = $parsed;
             if ($row['setting_key'] === 'privacy_consents') $db['privacy_consents'] = $parsed;
         }
@@ -1293,6 +1390,8 @@ function mysql_save_db($db)
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('user_charts', '$userChartsJson')")) { $ok = false; }
         $pinnedJson = mysql_escape($conn, json_encode(isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('pinned_tickets', '$pinnedJson')")) { $ok = false; }
+        $pinnedAckJson = mysql_escape($conn, json_encode(isset($db['pinned_ticket_acknowledgements']) && is_array($db['pinned_ticket_acknowledgements']) ? $db['pinned_ticket_acknowledgements'] : array()));
+        if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('pinned_ticket_acknowledgements', '$pinnedAckJson')")) { $ok = false; }
         $disabledJson = mysql_escape($conn, json_encode(isset($db['disabled_users']) && is_array($db['disabled_users']) ? $db['disabled_users'] : array()));
         if ($ok && !mysqli_query($conn, "INSERT INTO app_settings (setting_key, setting_value) VALUES ('disabled_users', '$disabledJson')")) { $ok = false; }
         $privacyJson = mysql_escape($conn, json_encode(isset($db['privacy_consents']) && is_array($db['privacy_consents']) ? $db['privacy_consents'] : array()));
@@ -1461,6 +1560,7 @@ function load_json_db($defaultUsers)
             'users' => $defaultUsers,
             'group_targets' => array(),
             'user_avatars' => array(),
+            'pinned_ticket_acknowledgements' => array(),
             'preset_options' => array(),
             'preset_option_requests' => array(),
             'preset_option_formats' => array(),
@@ -1484,6 +1584,7 @@ function load_json_db($defaultUsers)
     if (!isset($db['group_targets']) || !is_array($db['group_targets'])) $db['group_targets'] = array();
     if (!isset($db['user_avatars']) || !is_array($db['user_avatars'])) $db['user_avatars'] = array();
     if (!isset($db['user_charts']) || !is_array($db['user_charts'])) $db['user_charts'] = array();
+    if (!isset($db['pinned_ticket_acknowledgements']) || !is_array($db['pinned_ticket_acknowledgements'])) $db['pinned_ticket_acknowledgements'] = array();
     if (!isset($db['ui_colors']) || !is_array($db['ui_colors'])) $db['ui_colors'] = default_ui_colors();
     $db['ui_colors'] = normalize_ui_colors($db['ui_colors']);
     $existingIncidentIds = array();
@@ -1767,9 +1868,15 @@ function ticket_with_permissions($ticket, $user, $users = null)
     $ticket['can_edit'] = $isAdmin || ($ownerId > 0 && intval($user['id']) === $ownerId);
     if (!isset($ticket['severity'])) $ticket['severity'] = 1;
     $ticket['owner_username'] = '';
+    $ticket['owner_avatar'] = '';
     if ($ownerId > 0 && is_array($users)) {
         $ownerUser = user_by_id($users, $ownerId);
-        if ($ownerUser) $ticket['owner_username'] = isset($ownerUser['username']) ? strval($ownerUser['username']) : '';
+        if ($ownerUser) {
+            $ownerUsername = isset($ownerUser['username']) ? strval($ownerUser['username']) : '';
+            $ticket['owner_username'] = $ownerUsername;
+            $avatarMap = build_user_avatar_map(array('users' => $users));
+            if ($ownerUsername !== '' && isset($avatarMap[$ownerUsername])) $ticket['owner_avatar'] = $avatarMap[$ownerUsername];
+        }
     }
     return $ticket;
 }
@@ -1995,6 +2102,7 @@ function year_range_from_mode($year, $mode)
 {
     $shiftRange = shift_range_from_mode($mode);
     if ($shiftRange) return $shiftRange;
+    if ($mode === 'month') return current_month_bounds();
     $quarter = array('q1' => array(1, 1, 4, 1), 'q2' => array(4, 1, 7, 1), 'q3' => array(7, 1, 10, 1), 'q4' => array(10, 1, 1, 1));
     if (isset($quarter[$mode])) {
         $q = $quarter[$mode];
@@ -2006,6 +2114,21 @@ function year_range_from_mode($year, $mode)
     $start = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year));
     $end = gmdate('c', gmmktime(0, 0, 0, 1, 1, $year + 1));
     return array($start, $end);
+}
+
+function current_month_bounds()
+{
+    $rome = new DateTimeZone('Europe/Rome');
+    $utc = new DateTimeZone('UTC');
+    $start = new DateTime('first day of this month 00:00:00', $rome);
+    $end = clone $start;
+    $end->modify('first day of next month 00:00:00');
+    $startUtc = clone $start;
+    $endUtc = clone $end;
+    return array(
+        $startUtc->setTimezone($utc)->format(DateTime::ATOM),
+        $endUtc->setTimezone($utc)->format(DateTime::ATOM)
+    );
 }
 
 function shift_range_from_mode($mode)
@@ -2451,14 +2574,65 @@ if (preg_match('#^/api/users/(\d+)$#', $path, $m) && $method === 'DELETE') {
 }
 
 if ($path === '/api/pinned-tickets' && $method === 'GET') {
-    $pins = isset($db['pinned_tickets']) && is_array($db['pinned_tickets']) ? $db['pinned_tickets'] : array();
-    $today = date('Y-m-d');
-    $active = array();
-    foreach ($pins as $p) {
-        if (isset($p['pinUntil']) && strval($p['pinUntil']) >= $today) $active[] = $p;
-    }
-    if (count($active) !== count($pins)) { $db['pinned_tickets'] = $active; save_db($db); }
+    list($active, $changed) = active_pinned_tickets($db);
+    if ($changed) save_db($db);
     json_response($active, 200);
+}
+
+if ($path === '/api/pinned-tickets/unacknowledged' && $method === 'GET') {
+    list($active, $changed) = active_pinned_tickets($db);
+    $username = strtolower(trim(isset($user['username']) ? strval($user['username']) : ''));
+    $acks = isset($db['pinned_ticket_acknowledgements'][$username]) && is_array($db['pinned_ticket_acknowledgements'][$username])
+        ? $db['pinned_ticket_acknowledgements'][$username]
+        : array();
+    $unread = array();
+    foreach ($active as $pin) {
+        $ackKey = pinned_ticket_ack_key($pin);
+        if (!isset($acks[$ackKey])) {
+            $pin['ackKey'] = $ackKey;
+            $unread[] = $pin;
+        }
+    }
+    if ($changed) save_db($db);
+    json_response(array('tickets' => $unread, 'count' => count($unread)), 200);
+}
+
+if ($path === '/api/pinned-tickets/acknowledge' && $method === 'POST') {
+    list($active, $changed) = active_pinned_tickets($db);
+    $ids = isset($payload['ids']) && is_array($payload['ids']) ? $payload['ids'] : array();
+    $allowed = array();
+    foreach ($active as $pin) {
+        $pid = isset($pin['id']) ? intval($pin['id']) : 0;
+        if ($pid > 0) $allowed[$pid] = $pin;
+    }
+    $username = strtolower(trim(isset($user['username']) ? strval($user['username']) : ''));
+    if ($username === '') json_response(array('error' => 'Utente non valido'), 400);
+    if (!isset($db['pinned_ticket_acknowledgements']) || !is_array($db['pinned_ticket_acknowledgements'])) $db['pinned_ticket_acknowledgements'] = array();
+    if (!isset($db['pinned_ticket_acknowledgements'][$username]) || !is_array($db['pinned_ticket_acknowledgements'][$username])) $db['pinned_ticket_acknowledgements'][$username] = array();
+    $acked = 0;
+    foreach ($ids as $rawId) {
+        $id = intval($rawId);
+        if ($id <= 0 || !isset($allowed[$id])) continue;
+        $pin = $allowed[$id];
+        $ackKey = pinned_ticket_ack_key($pin);
+        $db['pinned_ticket_acknowledgements'][$username][$ackKey] = array(
+            'ticketId' => $id,
+            'pinUntil' => isset($pin['pinUntil']) ? strval($pin['pinUntil']) : '',
+            'acknowledgedAt' => gmdate('c'),
+            'username' => isset($user['username']) ? strval($user['username']) : $username,
+            'userId' => intval(isset($user['id']) ? $user['id'] : 0)
+        );
+        $acked++;
+    }
+    if ($acked > 0 || $changed) save_db($db);
+    json_response(array('ok' => true, 'acknowledged' => $acked), 200);
+}
+
+if ($path === '/api/pinned-tickets/acknowledgements' && $method === 'GET') {
+    require_api_auth('moderator');
+    if (cleanup_pinned_ticket_acknowledgements($db)) save_db($db);
+    $acks = isset($db['pinned_ticket_acknowledgements']) && is_array($db['pinned_ticket_acknowledgements']) ? $db['pinned_ticket_acknowledgements'] : array();
+    json_response(array('acknowledgements' => $acks), 200);
 }
 
 if ($path === '/api/pinned-tickets' && $method === 'POST') {
@@ -2481,6 +2655,7 @@ if ($path === '/api/pinned-tickets' && $method === 'POST') {
     foreach ($pins as $p) { if (intval($p['id']) !== $id) $kept[] = $p; }
     $kept[] = $newPin;
     $db['pinned_tickets'] = $kept;
+    cleanup_pinned_ticket_acknowledgements($db);
     save_db($db);
     json_response(array('ok' => true), 200);
 }
@@ -2491,6 +2666,7 @@ if (preg_match('#^/api/pinned-tickets/(\d+)$#', $path, $m) && $method === 'DELET
     $kept = array();
     foreach ($pins as $p) { if (intval($p['id']) !== $id) $kept[] = $p; }
     $db['pinned_tickets'] = $kept;
+    cleanup_pinned_ticket_acknowledgements($db);
     save_db($db);
     json_response(array('ok' => true), 200);
 }
@@ -3175,6 +3351,7 @@ if ($path === '/api/tickets/clear' && $method === 'DELETE') {
     $db['tickets'] = array();
     $db['counters']['ticket'] = 0;
     $db['pinned_tickets'] = array();
+    $db['pinned_ticket_acknowledgements'] = array();
     save_db($db);
     json_response(array('ok' => true, 'deleted' => $deletedCount), 200);
 }
@@ -3226,12 +3403,12 @@ if ($path === '/api/tickets/current-day' && $method === 'GET') {
         if ($resp['ok']) {
             $ticketsSb = array();
             $rows = is_array($resp['data']) ? $resp['data'] : array();
-            foreach ($rows as $t) $ticketsSb[] = ticket_with_permissions($t, $user);
+            foreach ($rows as $t) $ticketsSb[] = ticket_with_permissions($t, $user, $db['users']);
             json_response(array('day' => $bounds, 'tickets' => $ticketsSb), 200);
         }
     }
     $tickets = array();
-    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = ticket_with_permissions($t, $user);
+    foreach ($db['tickets'] as $t) if (in_range($t['created_at'], $bounds['start'], $bounds['end'])) $tickets[] = ticket_with_permissions($t, $user, $db['users']);
     usort($tickets, function($a, $b) { return strcmp($b['created_at'], $a['created_at']); });
     json_response(array('day' => $bounds, 'tickets' => $tickets), 200);
 }
@@ -3326,9 +3503,7 @@ if ($path === '/api/tickets/lookup' && $method === 'GET') {
         $bounds = current_day_bounds();
         $start = $bounds['start']; $end = $bounds['end'];
     } elseif ($window === 'month') {
-        $year = intval(gmdate('Y')); $month = intval(gmdate('n'));
-        $start = gmdate('c', gmmktime(0, 0, 0, $month, 1, $year));
-        $end   = gmdate('c', gmmktime(0, 0, 0, $month + 1, 1, $year));
+        list($start, $end) = current_month_bounds();
     } else {
         $year = intval(gmdate('Y'));
         list($start, $end) = year_range_from_mode($year, $window);
@@ -3738,10 +3913,7 @@ if ($path === '/api/stats/custom' && $method === 'GET') {
         $start = $bounds['start'];
         $end   = $bounds['end'];
     } elseif ($window === 'month') {
-        $year  = intval(gmdate('Y'));
-        $month = intval(gmdate('n'));
-        $start = gmdate('c', gmmktime(0, 0, 0, $month, 1, $year));
-        $end   = gmdate('c', gmmktime(23, 59, 59, $month, (int)gmdate('t'), $year));
+        list($start, $end) = current_month_bounds();
     } else {
         $year = intval(gmdate('Y'));
         list($start, $end) = year_range_from_mode($year, $window);

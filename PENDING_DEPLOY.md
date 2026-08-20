@@ -4,73 +4,20 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 ## In attesa di deploy
 
-Spostamento ticket prima di eliminare categorie/incident:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Le `DELETE /api/categories/{id}` e `DELETE /api/incidents/{id}` accettano `move_to_incident_id`: se ci sono ticket collegati, li ricollegano all'incident destinazione prima di eliminare categoria/incident. |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | In Admin Panel, quando elimini una categoria/incident con ticket associati, compare una select "Categoria > Incident" per scegliere dove spostare i ticket prima della cancellazione. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili per la nuova dialog di spostamento ticket collegati. |
-| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Cascata rename incident sui ticket storici:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Quando un incident viene rinominato da Admin Panel, aggiorna in cascata `tickets.incident_name` per i ticket collegati allo stesso `incident_id` e per eventuali vecchi ticket senza ID ma con il vecchio nome incident. |
-| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Highlight parole ticket in dark mode:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | In dark mode i valori evidenziati nei ticket usano testo blu, senza sfondo colorato. |
-| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Blocco cancellazione incident con ticket collegati:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | La `DELETE /api/incidents/{id}` ora verifica prima i ticket collegati all'incident tramite `incident_id` e fallback su nome incident; se ne trova, risponde `409` e non cancella nulla. |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Il pannello admin mostra correttamente il messaggio backend quando un incident non e' eliminabile perche' ha ticket associati. |
-| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Fix persistenza formato lista in Revisione menu:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Quando si cambia il "Formato lista", il frontend salva prima il nuovo formato e poi aggiorna gli elementi esistenti; prima gli elementi venivano aggiornati col formato precedente e la select poteva tornare al valore vecchio dopo refresh. |
-| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Toggle admin per nascondere nomi utenti:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Aggiunta checkbox in Admin Panel > Grafici e colori > Funzioni dashboard: "Mostra nomi utenti agli admin". Cache-busting/badge **v1.13.57**. |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Legge/salva il flag `ui_colors.settings.admin_usernames_visible`; maschera badge/admin utenti/richieste menu e nasconde la palette utenti quando il toggle e' spento. |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Maschera username/avatar proprietario nelle card ticket, report/export e pill profilo; nasconde grafico "Ticket Utenti" e lookup utente quando il toggle e' spento. |
-| `Ufficio/public/js/search.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/search.js` | Nasconde filtro utente, owner sulle card, owner in modale dettaglio e blocca lookup per dimensione `user` quando il toggle e' spento. |
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Normalizzazione backend del nuovo flag dentro `ui_colors.settings`, default attivo per retrocompatibilita'. |
-| `Ufficio/public/index.html`, `login.html`, `search.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
-Nascondi filtro Team in Cerca ticket:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/search.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/search.html` | Rimosso dai filtri avanzati il campo `Team`; restano disponibili Utente e gli altri filtri principali. |
-
-Toggle admin per "Aggiungi grafico" dashboard:
-
-| File locale | Path produzione | Note |
-|------|------|------|
-| `Ufficio/public/admin.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/admin.html` | Aggiunta checkbox in Admin Panel > Grafici e colori > Funzioni dashboard per mostrare/nascondere il card "Aggiungi grafico". Cache-busting/badge **v1.13.57**. |
-| `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Legge e salva il flag `ui_colors.settings.dashboard_add_chart_enabled` insieme alle impostazioni grafici. |
-| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | La dashboard applica il flag: nasconde il card `addChartCard` e blocca l'apertura della modale se l'opzione e' disattivata. |
-| `Ufficio/backend/index.php` | `/var/www/html/ictsupport/modules/ticket_manager/backend/index.php` | Normalizzazione backend del nuovo flag dentro `ui_colors.settings`, default attivo per retrocompatibilita'. |
-| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili per la nuova checkbox admin. |
-| `Ufficio/public/index.html`, `login.html`, `search.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.57**. |
-
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
+
+_Nessun deploy in attesa: i change set qui sotto sono stati deployati in produzione il 2026-08-21._
+
+## Gia deployato
+
+Deploy confermato in data `2026-08-21` — spostamento massivo dei seguenti change set, gia' deployati in produzione (multi-ticket/toast creazione, allineamento v1.13.27, informativa privacy GDPR, grafico Ticket Utenti, fix inserimento preset/menu tendina/card ticket, ripristino palette utenti admin):
+
+Fix multi-ticket stesso minuto + toast creazione:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Alla creazione ticket ora compare toast di successo. Il turno corrente non impila piu' automaticamente i ticket identici: ogni ticket creato nello stesso minuto resta visibile come riga separata. Dopo multi-ticket ricarica il turno e verifica gli ID creati, mostrando un warning solo se alcuni ticket creati non risultano nel turno corrente. |
+| `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.80**. |
 
 Allineamento `v1.13.27` — **allineamento locale <-> origin dopo il rebase**: incorpora sia il fix locale v1.13.26 (overflow-y auto) sia quello parallelo del 2026-07-18 su origin (max-height alzati a 3000/5000/3000). Il codice in produzione ha attualmente solo il patch minimo del v1.13.26 (2000px); questo deploy porta i cap ai valori piu' larghi + include anche `.admin-catalog` (5000px) che era rimasto indietro.
 
@@ -141,8 +88,6 @@ Ripristino palette colori utenti in admin:
 |------|------|------|
 | `Ufficio/public/js/admin.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/admin.js` | Ripristinato il gruppo palette `Utenti` nell'editor colori admin e il caricamento preview da `/api/stats/user/current-year?mode=months`. La modifica riguarda solo l'admin colori; il grafico utenti resta nascosto agli operatori. |
 | `Ufficio/public/index.html`, `admin.html`, `search.html`, `login.html`, `quickbar.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.13.46** (allineamento `?v=` su tutti gli asset). |
-
-## Gia deployato
 
 Deploy confermato in data `2026-07-19` (**v1.13.26** — navbar quickbar: incident oltre il sesto in una categoria venivano tagliati) per i seguenti file:
 

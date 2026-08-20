@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.57" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
   <script>document.documentElement.classList.add('theme-sync-pending');
     try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.57" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
 </head>
 <body class="quickbar-page">
   <div class="quickbar-shell">
@@ -40,9 +40,14 @@
         <h3 id="ticketModalTitle">Nuovo Ticket</h3>
         <div id="ticketPinWrap" class="ticket-pin-wrap" style="display:none">
           <label class="ticket-pin-label">
-            <input type="checkbox" id="ticketPinCheck"> 📌 PIN
+            <input type="checkbox" id="ticketPinCheck"> PIN
           </label>
-          <input type="date" id="ticketPinUntil" class="ticket-pin-date" style="display:none">
+          <span id="ticketPinSummary" class="ticket-pin-summary" hidden></span>
+          <div id="ticketPinDatePopover" class="ticket-pin-date-popover" hidden>
+            <strong>Fino a che giorno vuoi pinnare il ticket?</strong>
+            <input type="date" id="ticketPinUntil" class="ticket-pin-date">
+            <span id="ticketPinHint" class="ticket-pin-hint">Il ticket sara' pinnato fino alle 23:59 del giorno selezionato.</span>
+          </div>
         </div>
         <button class="close-modal" type="button">x</button>
       </div>
@@ -136,9 +141,9 @@
     </div>
   </div>
 
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.57"></script>
-  <script src="./public/js/toast.js?v=1.13.57"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.57"></script>
-  <script src="./public/js/script.js?v=1.13.57"></script>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.81"></script>
+  <script src="./public/js/toast.js?v=1.13.81"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
+  <script src="./public/js/script.js?v=1.13.81"></script>
 </body>
 </html>

@@ -1,11 +1,18 @@
 const openAdminBtn = document.getElementById('openAdminBtn');
 
-function getAvatarBadge(username) {
+function getAvatarBadge(username, avatar) {
   try {
     const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
-    const emoji = username && all[username] ? all[username] : '👤';
+    const emoji = avatar || (username && all[username] ? all[username] : '&#128100;');
     return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
   } catch { return ''; }
+}
+
+function renderTicketOwnerBadge(ownerUsername, ownerAvatar, showName) {
+  if (!ownerUsername && !ownerAvatar) return '';
+  const nameHtml = showName && ownerUsername ? '<span class="ticket-row-owner-name">' + escapeHtml(ownerUsername) + '</span>' : '';
+  const avatarOnlyClass = nameHtml ? '' : ' ticket-row-owner-avatar-only';
+  return '<span class="ticket-row-owner' + avatarOnlyClass + '">' + getAvatarBadge(ownerUsername, ownerAvatar) + nameHtml + '</span>';
 }
 const appBasePath = new URL(document.currentScript.src).pathname.split('/public/js/')[0];
 
@@ -24,8 +31,10 @@ const ticketSearchResetBtn = document.getElementById('ticketSearchResetBtn');
 const ticketSearchSummary = document.getElementById('ticketSearchSummary');
 const ticketSearchResults = document.getElementById('ticketSearchResults');
 const ticketSearchFabSelect = document.getElementById('ticketSearchFab');
+const ticketSearchFabButtons = document.getElementById('ticketSearchFabButtons');
 const ticketSearchCategorySelect = document.getElementById('ticketSearchCategory');
 const ticketSearchIncidentSelect = document.getElementById('ticketSearchIncident');
+const ticketSearchMineCheck = document.getElementById('ticketSearchMine');
 const ticketSearchAdvancedDetails = document.getElementById('ticketSearchAdvanced');
 const ticketSearchAdvancedGrid = document.getElementById('ticketSearchAdvancedGrid');
 const ticketSearchUserSelect = document.getElementById('ticketSearchUser');
@@ -48,6 +57,7 @@ let currentPaletteId = 'blu';
 let currentDarkMode = false;
 let searchModalCloseTimer = null;
 let categorySelectHandle = null;
+let incidentSelectHandle = null;
 let categoriesData = [];
 let activeSearchModalTicketId = '';
 let activeSearchModalTicket = null;
@@ -75,9 +85,9 @@ function colorForLabel(label) {
   return colorByIndex(Math.abs(hash));
 }
 
-function makeSearchableSelect(select) {
-  if (select.dataset.sdInit) return { update: function() {} };
-  select.dataset.sdInit = '1';
+function makeSearchableSelect(select, options) {
+  const force = !!(options && options.force);
+  if (select._sdHandle) return select._sdHandle;
 
   var placeholderText = '';
   var allItems = [];
@@ -93,7 +103,8 @@ function makeSearchableSelect(select) {
   }
   syncItems();
 
-  if (allItems.length <= 10) return null;
+  if (!force && allItems.length <= 10) return null;
+  select.dataset.sdInit = '1';
 
   var wrapper = document.createElement('div');
   wrapper.className = 'sd-wrap';
@@ -132,6 +143,7 @@ function makeSearchableSelect(select) {
   wrapper.appendChild(panel);
 
   function updateTriggerLabel() {
+    trigger.disabled = !!select.disabled;
     var val = select.value;
     if (!val) {
       triggerLabel.textContent = placeholderText || 'Seleziona...';
@@ -183,6 +195,7 @@ function makeSearchableSelect(select) {
   }
 
   trigger.addEventListener('click', function() {
+    if (select.disabled) return;
     if (panel.hidden) openPanel();
     else closePanel();
   });
@@ -203,7 +216,16 @@ function makeSearchableSelect(select) {
   select.parentNode.insertBefore(wrapper, select);
   updateTriggerLabel();
 
-  return { update: updateTriggerLabel };
+  select._sdSyncTrigger = function() {
+    syncItems();
+    updateTriggerLabel();
+    if (!panel.hidden) renderList(search.value.trim().toLowerCase());
+  };
+
+  select._sdHandle = {
+    update: select._sdSyncTrigger
+  };
+  return select._sdHandle;
 }
 
 function escapeHtml(value) {
@@ -255,14 +277,14 @@ function extractTicketPresetFieldMap(ticket) {
   return fieldMap;
 }
 
-function syncSearchableSelect(select, handleRef) {
+function syncSearchableSelect(select, handleRef, options) {
   if (!select) return handleRef || null;
   if (select._sdSyncTrigger) select._sdSyncTrigger();
   if (handleRef && typeof handleRef.update === 'function') {
     handleRef.update();
     return handleRef;
   }
-  return makeSearchableSelect(select) || handleRef || null;
+  return makeSearchableSelect(select, options) || handleRef || null;
 }
 
 function refillSelect(select, placeholderText, values) {
@@ -293,6 +315,32 @@ function shortPinnedDescription(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function getSelectedSearchFabs() {
+  if (!ticketSearchFabButtons) {
+    const raw = ticketSearchFabSelect ? String(ticketSearchFabSelect.value || '') : '';
+    return raw ? raw.split(',').map((fab) => fab.trim()).filter(Boolean) : [];
+  }
+  return Array.from(ticketSearchFabButtons.querySelectorAll('.ticket-search-fab-btn[aria-pressed="true"]'))
+    .map((btn) => String(btn.dataset.fab || '').trim())
+    .filter(Boolean);
+}
+
+function syncSearchFabValue() {
+  if (ticketSearchFabSelect) ticketSearchFabSelect.value = getSelectedSearchFabs().join(',');
+}
+
+function setSelectedSearchFabs(values) {
+  const selected = new Set((Array.isArray(values) ? values : [values]).map((fab) => String(fab || '').trim()).filter(Boolean));
+  if (ticketSearchFabButtons) {
+    ticketSearchFabButtons.querySelectorAll('.ticket-search-fab-btn').forEach((btn) => {
+      const active = selected.has(String(btn.dataset.fab || ''));
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+  if (ticketSearchFabSelect) ticketSearchFabSelect.value = Array.from(selected).join(',');
+}
+
 function renderSearchPinnedList(pins) {
   if (!searchPinnedList) return;
   const list = Array.isArray(pins) ? pins : [];
@@ -311,7 +359,7 @@ function renderSearchPinnedList(pins) {
         '<span class="sidebar-pinned-item-title">' + escapeHtml(pin.incidentName || ('Ticket #' + pin.id)) + '</span>' +
         (pin.fab ? '<span class="sidebar-pinned-item-fab">' + escapeHtml(pin.fab) + '</span>' : '') +
       '</div>' +
-      (pin.description ? '<div class="sidebar-pinned-item-desc">' + escapeHtml(shortPinnedDescription(pin.description)) + '</div>' : '') +
+      (pin.description ? '<div class="sidebar-pinned-item-desc">' + renderDescriptionHtml(pin.description) + '</div>' : '') +
       '<div class="sidebar-pinned-item-meta">' +
         '<span>' + escapeHtml(pin.category || 'Senza categoria') + '</span>' +
         '<span>' + escapeHtml(pin.pinUntil ? ('fino al ' + formatPinnedDate(pin.pinUntil)) : formatPinnedDateTime(pin.createdAt)) + '</span>' +
@@ -518,7 +566,7 @@ function renderSearchModalBodyContent(ticket, editing) {
       ? '<textarea id="searchModalEditTextarea" rows="9" style="width:100%;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:180px;margin-bottom:12px;resize:vertical">' + escapeHtml(ticket.description || '') + '</textarea>'
       : '<div class="ticket-read-desc" style="white-space:pre-wrap;padding:10px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;min-height:64px;margin-bottom:12px">' + renderDescriptionHtml(ticket.description || '') + '</div>') +
     (dtStr ? '<p class="muted" style="margin:0">Creato: ' + escapeHtml(dtStr) + '</p>' : '') +
-    (ticket.ownerUsername && canDisplayAdminUsernames() ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername) + escapeHtml(ticket.ownerUsername) + '</p>' : '');
+    ((ticket.ownerUsername || ticket.ownerAvatar) ? '<p class="muted" style="margin:4px 0 0;display:flex;align-items:center;gap:4px">Da: ' + getAvatarBadge(ticket.ownerUsername, ticket.ownerAvatar) + (canDisplayAdminUsernames() ? escapeHtml(ticket.ownerUsername || '') : '') + '</p>' : '');
 }
 
 function renderSearchModal(ticket, editing) {
@@ -692,6 +740,7 @@ function renderSearchTickets(tickets) {
     const dayMonth = isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
     const hhmm = isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
     const ownerUsername = String(t.owner_username || '');
+    const ownerAvatar = String(t.owner_avatar || '');
     const visibleOwnerUsername = canDisplayAdminUsernames() ? ownerUsername : '';
 
     const monthKey = isNaN(d.getTime()) ? null : d.getFullYear() + '-' + (d.getMonth() + 1);
@@ -715,6 +764,8 @@ function renderSearchTickets(tickets) {
     li.dataset.severity = String(t.severity || '');
     li.dataset.category = category;
     li.dataset.ownerUsername = visibleOwnerUsername;
+    li.dataset.ownerAvatar = ownerAvatar;
+    li.dataset.ownerUserId = String(t.owner_user_id || '');
     li.dataset.canEdit = t.can_edit ? '1' : '0';
     li.style.setProperty('--ticket-accent', categoryColor);
 
@@ -729,7 +780,7 @@ function renderSearchTickets(tickets) {
         '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
       '</div>' +
       '<div class="ticket-row-footer">' +
-        (visibleOwnerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + escapeHtml(visibleOwnerUsername) + '</span>' : '') +
+        renderTicketOwnerBadge(ownerUsername, ownerAvatar, !!visibleOwnerUsername) +
         '<span class="ticket-row-datetime">' + escapeHtml(dayMonth) + ' ' + escapeHtml(hhmm) + '</span>' +
         (t.can_edit ? '<button type="button" class="ticket-edit-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Modifica testo ticket" aria-label="Modifica testo ticket">✎</button>' : '') +
         (isAdminUser() ? '<button type="button" class="ticket-delete-btn" data-ticket-id="' + escapeHtml(String(t.id)) + '" title="Elimina ticket" aria-label="Elimina ticket">✕</button>' : '') +
@@ -768,7 +819,7 @@ async function loadCategories() {
       opt.textContent = cat.name;
       ticketSearchCategorySelect.appendChild(opt);
     });
-    categorySelectHandle = makeSearchableSelect(ticketSearchCategorySelect);
+    categorySelectHandle = makeSearchableSelect(ticketSearchCategorySelect, { force: true });
   }
 
   // Il filtro Incident dipende dalla categoria: si abilita solo quando una
@@ -854,6 +905,7 @@ function populateIncidentsForCategory(categoryName) {
   if (!categoryName) {
     if (placeholder) placeholder.textContent = 'Seleziona prima una categoria';
     select.disabled = true;
+    incidentSelectHandle = syncSearchableSelect(select, incidentSelectHandle, { force: true });
     return;
   }
 
@@ -868,15 +920,17 @@ function populateIncidentsForCategory(categoryName) {
   });
   if (placeholder) placeholder.textContent = 'Tutti';
   select.disabled = false;
+  incidentSelectHandle = syncSearchableSelect(select, incidentSelectHandle, { force: true });
 }
 
 async function runTicketSearch() {
   const query = ticketSearchQueryInput?.value?.trim() || '';
   const from = ticketSearchFromInput?.value || '';
   const to = ticketSearchToInput?.value || '';
-  const filterFab = ticketSearchFabSelect?.value || '';
+  const filterFabs = getSelectedSearchFabs();
   const filterCategory = ticketSearchCategorySelect?.value || '';
   const filterIncidentId = ticketSearchIncidentSelect?.value || '';
+  const filterMine = !!ticketSearchMineCheck?.checked;
   const filterOwner = canDisplayAdminUsernames() ? (ticketSearchUserSelect?.value || '') : '';
   const filterTeam = ticketSearchTeamSelect?.value || '';
   const activePresetFilters = advancedPresetFilterControls
@@ -891,17 +945,18 @@ async function runTicketSearch() {
   if (ticketSearchSummary) {
     const parts = [];
     if (query) parts.push(`parole chiave "${query}"`);
-    if (from || to) parts.push(`date ${from || '...'} → ${to || '...'}`);
-    if (filterFab) parts.push(`FAB: ${filterFab}`);
+    if (from || to) parts.push(`date ${from || '...'} -> ${to || '...'}`);
+    if (filterFabs.length) parts.push(`FAB: ${filterFabs.join(', ')}`);
     if (filterCategory) parts.push(`categoria: ${filterCategory}`);
     if (filterIncidentId) {
       const incName = incidentIdToNameMap[filterIncidentId] || `incident #${filterIncidentId}`;
       parts.push(`incident: ${incName}`);
     }
     if (filterOwner) parts.push(`utente: ${filterOwner}`);
+    if (filterMine) parts.push('i miei ticket');
     if (filterTeam) parts.push(`team: ${filterTeam}`);
     activePresetFilters.forEach((entry) => parts.push(`${entry.label}: ${entry.value}`));
-    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' · ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' - ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   let data = await fetchJson(`/api/tickets/search${suffix}`);
   let results = data.tickets || [];
@@ -934,10 +989,11 @@ async function runTicketSearch() {
     usedLocalFallback = true;
   }
 
-  if (filterFab || filterCategory || filterIncidentId || filterOwner || filterTeam || activePresetFilters.length) {
+  if (filterFabs.length || filterCategory || filterIncidentId || filterMine || filterOwner || filterTeam || activePresetFilters.length) {
     results = results.filter((ticket) => {
-      if (filterFab && String(ticket.fab || '') !== filterFab) return false;
+      if (filterFabs.length && filterFabs.indexOf(String(ticket.fab || '')) === -1) return false;
       if (filterIncidentId && String(ticket.incident_id || '') !== filterIncidentId) return false;
+      if (filterMine && Number(ticket.owner_user_id || 0) !== Number(currentUser?.id || 0)) return false;
       if (filterOwner && String(ticket.owner_username || '') !== filterOwner) return false;
       if (filterTeam && String(ticket.owner_team || '') !== filterTeam) return false;
       if (filterCategory) {
@@ -998,7 +1054,7 @@ async function runChartLookup(sp) {
   }
 
   // Riflette i filtri nei controlli visibili, dove possibile.
-  if (dimension === 'fab' && ticketSearchFabSelect) ticketSearchFabSelect.value = value;
+  if (dimension === 'fab') setSelectedSearchFabs(value);
   if (dimension === 'category' && ticketSearchCategorySelect) {
     ticketSearchCategorySelect.value = value;
     if (categorySelectHandle) categorySelectHandle.update();
@@ -1014,8 +1070,8 @@ async function runChartLookup(sp) {
   if (ticketSearchSummary) {
     const parts = [];
     if (dimension && value) parts.push(chartDimensionLabelIt(dimension) + ': ' + value);
-    if (start || end) parts.push('periodo ' + (ticketSearchFromInput?.value || '...') + ' → ' + (ticketSearchToInput?.value || '...'));
-    ticketSearchSummary.textContent = 'Dal grafico → ' + (parts.length ? parts.join(' · ') : 'tutti i ticket del periodo');
+    if (start || end) parts.push('periodo ' + (ticketSearchFromInput?.value || '...') + ' -> ' + (ticketSearchToInput?.value || '...'));
+    ticketSearchSummary.textContent = 'Dal grafico -> ' + (parts.length ? parts.join(' - ') : 'tutti i ticket del periodo');
   }
 
   const data = await fetchJson('/api/tickets/lookup?' + params.toString());
@@ -1039,20 +1095,44 @@ function applyTicketSearchListeners() {
     }
   });
 
+  ticketSearchFabButtons?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.ticket-search-fab-btn');
+    if (!btn) return;
+    const active = btn.getAttribute('aria-pressed') === 'true';
+    btn.classList.toggle('active', !active);
+    btn.setAttribute('aria-pressed', active ? 'false' : 'true');
+    syncSearchFabValue();
+    if (!ticketSearchResults || !ticketSearchResults.querySelector('.ticket-search-count')) return;
+    try { await runTicketSearch(); } catch (error) {
+      if (ticketSearchSummary) ticketSearchSummary.textContent = `Errore ricerca: ${error.message || error}`;
+      if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+    }
+  });
+
+  ticketSearchMineCheck?.addEventListener('change', async () => {
+    if (!ticketSearchResults || !ticketSearchResults.querySelector('.ticket-search-count')) return;
+    try { await runTicketSearch(); } catch (error) {
+      if (ticketSearchSummary) ticketSearchSummary.textContent = `Errore ricerca: ${error.message || error}`;
+      if (ticketSearchResults) ticketSearchResults.innerHTML = '';
+    }
+  });
+
   ticketSearchResetBtn?.addEventListener('click', () => {
     if (ticketSearchQueryInput) ticketSearchQueryInput.value = '';
     if (ticketSearchFromInput) ticketSearchFromInput.value = '';
     if (ticketSearchToInput) ticketSearchToInput.value = '';
-    if (ticketSearchFabSelect) ticketSearchFabSelect.value = '';
+    setSelectedSearchFabs([]);
     if (ticketSearchCategorySelect) ticketSearchCategorySelect.value = '';
     if (ticketSearchUserSelect) ticketSearchUserSelect.value = '';
     if (ticketSearchTeamSelect) ticketSearchTeamSelect.value = '';
+    if (ticketSearchMineCheck) ticketSearchMineCheck.checked = false;
     advancedPresetFilterControls.forEach((entry) => {
       if (entry.select) entry.select.value = '';
       if (entry.handle && typeof entry.handle.update === 'function') entry.handle.update();
       else if (entry.select && entry.select._sdSyncTrigger) entry.select._sdSyncTrigger();
     });
     if (categorySelectHandle) categorySelectHandle.update();
+    if (incidentSelectHandle) incidentSelectHandle.update();
     if (ticketSearchUserHandle) ticketSearchUserHandle.update();
     if (ticketSearchTeamHandle) ticketSearchTeamHandle.update();
     populateIncidentsForCategory('');
@@ -1097,6 +1177,7 @@ function applyTicketSearchListeners() {
       severity: card.dataset.severity,
       category: card.dataset.category,
       ownerUsername: card.dataset.ownerUsername || '',
+      ownerAvatar: card.dataset.ownerAvatar || '',
       canEdit: (card.dataset.canEdit === '1') && isAdminUser()
     });
   });

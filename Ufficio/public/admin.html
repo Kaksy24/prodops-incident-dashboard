@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Incident Hub</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.57" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
   <script>document.documentElement.classList.add('theme-sync-pending');</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.57" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.57" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="sidebar-top"><button id="adminBrandLogoBtn" class="brand-logo-btn" type="button" aria-label="Torna alla dashboard"><img class="brand-logo" src="./public/assets/prodops-logo.svg?v=1.13.81" alt="PRODOPS Ticket Manager" /></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
       <div class="admin-sidebar-intro">
         <span class="admin-sidebar-kicker">Area riservata</span>
         <strong>Amministrazione</strong>
@@ -29,11 +29,13 @@
         <button id="logoutBtn" class="logout-btn" type="button">Logout</button>
       </div>
       <div class="sidebar-footer">
-        <span class="ai-act-info">
-          <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
-          <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+        <span class="sidebar-footer-powered">
+          <span>Powered by Antonio Di Bella 2026</span>
+          <span class="ai-act-info">
+            <button class="ai-act-info-btn" type="button" aria-label="Informazioni EU AI Act">i</button>
+            <span class="ai-act-popup" role="tooltip">EU AI Act 2026: ProdOps Ticket Manager non integra sistemi AI/ML o decisioni automatizzate; dati e grafici sono elaborazioni deterministiche.</span>
+          </span>
         </span>
-        <span>Powered by Antonio Di Bella 2026</span>
       </div>
       </div>
     </aside>
@@ -170,11 +172,11 @@
                     <p class="muted">Metti 0 per lasciare il calcolo automatico.</p>
                   </div>
                   <label class="admin-axis-setting-row" for="adminPersonalAxisMaxMineInput">
-                    <span>Massimo ticket asse ordinate — Ticket personali</span>
+                    <span>Massimo ticket asse ordinate - Ticket personali</span>
                     <input id="adminPersonalAxisMaxMineInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
                   </label>
                   <label class="admin-axis-setting-row" for="adminPersonalAxisMaxGroupInput">
-                    <span>Massimo ticket asse ordinate — Ticket gruppo</span>
+                    <span>Massimo ticket asse ordinate - Ticket gruppo</span>
                     <input id="adminPersonalAxisMaxGroupInput" class="admin-axis-setting-input" type="number" min="0" step="1" value="0" />
                   </label>
                 </div>
@@ -317,7 +319,7 @@
           <label for="newUserGroup">Gruppo</label>
           <select id="newUserGroup" name="newUserGroup">
             <option value="ProdOps">ProdOps</option>
-            <option value="_new">+ Nuovo gruppo…</option>
+            <option value="_new">+ Nuovo gruppo...</option>
           </select>
           <input id="newUserGroupCustom" name="newUserGroupCustom" type="text" placeholder="Nome nuovo gruppo" style="display:none;margin-top:6px" />
         </div>
@@ -375,7 +377,7 @@
           <button type="button" class="desc-tool" data-cmd="italic" title="Corsivo"><em>I</em></button>
           <button type="button" class="desc-tool" data-cmd="underline" title="Sottolineato"><u>U</u></button>
           <span class="desc-tool-sep" aria-hidden="true"></span>
-          <button type="button" class="desc-tool" data-cmd="insertUnorderedList" title="Lista puntata">• 1</button>
+          <button type="button" class="desc-tool" data-cmd="insertUnorderedList" title="Lista puntata">* 1</button>
           <button type="button" class="desc-tool" data-cmd="insertOrderedList" title="Lista numerata">1.</button>
         </div>
         <div id="adminIncidentPresetEditor" class="desc-editor" contenteditable="true" data-placeholder="Lascia vuoto se non vuoi precompilato"></div>
@@ -427,9 +429,9 @@
     </div>
   </div>
 
-  <script src="./public/js/toast.js?v=1.13.57"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.57"></script>
-  <script src="./public/js/admin.js?v=1.13.57"></script>
-  <div class="app-version-badge">v1.13.57 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
+  <script src="./public/js/toast.js?v=1.13.81"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
+  <script src="./public/js/admin.js?v=1.13.81"></script>
+  <div class="app-version-badge">v1.13.81 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

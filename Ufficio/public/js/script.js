@@ -613,24 +613,24 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-/* ── PIN ticket ─────────────────────────────────────── */
+/* PIN ticket */
 function formatPinDate(s) {
   var p = (s || '').split('-');
   return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : s;
 }
 function sanitizePinText(text) {
   return String(text || '')
-    .replace(/ã€ˆ([^ã€‰]*)ã€‰/g, '$1')
-    .replace(/â€˜/g, '‘')
-    .replace(/â€™/g, '’')
-    .replace(/â€œ/g, '“')
-    .replace(/â€[�]/g, '”')
-    .replace(/â€“/g, '—')
-    .replace(/Ã¨/g, 'è')
-    .replace(/Ã¹/g, 'ù')
-    .replace(/Ã /g, 'à')
-    .replace(/Ã²/g, 'ò')
-    .replace(/Ã¬/g, 'ì');
+    .replace(/\u00e3\u20ac\u02c6([^\u00e3\u20ac\u2030]*)\u00e3\u20ac\u2030/g, '$1')
+    .replace(/\u00e2\u20ac\u02dc/g, '\u2018')
+    .replace(/\u00e2\u20ac\u2122/g, '\u2019')
+    .replace(/\u00e2\u20ac\u0153/g, '\u201c')
+    .replace(/\u00e2\u20ac[\ufffd\u009d]/g, '\u201d')
+    .replace(/\u00e2\u20ac\u201c/g, '-')
+    .replace(/\u00c3\u0192\u00c2\u00a8/g, '\u00e8')
+    .replace(/\u00c3\u0192\u00c2\u00b9/g, '\u00f9')
+    .replace(/\u00c3\u0192\u00c2\u00a0/g, '\u00e0')
+    .replace(/\u00c3\u0192\u00c2\u00b2/g, '\u00f2')
+    .replace(/\u00c3\u0192\u00c2\u00ac/g, '\u00ec');
 }
 function decoratePinnedTickets(pins, container) {
   var root = container || ticketList;
@@ -647,7 +647,7 @@ function decoratePinnedTickets(pins, container) {
       badge.className = 'ticket-pin-badge';
       badge.setAttribute('aria-label', 'Ticket pinnato');
       badge.setAttribute('title', 'Ticket pinnato');
-      badge.textContent = '📌';
+      badge.textContent = 'PIN';
       var top = row.querySelector('.ticket-row-top');
       if (top) top.appendChild(badge);
     } else if (!isPinned && existing) {
@@ -663,7 +663,7 @@ function updateImportantTicketsBadge() {
   fetchJson('/api/pinned-tickets').then(function(pins) {
     var count = (pins || []).length;
     btn.classList.toggle('has-pins', count > 0);
-    btn.textContent = count > 0 ? '📌 Ticket Importanti (' + count + ')' : '📌 Ticket Importanti';
+    btn.textContent = count > 0 ? '\uD83D\uDCCC Ticket Importanti (' + count + ')' : '\uD83D\uDCCC Ticket Importanti';
     decoratePinnedTickets(pins);
   }).catch(function() {});
 }
@@ -673,16 +673,31 @@ function updatePinUi(ticketId, ticketData) {
   var wrap = document.getElementById('ticketPinWrap');
   var check = document.getElementById('ticketPinCheck');
   var until = document.getElementById('ticketPinUntil');
+  var popover = document.getElementById('ticketPinDatePopover');
+  var hint = document.getElementById('ticketPinHint');
+  var summary = document.getElementById('ticketPinSummary');
   if (!wrap || !check || !until) return;
   if (!ticketId) { wrap.style.display = 'none'; return; }
   wrap.style.display = '';
   check.checked = false;
   until.value = '';
-  until.style.display = 'none';
+  until.style.display = '';
+  if (popover) popover.hidden = true;
+  if (hint) hint.hidden = false;
+  if (summary) {
+    summary.textContent = '';
+    summary.hidden = true;
+  }
   fetchJson('/api/pinned-tickets').then(function(pins) {
     var pin = (pins || []).find(function(p) { return Number(p.id) === Number(ticketId); }) || null;
     check.checked = !!pin;
-    if (pin && pin.pinUntil) { until.value = pin.pinUntil; until.style.display = ''; }
+    if (pin && pin.pinUntil) {
+      until.value = pin.pinUntil;
+      if (summary) {
+        summary.textContent = 'fino al ' + formatPinDate(pin.pinUntil);
+        summary.hidden = false;
+      }
+    }
   }).catch(function() {});
 }
 
@@ -874,6 +889,7 @@ function isLongTicketBody(text) {
 
 function setTicketModalReadMode(isReadMode) {
   const readMode = Boolean(isReadMode);
+  if (modal) modal.classList.toggle('ticket-read-mode', readMode);
   if (ticketSubmitBtn) {
     ticketSubmitBtn.hidden = readMode;
     ticketSubmitBtn.disabled = readMode ? true : ticketSubmitBusy;
@@ -3682,7 +3698,7 @@ function createExtraTicketCard(incidentId) {
       <h3 class="extra-ticket-title">${escapeHtml(incidentName)}</h3>
       <div class="ticket-pin-wrap extra-ticket-pin-wrap">
         <label class="ticket-pin-label">
-          <input type="checkbox" class="extra-ticket-pin-check"${inheritPinned ? ' checked' : ''}> 📌 PIN
+          <input type="checkbox" class="extra-ticket-pin-check"${inheritPinned ? ' checked' : ''}> PIN
         </label>
         <input type="date" class="ticket-pin-date extra-ticket-pin-date"${inheritPinUntil ? ` value="${inheritPinUntil}"` : ''} style="display:${inheritPinned ? '' : 'none'}">
       </div>
@@ -4116,6 +4132,7 @@ async function loadCurrentUser() {
   updateCurrentUserPill();
   // Idrata la cache locale con gli avatar di tutti gli utenti (per i badge nei ticket, cross-browser).
   if (window._hydrateAvatars) window._hydrateAvatars();
+  showUnacknowledgedImportantTicketsOnLogin();
 }
 
 function updateCurrentUserPill() {
@@ -4128,8 +4145,6 @@ function updateCurrentUserPill() {
     if (pillTeam) {
       const team = currentUser.team ? 'Team ' + currentUser.team : '';
       pillTeam.textContent = team;
-      const dot = pill.querySelector('.user-pill-dot');
-      if (dot) dot.style.display = team ? '' : 'none';
     }
     if (pillRole) {
       const roleLabels = { admin: 'Admin', moderator: 'Moderatore', supervisor: 'Supervisor', user: 'Operatore' };
@@ -5059,10 +5074,10 @@ async function loadCategories() {
   scheduleQuickbarAutoFitHeight();
 }
 
-function getAvatarBadge(username) {
+function getAvatarBadge(username, avatar) {
   try {
     const all = JSON.parse(localStorage.getItem('prodops_avatars_v1') || '{}');
-    const emoji = username && all[username] ? all[username] : '👤';
+    const emoji = avatar || (username && all[username] ? all[username] : '&#128100;');
     return '<span class="ticket-owner-avatar" aria-hidden="true">' + emoji + '</span>';
   } catch { return ''; }
 }
@@ -5071,10 +5086,19 @@ function enforceTicketOwnerNameVisibility(root) {
   if (canDisplayAdminUsernames()) return;
   const scope = root || document;
   scope.querySelectorAll('.ticket-row-owner').forEach(function(ownerEl) {
-    ownerEl.remove();
+    ownerEl.classList.add('ticket-row-owner-avatar-only');
+    ownerEl.querySelectorAll('.ticket-row-owner-name').forEach(function(nameEl) {
+      nameEl.remove();
+    });
   });
 }
 
+function renderTicketOwnerBadge(ownerUsername, ownerAvatar, showName) {
+  if (!ownerUsername && !ownerAvatar) return '';
+  var nameHtml = showName && ownerUsername ? '<strong class="ticket-row-owner-name">' + escapeHtml(ownerUsername) + '</strong>' : '';
+  var avatarOnlyClass = nameHtml ? '' : ' ticket-row-owner-avatar-only';
+  return '<span class="ticket-row-owner' + avatarOnlyClass + '">' + getAvatarBadge(ownerUsername, ownerAvatar) + nameHtml + '</span>';
+}
 function resolveTicketDisplayIncidentName(ticket) {
   const item = ticket || {};
   const incidentId = Number(item.incident_id || item.incidentId || 0);
@@ -5095,6 +5119,7 @@ function createTicketRowElement(t, isAnimated) {
   const dayMonth = Number.isNaN(d.getTime()) ? '' : pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
   const hhmm = Number.isNaN(d.getTime()) ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
   const ownerUsername = String(t.owner_username || t.ownerUsername || '');
+  const ownerAvatar = String(t.owner_avatar || t.ownerAvatar || '');
   const visibleOwnerUsername = canDisplayAdminUsernames() ? ownerUsername : '';
   const li = document.createElement('li');
   li.className = 'ticket-row' + (isAnimated ? ' ticket-new-entry' : '');
@@ -5110,6 +5135,7 @@ function createTicketRowElement(t, isAnimated) {
   li.dataset.ownerUserId = String(t.owner_user_id || '');
   li.dataset.ownerTeam = String(t.owner_team || '').toUpperCase();
   li.dataset.ownerUsername = visibleOwnerUsername;
+  li.dataset.ownerAvatar = ownerAvatar;
   li.style.setProperty('--ticket-accent', categoryColor);
   li.innerHTML =
     '<div class="ticket-row-top">' +
@@ -5122,7 +5148,7 @@ function createTicketRowElement(t, isAnimated) {
       '<div class="ticket-row-desc">' + renderDescriptionHtml(description) + '</div>' +
     '</div>' +
     '<div class="ticket-row-footer">' +
-      (visibleOwnerUsername ? '<span class="ticket-row-owner">' + getAvatarBadge(ownerUsername) + '<strong>' + escapeHtml(visibleOwnerUsername) + '</strong></span>' : '') +
+      renderTicketOwnerBadge(ownerUsername, ownerAvatar, !!visibleOwnerUsername) +
       '<span class="ticket-row-datetime"><strong>' + dayMonth + ' ' + hhmm + '</strong></span>' +
     '</div>';
   enforceTicketOwnerNameVisibility(li);
@@ -5143,11 +5169,13 @@ function ticketDupKey(t) {
 }
 
 // Raggruppa i ticket identici mantenendo l'ordine di prima comparsa.
-function groupIdenticalTickets(tickets) {
+function groupIdenticalTickets(tickets, separateIds) {
   var map = {};
   var order = [];
+  var separate = separateIds || new Set();
   (tickets || []).forEach(function (t) {
     var k = ticketDupKey(t);
+    if (separate.has(Number(t.id || 0))) k += '\u0001id:' + String(t.id || '');
     if (!map[k]) { map[k] = []; order.push(k); }
     map[k].push(t);
   });
@@ -5216,8 +5244,8 @@ async function loadDayTickets(animatedTicketIds = []) {
       return;
     }
 
-    groupIdenticalTickets(data.tickets).forEach((group) => {
-      ticketList.appendChild(buildTicketNode(group, animatedIds));
+    (data.tickets || []).forEach((ticket) => {
+      ticketList.appendChild(createTicketRowElement(ticket, animatedIds.has(Number(ticket.id || 0))));
     });
 
     ticketList.classList.toggle('ticket-list-scrollable', (data.tickets || []).length > 10);
@@ -5225,11 +5253,41 @@ async function loadDayTickets(animatedTicketIds = []) {
     sortTicketList();
     requestAnimationFrame(() => decorateClampedDescriptions(ticketList));
     updateImportantTicketsBadge();
+    return data;
   } catch (error) {
     console.error(error);
     updateCurrentShiftCounters([]);
     if (ticketList) ticketList.innerHTML = '<li>Impossibile caricare i ticket del turno corrente.</li>';
+    throw error;
   }
+}
+
+function missingCreatedTicketIds(dayData, createdIds) {
+  var ids = (createdIds || []).map(Number).filter(function(id) { return id > 0; });
+  if (!ids.length) return [];
+  var present = {};
+  ((dayData && dayData.tickets) || []).forEach(function(ticket) {
+    present[Number(ticket.id || 0)] = true;
+  });
+  return ids.filter(function(id) { return !present[id]; });
+}
+
+async function loadDayTicketsAndVerifyCreated(createdIds) {
+  var data = await loadDayTickets(createdIds);
+  var missing = missingCreatedTicketIds(data, createdIds);
+  if (missing.length) {
+    await delay(500);
+    data = await loadDayTickets(createdIds);
+    missing = missingCreatedTicketIds(data, createdIds);
+  }
+  if (missing.length) {
+    showToast(
+      missing.length + ' ticket creati non risultano nel turno corrente. Se hai usato data/ora fuori turno, controllali in Cerca ticket.',
+      'warning',
+      'Verifica multi-ticket'
+    );
+  }
+  return data;
 }
 
 function applyCurrentShiftFilter() {
@@ -5268,7 +5326,7 @@ function applyCurrentShiftFilter() {
 
 function updateSortDirBtn() {
   if (!currentShiftSortDirBtn) return;
-  currentShiftSortDirBtn.textContent = currentShiftSortDir === 'asc' ? '↑' : '↓';
+  currentShiftSortDirBtn.textContent = currentShiftSortDir === 'asc' ? '^' : 'v';
 }
 
 function sortTicketList() {
@@ -5334,7 +5392,7 @@ async function refreshCurrentShiftTickets() {
   try {
     await loadDayTickets();
   } catch (error) {
-    // Silenzio: il refresh periodico riproverÃ  al ciclo successivo.
+    // Silenzio: il refresh periodico riprovera al ciclo successivo.
   } finally {
     currentShiftAutoRefreshBusy = false;
   }
@@ -5388,7 +5446,7 @@ async function runTicketSearch() {
     const parts = [];
     if (query) parts.push(`parole chiave "${query}"`);
     if (from || to) parts.push(`date ${from || '...'} ? ${to || '...'}`);
-    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' Â· ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
+    ticketSearchSummary.textContent = parts.length ? `Ricerca attiva: ${parts.join(' - ')}` : 'Ricerca senza filtri: mostra tutti i ticket storici.';
   }
   const data = await fetchJson(`/api/tickets/search${suffix}`);
   if (ticketSearchResults) {
@@ -6015,7 +6073,7 @@ async function loadUserCharts() {
     }
     if (data.chart_modes && typeof data.chart_modes === 'object') {
       const modes = data.chart_modes;
-      const allowed = ['day', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3', 'custom'];
+      const allowed = ['day', 'month', 'months', 'q1', 'q2', 'q3', 'q4', 't1', 't2', 't3', 'custom'];
       if (allowed.includes(modes.fabYear) && (modes.fabYear !== 'custom' || chartCustomRanges.fabYear)) fabYearMode = modes.fabYear;
       if (allowed.includes(modes.catYear) && (modes.catYear !== 'custom' || chartCustomRanges.catYear)) catYearMode = modes.catYear;
       if (allowed.includes(modes.teamYear) && (modes.teamYear !== 'custom' || chartCustomRanges.teamYear)) teamYearMode = modes.teamYear;
@@ -7292,6 +7350,11 @@ ticketForm?.addEventListener('submit', async (e) => {
           updateImportantTicketsBadge();
         }).catch(function() {});
       }
+      showToast(
+        createdTickets.length > 1 ? 'Ticket creati correttamente.' : 'Ticket creato correttamente.',
+        'success',
+        createdTickets.length > 1 ? 'Ticket creati' : 'Ticket creato'
+      );
     }
     ticketForm.reset();
     descSetReadOnly(false);
@@ -7300,7 +7363,7 @@ ticketForm?.addEventListener('submit', async (e) => {
     if (ticketSubmitBtn) ticketSubmitBtn.textContent = 'Crea Ticket';
     if (deleteTicketBtn) deleteTicketBtn.style.display = 'none';
     closeModal();
-    await loadDayTickets(createdTicketIds);
+    await loadDayTicketsAndVerifyCreated(createdTicketIds);
     await refreshCharts('ticket-save');
   } catch (error) {
     const message = String(error?.message || 'Errore durante il salvataggio ticket');
@@ -8210,15 +8273,33 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
 (function() {
   var check = document.getElementById('ticketPinCheck');
   var until = document.getElementById('ticketPinUntil');
+  var popover = document.getElementById('ticketPinDatePopover');
+  var hint = document.getElementById('ticketPinHint');
+  var summary = document.getElementById('ticketPinSummary');
+  var confirmBtn = document.getElementById('ticketPinConfirmBtn');
   if (!check || !until) return;
   until.min = new Date().toISOString().slice(0, 10);
+  function openPinDatePicker() {
+    until.style.display = '';
+    if (popover) popover.hidden = false;
+    if (hint) hint.hidden = false;
+    window.setTimeout(function() {
+      until.focus();
+      if (typeof until.showPicker === 'function') {
+        try { until.showPicker(); } catch (error) {}
+      }
+    }, 0);
+  }
   check.addEventListener('change', function() {
     if (this.checked) {
-      until.style.display = '';
-      until.focus();
+      openPinDatePicker();
     } else {
-      until.style.display = 'none';
+      if (popover) popover.hidden = true;
       until.value = '';
+      if (summary) {
+        summary.textContent = '';
+        summary.hidden = true;
+      }
       if (_pinTicketId) {
         fetchJson('/api/pinned-tickets/' + _pinTicketId, { method: 'DELETE' })
           .then(function() { updateImportantTicketsBadge(); })
@@ -8226,10 +8307,22 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
       }
     }
   });
-  until.addEventListener('change', function() {
-    if (!_pinTicketId || !this.value) return;
+  function savePinDate() {
+    if (!until.value) {
+      showToast('Seleziona una data prima di confermare il PIN.', 'warning', 'Data mancante');
+      return;
+    }
+    if (!_pinTicketId) {
+      if (popover) popover.hidden = true;
+      if (summary) {
+        summary.textContent = 'fino al ' + formatPinDate(until.value);
+        summary.hidden = false;
+      }
+      return;
+    }
     var d = _pinTicketData || {};
-    var pinVal = this.value;
+    var pinVal = until.value;
+    if (confirmBtn) confirmBtn.disabled = true;
     fetchJson('/api/pinned-tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -8245,11 +8338,116 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
         pinUntil: pinVal
       })
     }).then(function() {
-      showToast('Ticket pinnato fino al ' + formatPinDate(pinVal), 'success', 'PIN salvato');
+      if (popover) popover.hidden = true;
+      if (summary) {
+        summary.textContent = 'fino al ' + formatPinDate(pinVal);
+        summary.hidden = false;
+      }
+      showToast('Ticket pinnato fino al ' + formatPinDate(pinVal) + ' alle 23:59.', 'success', 'PIN salvato');
       updateImportantTicketsBadge();
     }).catch(function() {
       showToast('Errore salvataggio PIN', 'error', 'Errore');
+    }).finally(function() {
+      if (confirmBtn) confirmBtn.disabled = false;
     });
+  }
+  if (confirmBtn) confirmBtn.addEventListener('click', savePinDate);
+  if (summary) {
+    summary.addEventListener('click', function() {
+      if (!check.checked) check.checked = true;
+      openPinDatePicker();
+    });
+  }
+})();
+
+/* ── Ticket Importanti acknowledge login ─────────────── */
+async function showUnacknowledgedImportantTicketsOnLogin() {
+  var modal = document.getElementById('importantTicketsAckModal');
+  var listEl = document.getElementById('importantTicketsAckList');
+  var ackBtn = document.getElementById('importantTicketsAckBtn');
+  if (!modal || !listEl || !ackBtn) return;
+  try {
+    var data = await fetchJson('/api/pinned-tickets/unacknowledged');
+    var tickets = data && Array.isArray(data.tickets) ? data.tickets : [];
+    if (!tickets.length) return;
+    renderImportantTicketsAckList(tickets);
+    ackBtn.disabled = false;
+    ackBtn.dataset.ticketIds = tickets.map(function(ticket) { return String(ticket.id || ''); }).filter(Boolean).join(',');
+    openImportantTicketsAckModal();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function renderImportantTicketsAckList(tickets) {
+  var listEl = document.getElementById('importantTicketsAckList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  tickets.forEach(function(pin) {
+    var card = document.createElement('article');
+    card.className = 'important-ticket-ack-card';
+    var created = pin.createdAt ? new Date(pin.createdAt) : null;
+    var createdText = created && !isNaN(created.getTime())
+      ? created.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    card.innerHTML =
+      '<div class="important-ticket-ack-head">' +
+        '<strong class="important-ticket-ack-title">' + escapeHtml(pin.incidentName || ('Ticket #' + pin.id)) + '</strong>' +
+        (pin.fab ? '<span class="important-ticket-ack-fab">' + escapeHtml(pin.fab) + '</span>' : '') +
+        (pin.pinUntil ? '<span class="important-ticket-ack-until">fino al ' + formatPinDate(pin.pinUntil) + ' alle 23:59</span>' : '') +
+      '</div>' +
+      (pin.description ? '<div class="important-ticket-ack-desc">' + renderDescriptionHtml(sanitizePinText(pin.description)) + '</div>' : '') +
+      ((pin.category || createdText) ? '<div class="important-ticket-ack-meta">' + escapeHtml(pin.category || '') + (pin.category && createdText ? ' - ' : '') + escapeHtml(createdText) + '</div>' : '');
+    listEl.appendChild(card);
+  });
+}
+
+function openImportantTicketsAckModal() {
+  var modal = document.getElementById('importantTicketsAckModal');
+  if (!modal) return;
+  modal.classList.remove('closing');
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+  document.documentElement.classList.add('modal-open');
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(function() { modal.classList.add('active'); });
+}
+
+function closeImportantTicketsAckModal() {
+  var modal = document.getElementById('importantTicketsAckModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  modal.classList.add('closing');
+  modal.setAttribute('aria-hidden', 'true');
+  window.setTimeout(function() {
+    modal.classList.remove('show', 'closing');
+    document.documentElement.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
+  }, 220);
+}
+
+(function() {
+  var ackBtn = document.getElementById('importantTicketsAckBtn');
+  if (!ackBtn) return;
+  ackBtn.addEventListener('click', async function() {
+    var ids = String(ackBtn.dataset.ticketIds || '').split(',').map(function(id) { return Number(id); }).filter(function(id) { return id > 0; });
+    if (!ids.length) {
+      closeImportantTicketsAckModal();
+      return;
+    }
+    ackBtn.disabled = true;
+    try {
+      await fetchJson('/api/pinned-tickets/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ids })
+      });
+      showToast('Lettura ticket importanti confermata.', 'success', 'Lettura confermata');
+      closeImportantTicketsAckModal();
+    } catch (error) {
+      ackBtn.disabled = false;
+      showToast('Impossibile confermare la lettura: ' + (error.message || error), 'error', 'Errore conferma lettura');
+    }
   });
 })();
 
@@ -8275,7 +8473,7 @@ if(themeToggleBtn){themeToggleBtn.addEventListener('click',async()=>{
         var daysLeft = Math.round((new Date(pin.pinUntil).getTime() - new Date(today).getTime()) / 86400000);
         var card = document.createElement('div');
         card.className = 'important-ticket-card';
-        var expiryHtml = 'fino al ' + formatPinDate(pin.pinUntil) +
+        var expiryHtml = 'fino al ' + formatPinDate(pin.pinUntil) + ' alle 23:59' +
           (daysLeft <= 2 ? ' <span class="itc-expires-soon">(' + daysLeft + ' gg)</span>' : '');
         card.innerHTML =
           '<div class="itc-header">' +
