@@ -4,16 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps Ticket Manager</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.82" />
   <script>document.documentElement.classList.add('theme-sync-pending');
     try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.82" />
 </head>
 <body>
   <div class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
       <div class="sidebar-top"><button id="userPill" class="user-pill" type="button" style="display:none" title="Impostazioni utente" aria-label="Impostazioni utente"><span class="user-pill-icon" id="userPillAvatarWrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></span><span class="user-pill-info"><span id="userPillName"></span><span class="user-pill-sep"></span><span class="user-pill-meta"><span id="userPillTeam"></span><span id="userPillRole"></span></span></span></button><button id="themeToggleBtn" class="theme-switch" type="button" aria-label="Cambia tema" aria-pressed="false"><span class="switch-track"><span class="switch-thumb">L</span></span></button></div>
+      <div class="menu-search">
+        <span class="menu-search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" id="incidentSearch" class="menu-search-input" placeholder="Cerca incident&hellip;" autocomplete="off" aria-label="Cerca incident nelle categorie" />
+        <button type="button" id="incidentSearchClear" class="menu-search-clear" aria-label="Cancella ricerca" hidden>&times;</button>
+      </div>
+      <p id="menuSearchEmpty" class="menu-search-empty" hidden>Nessun incident trovato.</p>
       <nav class="menu" id="menu"></nav>
       <div class="sidebar-actions">
         <button id="openQuickbarBtn" class="sidebar-link-btn quickbar-launch-btn" type="button">Apri Quickbar</button>
@@ -453,10 +459,10 @@
       </div>
     </div>
   </div>
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.81"></script>
-  <script src="./public/js/toast.js?v=1.13.81"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
-  <script src="./public/js/script.js?v=1.13.81"></script>
-  <div class="app-version-badge">v1.13.81 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.82"></script>
+  <script src="./public/js/toast.js?v=1.13.82"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.82"></script>
+  <script src="./public/js/script.js?v=1.13.82"></script>
+  <div class="app-version-badge">v1.13.82 &middot; <a href="./privacy.html" target="_blank" rel="noopener" class="privacy-footer-link">Privacy</a></div>
 </body>
 </html>

@@ -4,13 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ProdOps</title>
-  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.81" />
+  <link rel="icon" type="image/svg+xml" href="./public/assets/favicon.svg?v=1.13.82" />
   <script>document.documentElement.classList.add('theme-sync-pending');
     try { var _ps = parseFloat(localStorage.getItem('prodops_panel_scale')); if (_ps >= 0.7 && _ps <= 1.5) document.documentElement.style.setProperty('--panel-scale', _ps); } catch (e) {}</script>
-  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.81" />
+  <link rel="stylesheet" href="./public/css/styles.css?v=1.13.82" />
 </head>
 <body class="quickbar-page">
   <div class="quickbar-shell">
+    <div class="menu-search">
+      <span class="menu-search-icon" aria-hidden="true">&#128269;</span>
+      <input type="search" id="incidentSearch" class="menu-search-input" placeholder="Cerca incident&hellip;" autocomplete="off" aria-label="Cerca incident nelle categorie" />
+      <button type="button" id="incidentSearchClear" class="menu-search-clear" aria-label="Cancella ricerca" hidden>&times;</button>
+    </div>
+    <p id="menuSearchEmpty" class="menu-search-empty" hidden>Nessun incident trovato.</p>
     <nav class="menu quickbar-menu" id="menu"></nav>
   </div>
 
@@ -141,9 +147,9 @@
     </div>
   </div>
 
-  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.81"></script>
-  <script src="./public/js/toast.js?v=1.13.81"></script>
-  <script src="./public/js/privacy-consent.js?v=1.13.81"></script>
-  <script src="./public/js/script.js?v=1.13.81"></script>
+  <script src="./public/js/vendor/pptxgen.bundle.js?v=1.13.82"></script>
+  <script src="./public/js/toast.js?v=1.13.82"></script>
+  <script src="./public/js/privacy-consent.js?v=1.13.82"></script>
+  <script src="./public/js/script.js?v=1.13.82"></script>
 </body>
 </html>

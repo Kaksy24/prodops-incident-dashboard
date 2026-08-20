@@ -3164,6 +3164,19 @@ function makeSearchableSelect(select) {
     return null;
   }
 
+  // Adatta l'altezza della tendina allo spazio disponibile sotto il trigger fino
+  // al fondo del viewport: con molti elementi la tendina scende di piu' (favorendo
+  // la discesa) e la modale cresce di conseguenza via syncOpenSpacing(), invece di
+  // restare compressa nell'altezza fissa con scroll interno.
+  function sizePanelHeight() {
+    if (panel.hidden) return;
+    var triggerRect = trigger.getBoundingClientRect();
+    var spaceBelow = window.innerHeight - triggerRect.bottom - 16;
+    // Limite superiore "un po' piu' generoso" del default, ma non eccessivo.
+    var desired = Math.max(200, Math.min(spaceBelow, 460));
+    panel.style.maxHeight = desired + 'px';
+  }
+
   // Reserve scroll room on the modal itself (not on the field wrapper), so the
   // modal grows/scrolls to show the open panel without stretching the preset box.
   function syncOpenSpacing() {
@@ -3263,6 +3276,7 @@ function makeSearchableSelect(select) {
     select.dataset.proposedDraft = '';
     renderList('');
     requestAnimationFrame(function() {
+      sizePanelHeight();
       syncOpenSpacing();
       updateSingleTicketModalHeight();
     });
@@ -3285,6 +3299,7 @@ function makeSearchableSelect(select) {
     select.dataset.proposedDraft = (search.value || '').trim();
     renderList(search.value.trim().toLowerCase());
     requestAnimationFrame(function() {
+      sizePanelHeight();
       syncOpenSpacing();
       updateSingleTicketModalHeight();
     });
@@ -5071,7 +5086,73 @@ async function loadCategories() {
     });
     menu.appendChild(wrap);
   });
+  applyIncidentSearchFilter();
   scheduleQuickbarAutoFitHeight();
+}
+
+const incidentSearchInput = document.getElementById('incidentSearch');
+const incidentSearchClearBtn = document.getElementById('incidentSearchClear');
+const incidentSearchEmpty = document.getElementById('menuSearchEmpty');
+
+function applyIncidentSearchFilter() {
+  if (!menu) return;
+  const rawQuery = incidentSearchInput ? incidentSearchInput.value : '';
+  const query = String(rawQuery || '').trim().toLowerCase();
+  const searching = query.length > 0;
+  menu.classList.toggle('menu-searching', searching);
+  let totalMatches = 0;
+  const categories = menu.querySelectorAll('.menu-category');
+  categories.forEach((cat) => {
+    const items = cat.querySelectorAll('.incident-list > li');
+    let anyMatch = false;
+    items.forEach((li) => {
+      if (!searching) {
+        li.style.display = '';
+        return;
+      }
+      const btn = li.querySelector('.incident-btn');
+      const name = btn ? btn.textContent.toLowerCase() : '';
+      const match = name.indexOf(query) !== -1;
+      li.style.display = match ? '' : 'none';
+      if (match) {
+        anyMatch = true;
+        totalMatches++;
+      }
+    });
+    const toggle = cat.querySelector('.category-toggle');
+    if (searching) {
+      cat.style.display = anyMatch ? '' : 'none';
+      cat.classList.toggle('open', anyMatch);
+      if (toggle) toggle.setAttribute('aria-expanded', anyMatch ? 'true' : 'false');
+    } else {
+      cat.style.display = '';
+      cat.classList.remove('open');
+      if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  if (incidentSearchClearBtn) incidentSearchClearBtn.hidden = !searching;
+  if (incidentSearchEmpty) incidentSearchEmpty.hidden = !(searching && totalMatches === 0);
+  scheduleQuickbarAutoFitHeight();
+  scheduleQuickbarAutoFitHeight(320);
+}
+
+if (incidentSearchInput) {
+  incidentSearchInput.addEventListener('input', applyIncidentSearchFilter);
+  incidentSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      incidentSearchInput.value = '';
+      applyIncidentSearchFilter();
+    }
+  });
+}
+if (incidentSearchClearBtn) {
+  incidentSearchClearBtn.addEventListener('click', () => {
+    if (incidentSearchInput) {
+      incidentSearchInput.value = '';
+      incidentSearchInput.focus();
+    }
+    applyIncidentSearchFilter();
+  });
 }
 
 function getAvatarBadge(username, avatar) {
@@ -5215,22 +5296,44 @@ function buildTicketNode(group, animatedIds) {
 
 // Marca le card la cui descrizione è troncata (line-clamp).
 // Hover sulla card espande il testo in loco senza aprire la modale.
+// La misura scrollHeight/clientHeight è valida solo finché il clamp è attivo:
+// la regola CSS che espande scatta solo con .has-overflow, quindi qui (riga non
+// ancora marcata) il clamp c'è ancora e la misura è corretta.
+function markRowOverflow(row) {
+  if (!row || row.classList.contains('has-overflow')) return;
+  const desc = row.querySelector('.ticket-row-desc');
+  if (!desc) return;
+  if (desc.scrollHeight - desc.clientHeight <= 2) return;
+  row.classList.add('has-overflow');
+  if (row.querySelector('.ticket-more-hint')) return;
+  const hint = document.createElement('span');
+  hint.className = 'ticket-more-hint';
+  hint.setAttribute('aria-hidden', 'true');
+  hint.textContent = '···';
+  desc.insertAdjacentElement('afterend', hint);
+}
+
 function decorateClampedDescriptions(root) {
   if (!root) return;
   root.querySelectorAll('.ticket-row').forEach((row) => {
     if (row.style.display === 'none') return;
-    if (row.classList.contains('has-overflow')) return;
-    const desc = row.querySelector('.ticket-row-desc');
-    if (!desc) return;
-    if (desc.scrollHeight - desc.clientHeight <= 2) return;
-    row.classList.add('has-overflow');
-    const hint = document.createElement('span');
-    hint.className = 'ticket-more-hint';
-    hint.setAttribute('aria-hidden', 'true');
-    hint.textContent = '···';
-    desc.insertAdjacentElement('afterend', hint);
+    markRowOverflow(row);
   });
 }
+
+// Fallback robusto contro il comportamento anomalo per cui a volte l'hover non
+// espandeva la card: se la card non è stata classificata al load (misura fatta
+// mentre era nascosta da un filtro, prima che font/layout si assestassero, o
+// dopo un resize/ordinamento/compattazione), la verifichiamo al passaggio del
+// mouse. La classe .has-overflow viene aggiunta mentre il puntatore è già sopra,
+// così l'espansione via :hover scatta immediatamente. Copre tutte le card
+// (turno corrente, stack e popup) tramite delega su document.
+document.addEventListener('mouseover', function (e) {
+  const target = e.target;
+  if (!target || typeof target.closest !== 'function') return;
+  const row = target.closest('.ticket-row');
+  if (row) markRowOverflow(row);
+});
 
 async function loadDayTickets(animatedTicketIds = []) {
   try {

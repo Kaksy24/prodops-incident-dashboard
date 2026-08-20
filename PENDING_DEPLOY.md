@@ -6,7 +6,27 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
-_Nessun deploy in attesa: i change set qui sotto sono stati deployati in produzione il 2026-08-21._
+Search bar filtro incident nella navbar categorie:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/index.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/index.html` | Nuova search bar sopra il menu categorie (`.menu-search` con `#incidentSearch`, icona lente e pulsante `#incidentSearchClear`) + messaggio `#menuSearchEmpty`. Cache-busting/badge **v1.13.82**. |
+| `Ufficio/public/quickbar.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/quickbar.html` | Stessa search bar sopra la quickbar-menu. Cache-busting **v1.13.82**. |
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | `applyIncidentSearchFilter()`: filtra gli incident per sottostringa (case-insensitive) sul nome; nasconde le `li` non corrispondenti, mostra e auto-espande solo le categorie con match, nasconde le altre. Ripristino completo al clear (input vuoto → categorie tutte visibili e richiuse). `Esc` e pulsante × puliscono la ricerca. Il filtro viene riapplicato dopo ogni `loadCategories()`. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stili `.menu-search`, `.menu-search-input` (coerente con la sidebar scura), `.menu-search-icon`, `.menu-search-clear`, `.menu-search-empty`; variante compatta per `body.quickbar-page`. |
+| `Ufficio/public/admin.html`, `login.html`, `search.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Solo cache-busting/badge **v1.13.82** (allineamento `?v=` su tutti gli asset). |
+
+Tendina preset piu' alta con modale che si allunga (dropdown ricercabili nella modale ticket):
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | In `makeSearchableSelect` nuova `sizePanelHeight()`: all'apertura (e a ogni ricerca) la tendina (`.sd-panel`) viene dimensionata sullo spazio disponibile sotto il trigger fino al fondo del viewport (`max(200, min(spaceBelow, 460))`), invece del vecchio cap fisso 260px. Con molti elementi la tendina scende di piu' e la modale ticket cresce di conseguenza (via `syncOpenSpacing()` gia' esistente); con pochi elementi il pannello resta compatto sull'altezza del contenuto. Stesso `?v=` **v1.13.82** del set corrente (nessun bump aggiuntivo). |
+
+Fix espansione hover card ticket a volte non funzionante:
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | La logica che marca le card con descrizione troncata (`.has-overflow`, per l'espansione all'hover) girava una sola volta al load e saltava le card `display:none`: card nascoste da un filtro, o misurate prima che font/layout si assestassero, non venivano mai marcate e l'hover non le espandeva. Estratta `markRowOverflow(row)` e aggiunto un fallback delegato su `document` (`mouseover`) che riclassifica la card al passaggio del mouse se non lo era: la misura scrollHeight/clientHeight resta valida perche' la regola CSS che espande scatta solo con `.has-overflow` (clamp ancora attivo alla misura). Copre turno corrente, stack e popup. Stesso `?v=` **v1.13.82** del set corrente. |
 
 ## Gia deployato
 
