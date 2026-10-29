@@ -2664,6 +2664,8 @@ body.theme-dark .preset-option-card {
 .report-format-btn { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-size: .82rem; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s; }
 .report-format-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .report-format-btn:not(.active):hover { background: var(--hover-bg, rgba(0,0,0,.06)); }
+.report-format-btn:disabled { opacity: .4; cursor: not-allowed; }
+.report-format-btn:disabled:hover { background: var(--input-bg); }
 .report-modal-section-label { font-size: .82rem; font-weight: 700; color: var(--text); margin: 0 0 6px; }
 .report-preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .report-preset-btn { padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text); font-size: .8rem; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s; }

@@ -6,6 +6,22 @@ Percorso produzione: `/var/www/html/ictsupport/modules/ticket_manager/`
 
 Regola operativa: ogni nuova modifica applicativa richiesta e verificata va inserita qui di default come candidata al deploy, salvo file esplicitamente locali o esclusi nella sezione `Non deployare`.
 
+Nessun file in attesa.
+
+## Gia deployato
+
+Deploy confermato in data `2026-10-29` — **v1.14.0** portata live (nuovo report PowerPoint tema Control Room, filtro FAB singolo, turni, sequenze ADSC). Lo `script.js` completo include anche i set v1.13.82 (search bar incident, tendine preset piu' alte, fix hover card ticket):
+
+Nuovo report PowerPoint + filtro FAB singolo (**v1.14.0**):
+
+| File locale | Path produzione | Note |
+|------|------|------|
+| `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | Modale report: nuova riga **FAB** (Tutte / M5 / L1 / EWS / WSIC / NRK); con un FAB singolo l'analisi "per FAB" è disabilitata e si passa a Categoria. Filtro applicato a PPTX e CSV (`fetchReportTickets`), nome file con il FAB (`ProdOps_Report_M5_<data>`). PPTX riscritto con grafici e tabelle native e palette chiara fissa: copertina, sintesi (4 KPI + colonne ticket per giorno/ora/settimana), ricorrenze (macchine e operazioni ripetute), heatmap giorno × fascia oraria, distribuzione (voce + FAB/categoria), report scritto con tutti i conteggi, appendice con conteggio completo. Fix `filterTicketsForDimensionValue`: ora usa gli stessi fallback dell'aggregazione (`Altro`/`N/D`). |
+| `Ufficio/public/js/script.js` (tema) | idem | Tema "Control Room" per il PPTX: slide blu notte `#061A33`, dati azzurro `#3CB4E6`, picco giornaliero giallo `#FFD200`, font Segoe UI, marchio ProdOps (logo + wordmark) in copertina e in alto a destra su ogni slide. Copertina con immagine del wafer (`report-cover.jpg`, caricata come data URL; se manca la copertina resta solo blu). Picco evidenziato con seconda serie sovrapposta (`barOverlapPct: 100`), NON `stacked`: con etichette `outEnd` PowerPoint rifiuta il file. Slide "Quando succede" per **turni** (22:00–06:00, 06:00–14:00, 14:00–22:00): il turno di notte conta sul giorno in cui inizia (`pptShiftOf`). Nuova slide **Sequenze From → To** per ogni incident con campi preset `From`/`To` (es. ADSC/Allineamento, max 3 incident): passaggi più frequenti, sequenze di partenza e di arrivo, più sezione nel report scritto. Etichette riconosciute con confronto esatto (`from`/`da`, `to`/`a`). |
+| `Ufficio/public/assets/report-cover.jpg` | `/var/www/html/ictsupport/modules/ticket_manager/public/assets/report-cover.jpg` | **Nuovo file.** Immagine di copertina del report (wafer, generata con ChatGPT), ~210 KB. |
+| `Ufficio/public/css/styles.css` | `/var/www/html/ictsupport/modules/ticket_manager/public/css/styles.css` | Stato `:disabled` per `.report-format-btn`. |
+| `Ufficio/public/index.html`, `quickbar.html`, `admin.html`, `search.html`, `login.html`, `privacy.html` | `/var/www/html/ictsupport/modules/ticket_manager/public/` | Cache-busting/badge **v1.14.0**. |
+
 Search bar filtro incident nella navbar categorie:
 
 | File locale | Path produzione | Note |
@@ -27,8 +43,6 @@ Fix espansione hover card ticket a volte non funzionante:
 | File locale | Path produzione | Note |
 |------|------|------|
 | `Ufficio/public/js/script.js` | `/var/www/html/ictsupport/modules/ticket_manager/public/js/script.js` | La logica che marca le card con descrizione troncata (`.has-overflow`, per l'espansione all'hover) girava una sola volta al load e saltava le card `display:none`: card nascoste da un filtro, o misurate prima che font/layout si assestassero, non venivano mai marcate e l'hover non le espandeva. Estratta `markRowOverflow(row)` e aggiunto un fallback delegato su `document` (`mouseover`) che riclassifica la card al passaggio del mouse se non lo era: la misura scrollHeight/clientHeight resta valida perche' la regola CSS che espande scatta solo con `.has-overflow` (clamp ancora attivo alla misura). Copre turno corrente, stack e popup. Stesso `?v=` **v1.13.82** del set corrente. |
-
-## Gia deployato
 
 Deploy confermato in data `2026-08-21` — spostamento massivo dei seguenti change set, gia' deployati in produzione (multi-ticket/toast creazione, allineamento v1.13.27, informativa privacy GDPR, grafico Ticket Utenti, fix inserimento preset/menu tendina/card ticket, ripristino palette utenti admin):
 

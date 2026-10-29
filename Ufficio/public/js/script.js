@@ -2152,6 +2152,41 @@ function openReportModal() {
   dimSection.appendChild(dimLabel);
   dimSection.appendChild(dimRow);
 
+  // ── FAB ──
+  var selectedFab = '';
+  const fabSection = document.createElement('div');
+  fabSection.style.cssText = 'margin-bottom:14px';
+  const fabLabel = document.createElement('p');
+  fabLabel.className = 'report-modal-section-label';
+  fabLabel.textContent = 'FAB';
+  const fabRow = document.createElement('div');
+  fabRow.className = 'report-preset-row';
+  [''].concat(fabs).forEach(function(fab) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-preset-btn' + (fab === selectedFab ? ' active' : '');
+    btn.textContent = fab || 'Tutte';
+    btn.dataset.fab = fab;
+    btn.addEventListener('click', function() {
+      selectedFab = fab;
+      fabRow.querySelectorAll('.report-preset-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.fab === fab);
+      });
+      // Con un solo FAB l'analisi "per FAB" non ha senso: si torna a Categoria.
+      const fabDimBtn = dimRow.querySelector('[data-dim="fab"]');
+      if (fabDimBtn) fabDimBtn.disabled = !!fab;
+      if (fab && selectedDimension === 'fab') {
+        selectedDimension = 'category';
+        dimRow.querySelectorAll('.report-format-btn').forEach(function(b) {
+          b.classList.toggle('active', b.dataset.dim === 'category');
+        });
+      }
+    });
+    fabRow.appendChild(btn);
+  });
+  fabSection.appendChild(fabLabel);
+  fabSection.appendChild(fabRow);
+
   // ── Formato ──
   var selectedFormat = 'ppt';
   const fmtSection = document.createElement('div');
@@ -2204,7 +2239,9 @@ function openReportModal() {
       dateTo: dates.to,
       periodLabel: dates.label,
       dimension: selectedDimension,
-      dimensionLabel: dimLabels[selectedDimension] || selectedDimension
+      dimensionLabel: dimLabels[selectedDimension] || selectedDimension,
+      fab: selectedFab,
+      fabLabel: selectedFab ? 'FAB ' + selectedFab : 'Tutte le FAB'
     };
     if (selectedFormat === 'csv') {
       generateCsvReport(cfg).catch(console.error);
@@ -2217,6 +2254,7 @@ function openReportModal() {
 
   panel.appendChild(header);
   panel.appendChild(periodSection);
+  panel.appendChild(fabSection);
   panel.appendChild(dimSection);
   panel.appendChild(fmtSection);
   panel.appendChild(actions);
@@ -2225,30 +2263,6 @@ function openReportModal() {
   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeOverlay(); });
 
   function closeOverlay() { overlay.remove(); }
-}
-
-function buildTopBarsAnalysis(stats, topN) {
-  if (!stats || !stats.length) return ['Dati non disponibili.'];
-  const sorted = stats.slice().sort(function(a, b) { return (b.total || 0) - (a.total || 0); });
-  return sorted.slice(0, topN).map(function(s) {
-    return (s.label || '—') + ': ' + (s.total || 0) + ' ticket';
-  });
-}
-
-function buildRecurringIncidentsAnalysis(tickets, topN) {
-  if (!tickets || !tickets.length) return ['Nessun ticket nel periodo selezionato.'];
-  const counts = {};
-  tickets.forEach(function(t) {
-    const name = (t.incident_name || '').trim();
-    if (!name) return;
-    counts[name] = (counts[name] || 0) + 1;
-  });
-  const recurring = Object.keys(counts)
-    .filter(function(name) { return counts[name] > 1; })
-    .sort(function(a, b) { return counts[b] - counts[a]; })
-    .slice(0, topN);
-  if (!recurring.length) return ['Nessuna problematica ricorrente nel periodo.'];
-  return recurring.map(function(name) { return name + ' (' + counts[name] + ' occorrenze)'; });
 }
 
 function _buildIncidentCategoryMap(meta) {
@@ -2368,7 +2382,9 @@ function extractTicketAnalysisData(ticket) {
     lotto: '',
     operazione: '',
     sequenza: '',
-    motivo: ''
+    motivo: '',
+    seqFrom: '',
+    seqTo: ''
   };
   const incidentId = String(ticket && ticket.incident_id != null ? ticket.incident_id : '');
   const incidentName = normalizeAnalysisText(ticket && ticket.incident_name ? ticket.incident_name : '');
@@ -2390,6 +2406,11 @@ function extractTicketAnalysisData(ticket) {
     if (!details.operazione && matchesAnalysisField(label, ['operazione', 'operation'])) details.operazione = value;
     if (!details.sequenza && matchesAnalysisField(label, ['sequenza', 'sequence'])) details.sequenza = value;
     if (!details.motivo && matchesAnalysisField(label, ['motivo', 'motivazione', 'reason', 'causa'])) details.motivo = value;
+    // From/To (es. ADSC/Allineamento): confronto esatto, "to" come sottostringa
+    // catturerebbe etichette come "Motivo".
+    const exact = normalizeAnalysisKey(label);
+    if (!details.seqFrom && ['from', 'da', 'from sequence', 'sequence from', 'sequenza da', 'da sequenza'].indexOf(exact) !== -1) details.seqFrom = value;
+    if (!details.seqTo && ['to', 'a', 'to sequence', 'sequence to', 'sequenza a', 'a sequenza'].indexOf(exact) !== -1) details.seqTo = value;
   });
   return details;
 }
@@ -2501,138 +2522,520 @@ function filterTicketsForDimensionValue(tickets, dimension, value, meta) {
   return (tickets || []).filter(function(ticket) {
     let ticketValue = '';
     if (dimension === 'category') {
-      ticketValue = (ticket && ticket.category) || catMap[String(ticket && ticket.incident_id != null ? ticket.incident_id : '')] || catMap[String(ticket && ticket.incident_name ? ticket.incident_name : '')] || '';
+      // Stessi fallback di aggregateTicketsByDimension, altrimenti "Altro"/"N/D" restano vuoti.
+      ticketValue = catMap[String(ticket && ticket.incident_id != null ? ticket.incident_id : '')] || catMap[String(ticket && ticket.incident_name ? ticket.incident_name : '')] || 'Altro';
     } else if (dimension === 'incident') {
-      ticketValue = ticket && ticket.incident_name ? ticket.incident_name : '';
+      ticketValue = (ticket && ticket.incident_name) || 'N/D';
     } else {
-      ticketValue = ticket && ticket.fab ? ticket.fab : '';
+      ticketValue = (ticket && ticket.fab) || 'N/D';
     }
     return normalizeAnalysisKey(ticketValue) === targetValue;
   });
 }
 
-function addDimensionDetailSlide(deck, slideRefs, cfg, detail, palette) {
-  const slideBg = palette.slideBg;
-  const headerBg = palette.headerBg;
-  const headerMuted = palette.headerMuted;
-  const panelBg = palette.panelBg;
-  const borderColor = palette.borderColor;
-  const titleColor = palette.titleColor;
-  const mutedColor = palette.mutedColor;
-  const accentBlue = palette.accentBlue;
-  const accentTeal = palette.accentTeal;
-  const accentOrange = palette.accentOrange;
-  const detailSlide = deck.addSlide();
-  slideRefs.push(detailSlide);
-  detailSlide.background = { color: slideBg };
-  detailSlide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
-  detailSlide.addText((cfg.dimensionLabel + ' · ' + detail.dimensionValue).toUpperCase(), { x: 0.25, y: 0, w: 9.0, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 12, valign: 'middle', charSpacing: 1 });
-  detailSlide.addText(String(detail.total) + ' ticket', { x: 9.7, y: 0, w: 3.4, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
-  detailSlide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
-  detailSlide.addShape('rect', { x: 0.28, y: 0.82, w: 6.15, h: 5.95, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
-  detailSlide.addShape('rect', { x: 6.63, y: 0.82, w: 6.42, h: 5.95, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
+// Palette fissa chiara: il report è pensato per essere proiettato/stampato,
+// quindi non segue il tema scuro della dashboard.
+const PPT_PALETTE = {
+  bg: '061A33',
+  surface: '0D2A4D',
+  track: '12355E',
+  line: '2A4A70',
+  ink: 'FFFFFF',
+  ink2: 'BFD6EC',
+  muted: '8FB3D6',
+  brand: '3CB4E6',
+  accent: '3CB4E6',
+  peak: 'FFD200',
+  white: 'FFFFFF'
+};
+const PPT_FONT = 'Segoe UI';
+const PPT_COVER_IMAGE = './public/assets/report-cover.jpg';
 
-  const leftTitle = cfg.dimension === 'incident' ? 'FAB PIU COINVOLTE' : 'INCIDENT PIU FREQUENTI';
-  const leftStats = cfg.dimension === 'incident' ? detail.fabStats : detail.incidentStats;
-  const leftSuffix = ' ticket';
-  detailSlide.addText(leftTitle, { x: 0.52, y: 1.02, w: 5.6, h: 0.24, fontSize: 8, color: accentOrange, bold: true, charSpacing: 1.3 });
-  formatTopStatsLines(leftStats, leftSuffix).forEach(function(line, index) {
-    detailSlide.addText(line, { x: 0.52, y: 1.34 + index * 0.46, w: 5.45, h: 0.36, fontSize: 10, color: titleColor, bold: index === 0 });
-  });
+async function loadReportCoverImage() {
+  try {
+    const blob = await fetch(PPT_COVER_IMAGE).then(function(r) { if (!r.ok) throw new Error(r.status); return r.blob(); });
+    return await blobToDataUrl(blob);
+  } catch (e) {
+    return null;
+  }
+}
 
-  const topRightSections = [];
-  if (cfg.dimension === 'category') {
-    topRightSections.push({ title: 'FAB principali', stats: detail.fabStats });
-  } else if (cfg.dimension === 'fab') {
-    topRightSections.push({ title: 'Categorie principali', stats: detail.categoryStats });
-  } else if (cfg.dimension === 'incident') {
-    topRightSections.push({ title: 'Categorie principali', stats: detail.categoryStats });
+async function fetchReportTickets(cfg) {
+  let tickets = [];
+  try {
+    const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(cfg.dateFrom) + '&to=' + encodeURIComponent(cfg.dateTo) + '&query=');
+    tickets = Array.isArray(sd.tickets) ? sd.tickets : [];
+  } catch (e) { tickets = []; }
+  if (!cfg.fab) return tickets;
+  const target = String(cfg.fab).trim().toUpperCase();
+  return tickets.filter(function(t) { return String(t.fab || '').trim().toUpperCase() === target; });
+}
+
+function parseTicketDate(ticket) {
+  if (!ticket || !ticket.created_at) return null;
+  const d = new Date(String(ticket.created_at).replace(' ', 'T'));
+  return isNaN(d) ? null : d;
+}
+
+function pptPad2(n) { return String(n).padStart(2, '0'); }
+function pptDayKey(d) { return d.getFullYear() + '-' + pptPad2(d.getMonth() + 1) + '-' + pptPad2(d.getDate()); }
+function pptDayLabel(d) { return pptPad2(d.getDate()) + '/' + pptPad2(d.getMonth() + 1); }
+function pptDateFromKey(key) {
+  const p = String(key || '').split('-');
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+}
+function pptFormatDate(key) {
+  const d = pptDateFromKey(key);
+  return isNaN(d) ? String(key || '') : d.toLocaleDateString('it-IT');
+}
+
+function pptTruncate(text, max) {
+  const s = String(text == null ? '' : text);
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function pptPct(part, total) {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+// Serie temporale per il grafico di andamento: oraria per un solo giorno,
+// giornaliera fino a ~2 mesi, settimanale oltre.
+function buildReportTrend(tickets, dateFrom, dateTo) {
+  const start = pptDateFromKey(dateFrom);
+  let end = pptDateFromKey(dateTo);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (end > today) end = today;
+  if (isNaN(start) || isNaN(end) || end < start) return { labels: [], values: [], unit: 'giorno' };
+  const days = Math.round((end - start) / 86400000) + 1;
+
+  if (days <= 1) {
+    const values = new Array(24).fill(0);
+    tickets.forEach(function(t) { const d = parseTicketDate(t); if (d) values[d.getHours()]++; });
+    return { labels: values.map(function(_, h) { return pptPad2(h) + ':00'; }), values: values, unit: 'ora' };
   }
 
-  const frequentFields = [
-    { title: 'Macchine ricorrenti', stats: countTopValues(detail.fields.macchina, 3, 2) },
-    { title: 'Lotti ricorrenti', stats: countTopValues(detail.fields.lotto, 3, 2) },
-    { title: 'Operazioni ricorrenti', stats: countTopValues(detail.fields.operazione, 3, 2) },
-    { title: 'Sequenze ricorrenti', stats: countTopValues(detail.fields.sequenza, 3, 2) }
-  ];
-  const rightSections = topRightSections.concat(frequentFields).filter(function(section) {
-    return Array.isArray(section.stats) && section.stats.length;
-  }).slice(0, 4);
-  rightSections.forEach(function(section, sectionIndex) {
-    const baseY = 1.02 + sectionIndex * 1.36;
-    detailSlide.addText(section.title.toUpperCase(), { x: 6.88, y: baseY, w: 5.75, h: 0.22, fontSize: 7.6, color: accentBlue, bold: true, charSpacing: 1.1 });
-    formatTopStatsLines(section.stats, section.title.indexOf('ricorrenti') !== -1 ? ' occ.' : ' ticket').forEach(function(line, lineIndex) {
-      detailSlide.addText(line, { x: 6.88, y: baseY + 0.28 + lineIndex * 0.28, w: 5.7, h: 0.24, fontSize: 9.2, color: lineIndex === 0 ? titleColor : mutedColor, bold: lineIndex === 0 });
-    });
+  const weekly = days > 62;
+  const index = {};
+  const labels = [];
+  const values = [];
+  const cursor = new Date(start);
+  if (weekly) cursor.setDate(cursor.getDate() - ((cursor.getDay() || 7) - 1));
+  while (cursor <= end) {
+    index[pptDayKey(cursor)] = labels.length;
+    labels.push(weekly ? 'Sett. ' + pptDayLabel(cursor) : pptDayLabel(cursor));
+    values.push(0);
+    cursor.setDate(cursor.getDate() + (weekly ? 7 : 1));
+  }
+  tickets.forEach(function(t) {
+    const d = parseTicketDate(t);
+    if (!d) return;
+    const bucket = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (weekly) bucket.setDate(bucket.getDate() - ((bucket.getDay() || 7) - 1));
+    const i = index[pptDayKey(bucket)];
+    if (i != null) values[i]++;
+  });
+  return { labels: labels, values: values, unit: weekly ? 'settimana' : 'giorno', days: days };
+}
+
+const PPT_WEEKDAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
+// Turni di produzione. Il turno di notte inizia alle 22:00 e finisce alle 06:00
+// del giorno dopo: un ticket delle 02:00 di martedì appartiene alla notte di lunedì.
+const PPT_HOUR_BANDS = ['22:00–06:00', '06:00–14:00', '14:00–22:00'];
+
+function pptShiftOf(d) {
+  const h = d.getHours();
+  if (h >= 6 && h < 14) return { band: 1, wd: (d.getDay() + 6) % 7 };
+  if (h >= 14 && h < 22) return { band: 2, wd: (d.getDay() + 6) % 7 };
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (h < 6 ? 1 : 0));
+  return { band: 0, wd: (start.getDay() + 6) % 7 };
+}
+
+// Tutti i numeri del report calcolati una volta sola: grafici e testo
+// scritto leggono da qui, così non possono divergere.
+function buildReportFacts(cfg, tickets, stats, meta) {
+  const total = tickets.length;
+  const details = tickets.map(extractTicketAnalysisData);
+  const machines = [];
+  const operations = [];
+  const lots = [];
+  details.forEach(function(d) {
+    if (d.macchina) machines.push(d.macchina);
+    if (d.lotto) lots.push(d.lotto);
+    const op = d.operazione || d.motivo;
+    if (op) operations.push(op);
   });
 
-  const summaryBits = [];
-  if (detail.incidentStats.length) summaryBits.push('Incident principale: ' + detail.incidentStats[0].label + ' (' + detail.incidentStats[0].total + ')');
-  if (detail.categoryStats.length) summaryBits.push('Categoria principale: ' + detail.categoryStats[0].label);
-  if (detail.fabStats.length) summaryBits.push('FAB principale: ' + detail.fabStats[0].label);
-  ['macchina', 'lotto', 'operazione', 'sequenza'].forEach(function(fieldKey) {
-    const top = countTopValues(detail.fields[fieldKey], 1, 2);
-    if (top.length) summaryBits.push(fieldKey.charAt(0).toUpperCase() + fieldKey.slice(1) + ' piu ricorrente: ' + top[0].label);
+  // Sequenze From → To raggruppate per incident (tipicamente ADSC/Allineamento).
+  const seqByIncident = {};
+  details.forEach(function(d) {
+    if (!d.seqFrom && !d.seqTo) return;
+    const key = normalizeAnalysisKey(d.incident);
+    if (!seqByIncident[key]) seqByIncident[key] = { incident: d.incident, total: 0, from: [], to: [], pairs: [] };
+    const g = seqByIncident[key];
+    g.total++;
+    if (d.seqFrom) g.from.push(d.seqFrom);
+    if (d.seqTo) g.to.push(d.seqTo);
+    if (d.seqFrom && d.seqTo) g.pairs.push(d.seqFrom + ' → ' + d.seqTo);
   });
-  detailSlide.addShape('rect', { x: 0.28, y: 6.92, w: 12.77, h: 0.22, fill: { color: borderColor }, line: { color: borderColor } });
-  detailSlide.addText(summaryBits.length ? summaryBits.join('  ·  ') : 'Nessun pattern aggiuntivo disponibile per questa vista.', {
-    x: 0.35, y: 6.98, w: 12.55, h: 0.18, fontSize: 8, color: mutedColor, italic: true, align: 'center'
+  const incidentTotals = {};
+  details.forEach(function(d) { const k = normalizeAnalysisKey(d.incident); incidentTotals[k] = (incidentTotals[k] || 0) + 1; });
+  const sequences = Object.keys(seqByIncident).map(function(k) {
+    const g = seqByIncident[k];
+    return {
+      incident: g.incident,
+      total: g.total,
+      incidentTotal: incidentTotals[k] || g.total,
+      from: countTopValues(g.from, 10, 1),
+      to: countTopValues(g.to, 10, 1),
+      pairs: countTopValues(g.pairs, 12, 1),
+      distinctPairs: countTopValues(g.pairs, 100000, 1).length
+    };
+  }).sort(function(a, b) { return b.total - a.total; }).slice(0, 3);
+
+  const dayCounts = {};
+  const weekdayCounts = new Array(7).fill(0);
+  const grid = PPT_WEEKDAYS.map(function() { return new Array(PPT_HOUR_BANDS.length).fill(0); });
+  tickets.forEach(function(t) {
+    const d = parseTicketDate(t);
+    if (!d) return;
+    const k = pptDayKey(d);
+    dayCounts[k] = (dayCounts[k] || 0) + 1;
+    const wd = (d.getDay() + 6) % 7;
+    weekdayCounts[wd]++;
+    const shift = pptShiftOf(d);
+    grid[shift.wd][shift.band]++;
+  });
+  const dayKeys = Object.keys(dayCounts).sort(function(a, b) { return dayCounts[b] - dayCounts[a] || a.localeCompare(b); });
+  let peakBand = { wd: 0, band: 0, n: 0 };
+  grid.forEach(function(row, wd) { row.forEach(function(n, band) { if (n > peakBand.n) peakBand = { wd: wd, band: band, n: n }; }); });
+  let peakWeekday = 0;
+  weekdayCounts.forEach(function(n, i) { if (n > weekdayCounts[peakWeekday]) peakWeekday = i; });
+
+  const trend = buildReportTrend(tickets, cfg.dateFrom, cfg.dateTo);
+  const days = trend.unit === 'ora' ? 1 : Math.max(1, trend.days || 1);
+
+  return {
+    total: total,
+    stats: stats,
+    trend: trend,
+    days: days,
+    avgPerDay: Math.round((total / days) * 10) / 10,
+    activeDays: Object.keys(dayCounts).length,
+    peakDay: dayKeys.length ? { key: dayKeys[0], n: dayCounts[dayKeys[0]] } : null,
+    weekdayCounts: weekdayCounts,
+    peakWeekday: weekdayCounts[peakWeekday] ? peakWeekday : -1,
+    grid: grid,
+    peakBand: peakBand,
+    fabStats: _aggregateBy(tickets, function(t) { return normalizeAnalysisText(t.fab || 'N/D') || 'N/D'; }),
+    machines: countTopValues(machines, 10, 2),
+    operations: countTopValues(operations, 10, 2),
+    lots: countTopValues(lots, 10, 2),
+    machinesTotal: machines.length,
+    operationsTotal: operations.length,
+    sequences: sequences
+  };
+}
+
+// Marchio testuale "ProdOps": "Prod" pieno bianco, "Ops" sottile azzurro.
+function pptWordmark(slide, x, y, w, h, fontSize, align) {
+  slide.addText([
+    { text: 'Prod', options: { bold: true, color: PPT_PALETTE.white } },
+    { text: 'Ops', options: { color: PPT_PALETTE.accent } }
+  ], { x: x, y: y, w: w, h: h, fontFace: PPT_FONT, fontSize: fontSize, align: align || 'left', valign: 'middle', margin: 0 });
+}
+
+// Logo: quadrato azzurro con tre barre crescenti.
+function pptLogoMark(slide, x, y, size) {
+  const P = PPT_PALETTE;
+  const u = size / 56;
+  slide.addShape('roundRect', { x: x, y: y, w: size, h: size, rectRadius: 0.2, fill: { color: P.accent }, line: { color: P.accent } });
+  [[13, 30, 14], [24.5, 21, 23], [36, 12, 32]].forEach(function(b) {
+    slide.addShape('rect', { x: x + b[0] * u, y: y + b[1] * u, w: 7 * u, h: b[2] * u, fill: { color: P.bg }, line: { color: P.bg } });
   });
 }
 
-function addOccurrenceTableSlides(deck, slideRefs, cfg, detail, palette) {
-  const rows = Array.isArray(detail.occurrenceRows) ? detail.occurrenceRows : [];
-  if (!rows.length) return;
-  const pageSize = 10;
-  for (let start = 0; start < rows.length; start += pageSize) {
-    const pageRows = rows.slice(start, start + pageSize);
+function pptAddHeader(slide, kicker, title, aside) {
+  const P = PPT_PALETTE;
+  slide.background = { color: P.bg };
+  slide.addText(String(kicker || '').toUpperCase(), { x: 0.5, y: 0.42, w: 9, h: 0.24, fontFace: PPT_FONT, fontSize: 11, bold: true, color: P.accent, charSpacing: 2.5, margin: 0 });
+  slide.addText(title, { x: 0.5, y: 0.68, w: 9.6, h: 0.52, fontFace: PPT_FONT, fontSize: 28, bold: true, color: P.ink, margin: 0, fit: 'shrink' });
+  if (aside) {
+    slide.addText(aside, { x: 0.5, y: 1.2, w: 9.6, h: 0.26, fontFace: PPT_FONT, fontSize: 13, color: P.ink2, margin: 0 });
+  }
+  pptWordmark(slide, 10.55, 0.42, 2.28, 0.34, 17, 'right');
+}
+
+function pptAddSectionLabel(slide, text, x, y, w) {
+  slide.addText(String(text).toUpperCase(), { x: x, y: y, w: w, h: 0.26, fontFace: PPT_FONT, fontSize: 10, bold: true, color: PPT_PALETTE.muted, charSpacing: 1.5, margin: 0 });
+}
+
+function pptEmptyNote(slide, text, box) {
+  slide.addShape('roundRect', { x: box.x, y: box.y, w: box.w, h: box.h, rectRadius: 0.1, fill: { color: PPT_PALETTE.surface }, line: { color: PPT_PALETTE.surface } });
+  slide.addText(text, { x: box.x, y: box.y, w: box.w, h: box.h, fontFace: PPT_FONT, fontSize: 11, color: PPT_PALETTE.muted, italic: true, align: 'center', valign: 'middle' });
+}
+
+// Barre orizzontali ordinate dalla voce più alta, valore a fine barra.
+function pptBarChart(deck, slide, stats, box, maxItems) {
+  const P = PPT_PALETTE;
+  const items = stats.slice(0, maxItems || 10);
+  if (!items.length) return;
+  slide.addChart(deck.ChartType.bar, [{
+    name: 'Ticket',
+    labels: items.map(function(s) { return pptTruncate(s.label, 34); }),
+    values: items.map(function(s) { return s.total; })
+  }], {
+    // Con poche voci le barre non devono gonfiarsi su tutta l'altezza disponibile.
+    x: box.x, y: box.y, w: box.w, h: Math.min(box.h, 0.5 * items.length + 0.4),
+    barDir: 'bar',
+    barGapWidthPct: 45,
+    chartColors: [P.brand],
+    catAxisOrientation: 'maxMin',
+    catAxisLabelColor: P.ink,
+    catAxisLabelFontFace: PPT_FONT,
+    catAxisLabelFontSize: 11,
+    catAxisLineShow: false,
+    valAxisHidden: true,
+    valAxisMinVal: 0,
+    valGridLine: { style: 'none' },
+    catGridLine: { style: 'none' },
+    showValue: true,
+    dataLabelPosition: 'outEnd',
+    dataLabelColor: P.ink,
+    dataLabelFontFace: PPT_FONT,
+    dataLabelFontSize: 12,
+    dataLabelFontBold: true,
+    showLegend: false
+  });
+}
+
+// Colonne per giorno (o per ora / settimana a seconda del periodo).
+function pptColumnChart(deck, slide, trend, box) {
+  const P = PPT_PALETTE;
+  if (!trend.labels.length) return;
+  const many = trend.labels.length > 31;
+  const peak = Math.max.apply(null, trend.values.concat([1]));
+  // Il picco va in una seconda serie sovrapposta al 100%, così si colora di giallo.
+  // Non "stacked": con le etichette outEnd PowerPoint rifiuta il file.
+  const peakIdx = trend.values.indexOf(peak);
+  slide.addChart(deck.ChartType.bar, [
+    { name: 'Ticket', labels: trend.labels, values: trend.values.map(function(v, i) { return i === peakIdx ? 0 : v; }) },
+    { name: 'Picco', labels: trend.labels, values: trend.values.map(function(v, i) { return i === peakIdx ? v : 0; }) }
+  ], {
+    x: box.x, y: box.y, w: box.w, h: box.h,
+    barDir: 'col',
+    barGrouping: 'clustered',
+    barOverlapPct: 100,
+    barGapWidthPct: many ? 30 : 40,
+    chartColors: [P.brand, P.peak],
+    catAxisLabelColor: P.ink2,
+    catAxisLabelFontFace: PPT_FONT,
+    catAxisLabelFontSize: 10,
+    catAxisLabelFrequency: Math.max(1, Math.ceil(trend.labels.length / (many ? 12 : 16))),
+    catAxisLineShow: true,
+    catAxisLineColor: P.line,
+    valAxisLabelColor: P.muted,
+    valAxisLabelFontFace: PPT_FONT,
+    valAxisLabelFontSize: 9,
+    valAxisLineShow: false,
+    valAxisMinVal: 0,
+    valAxisMajorUnit: peak <= 10 ? 1 : undefined,
+    valGridLine: { color: P.line, size: 0.5 },
+    catGridLine: { style: 'none' },
+    showValue: !many,
+    dataLabelPosition: 'outEnd',
+    dataLabelColor: P.ink,
+    dataLabelFontFace: PPT_FONT,
+    dataLabelFontSize: 11,
+    dataLabelFontBold: true,
+    dataLabelFormatCode: '0;;;',
+    showLegend: false
+  });
+}
+
+function pptTable(slide, header, rows, box, colW, aligns) {
+  const P = PPT_PALETTE;
+  const head = header.map(function(h, i) {
+    return { text: h, options: { bold: true, color: P.ink2, fill: { color: P.surface }, fontSize: 10, align: aligns[i] || 'left' } };
+  });
+  const body = rows.map(function(r) {
+    return r.map(function(cell, ci) {
+      return { text: String(cell == null ? '' : cell), options: { color: ci === 0 && aligns[0] === 'center' ? P.muted : P.ink, fill: { color: P.bg }, fontSize: 11, align: aligns[ci] || 'left' } };
+    });
+  });
+  slide.addTable([head].concat(body), {
+    x: box.x, y: box.y, w: box.w, colW: colW,
+    fontFace: PPT_FONT,
+    rowH: 0.31,
+    valign: 'middle',
+    margin: [0.03, 0.08, 0.03, 0.08],
+    border: { type: 'solid', pt: 0.5, color: P.line }
+  });
+}
+
+function pptAddKpi(slide, x, y, w, label, value, note) {
+  const P = PPT_PALETTE;
+  slide.addShape('roundRect', { x: x, y: y, w: w, h: 1.2, rectRadius: 0.12, fill: { color: P.surface }, line: { color: P.surface } });
+  slide.addText(String(label).toUpperCase(), { x: x + 0.24, y: y + 0.16, w: w - 0.48, h: 0.22, fontFace: PPT_FONT, fontSize: 9, bold: true, color: P.muted, charSpacing: 1.2, margin: 0 });
+  slide.addText(String(value), { x: x + 0.24, y: y + 0.4, w: w - 0.48, h: 0.5, fontFace: PPT_FONT, fontSize: 28, bold: true, color: P.ink, margin: 0, fit: 'shrink' });
+  if (note) slide.addText(note, { x: x + 0.24, y: y + 0.9, w: w - 0.48, h: 0.2, fontFace: PPT_FONT, fontSize: 10, color: P.ink2, margin: 0, fit: 'shrink' });
+}
+
+// Scala sequenziale a una sola tinta, dal blu del pannello all'azzurro del brand.
+function pptHeatColor(n, max) {
+  if (!n || !max) return '0A2240';
+  const from = [0x12, 0x35, 0x5E];
+  const to = [0x3C, 0xB4, 0xE6];
+  const t = Math.sqrt(n / max);
+  return from.map(function(c, i) {
+    return Math.round(c + (to[i] - c) * t).toString(16).padStart(2, '0');
+  }).join('').toUpperCase();
+}
+
+function pptHeatmap(slide, grid, box) {
+  const P = PPT_PALETTE;
+  let max = 0;
+  grid.forEach(function(row) { row.forEach(function(n) { if (n > max) max = n; }); });
+  const head = [{ text: '', options: { fill: { color: P.bg } } }].concat(PPT_HOUR_BANDS.map(function(b) {
+    return { text: b, options: { fontSize: 12, color: P.ink2, bold: true, align: 'center', fill: { color: P.bg } } };
+  }));
+  const rows = grid.map(function(row, wd) {
+    return [{ text: PPT_WEEKDAYS[wd], options: { fontSize: 12, color: P.ink2, bold: true, fill: { color: P.bg } } }].concat(row.map(function(n) {
+      const fill = pptHeatColor(n, max);
+      // Sulle celle più chiare il numero va scuro per restare leggibile.
+      const light = max && n / max > 0.6;
+      return { text: n ? String(n) : '', options: { fontSize: 16, bold: true, align: 'center', color: light ? P.bg : P.white, fill: { color: fill } } };
+    }));
+  });
+  const firstCol = 1.6;
+  const cellW = (box.w - firstCol) / PPT_HOUR_BANDS.length;
+  slide.addTable([head].concat(rows), {
+    x: box.x, y: box.y, w: box.w,
+    colW: [firstCol].concat(PPT_HOUR_BANDS.map(function() { return cellW; })),
+    rowH: [0.32].concat(PPT_WEEKDAYS.map(function() { return 0.5; })),
+    fontFace: PPT_FONT,
+    valign: 'middle',
+    margin: [0.02, 0.04, 0.02, 0.04],
+    border: { type: 'solid', pt: 1.5, color: P.bg }
+  });
+}
+
+function pptStatsLine(stats, total, max) {
+  return stats.slice(0, max).map(function(s) {
+    return s.label + ' ' + s.total + (total ? ' (' + pptPct(s.total, total) + '%)' : '');
+  }).join(', ');
+}
+
+// Report scritto: sezioni {title, paras[]} con tutti i conteggi.
+function buildWrittenReport(cfg, facts, periodTickets, meta, rangeLabel) {
+  const total = facts.total;
+  const dimLower = cfg.dimensionLabel.toLowerCase();
+  const sections = [];
+
+  const volume = ['Nel periodo ' + rangeLabel + ' sono stati aperti ' + total + ' ticket (' + cfg.fabLabel + ').'];
+  if (facts.days > 1) {
+    volume.push('Media di ' + facts.avgPerDay.toLocaleString('it-IT') + ' ticket al giorno su ' + facts.days + ' giorni; giorni con almeno un ticket: ' + facts.activeDays + ' (' + pptPct(facts.activeDays, facts.days) + '%).');
+  }
+  if (facts.peakDay) volume.push('Giorno di picco: ' + pptFormatDate(facts.peakDay.key) + ' con ' + facts.peakDay.n + ' ticket.');
+  sections.push({ title: 'Volume', paras: volume });
+
+  const dist = facts.stats.slice(0, 8).map(function(s, i) {
+    return (i + 1) + '. ' + s.label + ': ' + s.total + ' ticket (' + pptPct(s.total, total) + '%)';
+  });
+  if (facts.stats.length > 8) {
+    const rest = facts.stats.slice(8).reduce(function(acc, s) { return acc + s.total; }, 0);
+    dist.push('Altre ' + (facts.stats.length - 8) + ' voci: ' + rest + ' ticket (' + pptPct(rest, total) + '%)');
+  }
+  sections.push({ title: 'Distribuzione per ' + dimLower + ' (' + facts.stats.length + ' voci)', paras: dist });
+
+  if (!cfg.fab && cfg.dimension !== 'fab' && facts.fabStats.length) {
+    sections.push({ title: 'Distribuzione per FAB', paras: [pptStatsLine(facts.fabStats, total, 8) + '.'] });
+  }
+
+  const rec = [];
+  rec.push(facts.machines.length
+    ? 'Macchine ripetute: ' + facts.machines.map(function(m) { return m.label + ' (' + m.total + ')'; }).join(', ') + '.'
+    : 'Nessuna macchina compare in più di un ticket.');
+  rec.push(facts.operations.length
+    ? 'Operazioni ripetute: ' + facts.operations.map(function(m) { return m.label + ' (' + m.total + ')'; }).join(', ') + '.'
+    : 'Nessuna operazione compare in più di un ticket.');
+  if (facts.lots.length) rec.push('Lotti ripetuti: ' + facts.lots.map(function(m) { return m.label + ' (' + m.total + ')'; }).join(', ') + '.');
+  sections.push({ title: 'Ricorrenze', paras: rec });
+
+  facts.sequences.forEach(function(seq) {
+    const fmt = function(list, n) { return list.slice(0, n).map(function(m) { return m.label + ' (' + m.total + ')'; }).join(', '); };
+    const paras = [seq.total + ' ticket con sequenza su ' + seq.incidentTotal + ' di ' + seq.incident + '; ' + seq.distinctPairs + ' passaggi From → To diversi.'];
+    if (seq.pairs.length) paras.push('Passaggi più frequenti: ' + fmt(seq.pairs, 5) + '.');
+    if (seq.from.length) paras.push('From più frequenti: ' + fmt(seq.from, 5) + '.');
+    if (seq.to.length) paras.push('To più frequenti: ' + fmt(seq.to, 5) + '.');
+    sections.push({ title: 'Sequenze · ' + seq.incident, paras: paras });
+  });
+
+  const when = [];
+  if (facts.peakWeekday >= 0) when.push('Giorno della settimana più carico: ' + PPT_WEEKDAYS[facts.peakWeekday].toLowerCase() + ' (' + facts.weekdayCounts[facts.peakWeekday] + ' ticket).');
+  if (facts.peakBand.n) when.push('Turno più carico: ' + PPT_WEEKDAYS[facts.peakBand.wd].toLowerCase() + ' ' + PPT_HOUR_BANDS[facts.peakBand.band] + ' (' + facts.peakBand.n + ' ticket).');
+  if (when.length) sections.push({ title: 'Quando succede', paras: when });
+
+  facts.stats.slice(0, 5).forEach(function(s) {
+    const value = normalizeAnalysisText(s.label || 'Voce');
+    const subset = filterTicketsForDimensionValue(periodTickets, cfg.dimension, value, meta);
+    const detail = buildDimensionDetailAnalysis(cfg.dimension, value, subset, meta);
+    const paras = [s.total + ' ticket, ' + pptPct(s.total, total) + '% del totale.'];
+    if (cfg.dimension !== 'incident' && detail.incidentStats.length) paras.push('Incident: ' + pptStatsLine(detail.incidentStats, 0, 4) + '.');
+    if (cfg.dimension !== 'fab' && !cfg.fab && detail.fabStats.length) paras.push('FAB: ' + pptStatsLine(detail.fabStats, 0, 5) + '.');
+    const m = countTopValues(detail.fields.macchina, 1, 2);
+    const o = countTopValues(detail.fields.operazione, 1, 2);
+    if (m.length) paras.push('Macchina più ripetuta: ' + m[0].label + ' (' + m[0].total + ').');
+    if (o.length) paras.push('Operazione più ripetuta: ' + o[0].label + ' (' + o[0].total + ').');
+    sections.push({ title: cfg.dimensionLabel + ' · ' + value, paras: paras });
+  });
+
+  return sections;
+}
+
+// Impagina le sezioni su due colonne, stimando l'altezza dal numero di righe.
+function addWrittenReportSlides(deck, slideRefs, sections, rangeLabel) {
+  const P = PPT_PALETTE;
+  const colW = 5.95;
+  const charsPerLine = 92;
+  const lineH = 0.235;
+  const maxH = 5.35;
+  function sectionHeight(sec) {
+    let lines = 0;
+    sec.paras.forEach(function(p) { lines += Math.max(1, Math.ceil(p.length / charsPerLine)); });
+    return 0.3 + lines * lineH + 0.15;
+  }
+  const pages = [];
+  let page = [[], []];
+  let col = 0;
+  let used = 0;
+  sections.forEach(function(sec) {
+    const h = sectionHeight(sec);
+    if (used + h > maxH && used > 0) {
+      col++;
+      used = 0;
+      if (col > 1) { pages.push(page); page = [[], []]; col = 0; }
+    }
+    page[col].push(sec);
+    used += h;
+  });
+  pages.push(page);
+
+  pages.forEach(function(cols, pi) {
     const slide = deck.addSlide();
     slideRefs.push(slide);
-    slide.background = { color: palette.slideBg };
-    slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: palette.headerBg }, line: { color: palette.headerBg } });
-    slide.addText((cfg.dimensionLabel + ' · ' + detail.dimensionValue + ' · ANALISI OCCORRENZE').toUpperCase(), {
-      x: 0.25, y: 0, w: 10.7, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 11, valign: 'middle', charSpacing: 1
-    });
-    slide.addText('Righe ' + (start + 1) + '-' + (start + pageRows.length) + ' di ' + rows.length, {
-      x: 10.9, y: 0, w: 2.1, h: 0.52, color: palette.headerMuted, fontSize: 8, align: 'right', valign: 'middle'
-    });
-    slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: palette.accentTeal }, line: { color: palette.accentTeal } });
-
-    const cols = [
-      { key: 'tipo', label: 'Tipo', x: 0.35, w: 1.1 },
-      { key: 'elemento', label: 'Elemento', x: 1.5, w: 3.15 },
-      { key: 'dettaglio', label: 'Motivazione / Operazione', x: 4.75, w: 5.0 },
-      { key: 'fab', label: 'FAB', x: 9.9, w: 1.0 },
-      { key: 'occorrenze', label: 'Occ.', x: 11.15, w: 1.1 }
-    ];
-    slide.addShape('rect', { x: 0.32, y: 0.92, w: 12.3, h: 0.38, fill: { color: palette.panelBg }, line: { color: palette.borderColor, width: 0.5 } });
-    cols.forEach(function(col) {
-      slide.addText(col.label.toUpperCase(), {
-        x: col.x, y: 1.0, w: col.w, h: 0.16, fontSize: 7.5, color: palette.accentBlue, bold: true, charSpacing: 0.8
-      });
-    });
-
-    pageRows.forEach(function(row, index) {
-      const y = 1.34 + index * 0.52;
-      const fillColor = index % 2 === 0 ? palette.panelBg : palette.slideBg;
-      slide.addShape('rect', { x: 0.32, y: y - 0.06, w: 12.3, h: 0.42, fill: { color: fillColor }, line: { color: palette.borderColor, width: 0.25 } });
-      cols.forEach(function(col) {
-        const value = row[col.key] != null ? String(row[col.key]) : '';
-        slide.addText(value, {
-          x: col.x, y: y, w: col.w, h: 0.18, fontSize: col.key === 'dettaglio' ? 8.2 : 8.4,
-          color: col.key === 'occorrenze' ? palette.titleColor : palette.mutedColor,
-          bold: col.key === 'occorrenze' || (col.key === 'elemento' && row.occorrenze > 1),
-          fit: 'shrink'
+    pptAddHeader(slide, 'Report' + (pages.length > 1 ? ' · ' + (pi + 1) + '/' + pages.length : ''), 'Riepilogo con i conteggi', rangeLabel);
+    cols.forEach(function(secs, ci) {
+      const runs = [];
+      secs.forEach(function(sec, si) {
+        runs.push({ text: sec.title.toUpperCase(), options: { bold: true, color: P.accent, fontSize: 10.5, charSpacing: 1.2, breakLine: true, paraSpaceBefore: si ? 14 : 0, paraSpaceAfter: 5 } });
+        sec.paras.forEach(function(p) {
+          runs.push({ text: p, options: { color: P.ink, fontSize: 11.5, breakLine: true, paraSpaceAfter: 4, lineSpacingMultiple: 1.1 } });
         });
       });
+      if (runs.length) {
+        slide.addText(runs, { x: 0.5 + ci * 6.38, y: 1.55, w: colW, h: maxH, fontFace: PPT_FONT, valign: 'top', margin: 0 });
+      }
     });
-  }
-}
-
-function formatTopStatsLines(stats, suffix) {
-  if (!stats || !stats.length) return ['Nessuna ricorrenza rilevata'];
-  return stats.map(function(item, index) {
-    return (index + 1) + '. ' + item.label + ' (' + item.total + (suffix || '') + ')';
   });
 }
 
@@ -2646,157 +3049,158 @@ async function generatePowerPointReport(cfg) {
     generatePptReportBtn.textContent = 'Generazione...';
   }
   try {
-    let periodTickets = [];
-    try {
-      const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(cfg.dateFrom) + '&to=' + encodeURIComponent(cfg.dateTo) + '&query=');
-      periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
-    } catch (e) { periodTickets = []; }
-
+    const P = PPT_PALETTE;
+    const periodTickets = await fetchReportTickets(cfg);
     const meta = await fetchMeta();
     const stats = aggregateTicketsByDimension(periodTickets, cfg.dimension, meta);
-    const total = periodTickets.length;
+    const facts = buildReportFacts(cfg, periodTickets, stats, meta);
+    const total = facts.total;
+    const trend = facts.trend;
+    const rangeLabel = cfg.dateFrom === cfg.dateTo ? pptFormatDate(cfg.dateFrom) : pptFormatDate(cfg.dateFrom) + ' – ' + pptFormatDate(cfg.dateTo);
+    const dimLower = cfg.dimensionLabel.toLowerCase();
 
     const deck = new window.PptxGenJS();
     deck.layout = 'LAYOUT_WIDE';
-    deck.title = 'ProdOps Report · ' + cfg.periodLabel;
-
-    const isDark = document.body.classList.contains('theme-dark');
-    const slideBg     = isDark ? '0F1B2D' : 'FFFFFF';
-    const headerBg    = isDark ? '0C4A6E' : '0C5F8C';
-    const headerMuted = isDark ? 'A5C8E1' : 'BFE0F5';
-    const panelBg     = isDark ? '162236' : 'EFF6FC';
-    const borderColor = isDark ? '253A52' : 'C9DCF0';
-    const titleColor  = isDark ? 'E6EEF9' : '111827';
-    const mutedColor  = isDark ? '9DB1C9' : '6B7280';
-    const accentBlue  = isDark ? '38BDF8' : '0C5F8C';
-    const accentTeal  = isDark ? '2EC4D6' : '0891B2';
-    const accentOrange= isDark ? 'FBBF24' : 'B45309';
-    const footerBg    = isDark ? '0A1422' : 'E2EDF6';
-    const footerText  = isDark ? '4B6580' : '7A96AE';
+    deck.title = 'ProdOps Report · ' + cfg.fabLabel + ' · ' + cfg.periodLabel;
 
     const createdAt = new Date();
     const fileDate = formatLocalDateStamp(createdAt);
     const generatedLabel = createdAt.toLocaleString('it-IT');
+    const showUser = currentUser && currentUser.username && canDisplayAdminUsernames();
     const slideRefs = [];
 
-    function addFooter(slide, n, tot) {
-      slide.addShape('rect', { x: 0, y: 7.22, w: 13.33, h: 0.28, fill: { color: footerBg }, line: { color: footerBg } });
-      slide.addText(
-        'ProdOps Dashboard  ·  ' + cfg.periodLabel +
-        (currentUser && currentUser.username && canDisplayAdminUsernames() ? '  ·  ' + currentUser.username : '') +
-        '  ·  ' + generatedLabel,
-        { x: 0.25, y: 7.22, w: 11.8, h: 0.28, fontSize: 7, color: footerText, valign: 'middle' }
-      );
-      slide.addText(n + ' / ' + tot, { x: 12.7, y: 7.22, w: 0.4, h: 0.28, fontSize: 7, color: footerText, valign: 'middle', align: 'right' });
-    }
-
-    // ── SLIDE 1: COVER ──
+    // ── Copertina: wafer a destra, sfumatura scura a sinistra per il testo ──
     const cover = deck.addSlide();
-    slideRefs.push(cover);
-    cover.background = { color: slideBg };
-    cover.addShape('rect', { x: 0, y: 0, w: 4.5, h: 7.5, fill: { color: headerBg }, line: { color: headerBg } });
-    cover.addShape('rect', { x: 4.5, y: 0, w: 0.035, h: 7.5, fill: { color: accentTeal }, line: { color: accentTeal } });
-    cover.addText('PRODOPS', { x: 0.4, y: 0.9, w: 3.7, h: 0.65, fontSize: 32, bold: true, color: 'FFFFFF', charSpacing: 4 });
-    cover.addText('Report Dashboard', { x: 0.4, y: 1.6, w: 3.7, h: 0.38, fontSize: 15, color: headerMuted });
-    cover.addShape('rect', { x: 0.4, y: 2.18, w: 3.0, h: 0.025, fill: { color: headerMuted }, line: { color: headerMuted } });
-    cover.addText('PERIODO', { x: 0.4, y: 2.45, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-    cover.addText(cfg.periodLabel, { x: 0.4, y: 2.7, w: 3.7, h: 0.38, fontSize: 13, color: 'FFFFFF', bold: true });
-    cover.addText('ANALISI PER', { x: 0.4, y: 3.22, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-    cover.addText(cfg.dimensionLabel, { x: 0.4, y: 3.47, w: 3.7, h: 0.38, fontSize: 13, color: 'FFFFFF', bold: true });
-    cover.addText('GENERATO IL', { x: 0.4, y: 3.99, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-    cover.addText(generatedLabel, { x: 0.4, y: 4.24, w: 3.7, h: 0.3, fontSize: 10.5, color: 'FFFFFF' });
-    if (currentUser && currentUser.username && canDisplayAdminUsernames()) {
-      cover.addText('UTENTE', { x: 0.4, y: 4.72, w: 3.7, h: 0.22, fontSize: 7.5, color: headerMuted, bold: true, charSpacing: 1.5 });
-      cover.addText(currentUser.username, { x: 0.4, y: 4.97, w: 3.7, h: 0.35, fontSize: 14, color: 'FFFFFF', bold: true });
-    }
-    cover.addText('Ticket nel periodo: ' + total, { x: 0.4, y: 6.7, w: 3.7, h: 0.28, fontSize: 9.5, color: headerMuted, italic: true });
-
-    cover.addText('RIEPILOGO ESECUTIVO', { x: 4.85, y: 0.45, w: 8.2, h: 0.3, fontSize: 8.5, color: accentBlue, bold: true, charSpacing: 1.5 });
-    cover.addShape('rect', { x: 4.85, y: 0.82, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
-    const kpiData = [{ label: 'Ticket totali nel periodo', value: String(total) }]
-      .concat(stats.slice(0, 3).map(function(s, i) {
-        return { label: (i + 1) + '° per ' + cfg.dimensionLabel, value: s.label + ' (' + s.total + ' ticket)' };
-      }));
-    if (stats.length > 3) kpiData.push({ label: 'Voci distinte analizzate', value: String(stats.length) });
-    kpiData.forEach(function(kpi, idx) {
-      const ky = 1.0 + idx * 0.56;
-      cover.addShape('rect', { x: 4.85, y: ky, w: 8.2, h: 0.5, fill: { color: panelBg }, line: { color: borderColor, width: 0.5 } });
-      cover.addText(kpi.label.toUpperCase(), { x: 5.05, y: ky + 0.04, w: 7.9, h: 0.18, fontSize: 7, color: mutedColor, bold: true, charSpacing: 0.5 });
-      cover.addText(kpi.value, { x: 5.05, y: ky + 0.24, w: 7.9, h: 0.22, fontSize: 11, color: titleColor, bold: true });
-    });
-    const recY = 1.0 + kpiData.length * 0.56 + 0.22;
-    cover.addText('PROBLEMATICHE RICORRENTI', { x: 4.85, y: recY, w: 8.2, h: 0.28, fontSize: 8.5, color: accentOrange, bold: true, charSpacing: 1.5 });
-    cover.addShape('rect', { x: 4.85, y: recY + 0.3, w: 8.2, h: 0.022, fill: { color: borderColor }, line: { color: borderColor } });
-    buildRecurringIncidentsAnalysis(periodTickets, 5).forEach(function(line, idx) {
-      cover.addText((idx + 1) + '.   ' + line, { x: 4.85, y: recY + 0.42 + idx * 0.3, w: 8.2, h: 0.26, fontSize: 10, color: titleColor });
-    });
-
-    // ── SLIDE 2: ANALISI ──
-    const slide = deck.addSlide();
-    slideRefs.push(slide);
-    slide.background = { color: slideBg };
-    const slideTitle = 'Ticket per ' + cfg.dimensionLabel + ' · ' + cfg.periodLabel;
-    slide.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.52, fill: { color: headerBg }, line: { color: headerBg } });
-    slide.addText(slideTitle.toUpperCase(), { x: 0.25, y: 0, w: 9.5, h: 0.52, color: 'FFFFFF', bold: true, fontSize: 12, valign: 'middle', charSpacing: 1 });
-    slide.addText(String(total) + ' ticket totali', { x: 9.8, y: 0, w: 3.3, h: 0.52, color: headerMuted, fontSize: 9, align: 'right', valign: 'middle' });
-    slide.addShape('rect', { x: 0, y: 0.52, w: 13.33, h: 0.025, fill: { color: accentTeal }, line: { color: accentTeal } });
-    slide.addShape('rect', { x: 7.88, y: 0.55, w: 5.45, h: 6.65, fill: { color: panelBg }, line: { color: panelBg } });
-    slide.addShape('rect', { x: 7.88, y: 0.55, w: 0.025, h: 6.65, fill: { color: borderColor }, line: { color: borderColor } });
-
-    const imgBlob = await buildChartPngBlob('Ticket per ' + cfg.dimensionLabel, stats.slice(0, 15));
-    if (imgBlob) {
-      const imgData = await blobToDataUrl(imgBlob);
-      slide.addImage({ data: imgData, x: 0.22, y: 0.64, w: 7.52, h: 5.52 });
-    }
-
-    slide.addText('RANKING', { x: 8.05, y: 0.66, w: 5.1, h: 0.24, fontSize: 7.5, color: accentBlue, bold: true, charSpacing: 1.5 });
-    stats.slice(0, 12).forEach(function(s, i) {
-      const y = 0.95 + i * 0.45;
-      if (y > 6.9) return;
-      const pct = total > 0 ? ' · ' + Math.round((s.total / total) * 100) + '%' : '';
-      slide.addText((i + 1) + '.  ' + s.label + ': ' + s.total + ' ticket' + pct, {
-        x: 8.05, y: y, w: 5.1, h: 0.38, fontSize: 9, color: i < 3 ? titleColor : mutedColor, bold: i < 3
-      });
-    });
-
-    const sepY = 0.95 + Math.min(12, stats.length) * 0.45 + 0.1;
-    if (sepY < 6.5) {
-      slide.addShape('rect', { x: 8.05, y: sepY, w: 5.08, h: 0.018, fill: { color: borderColor }, line: { color: borderColor } });
-      slide.addText('INCIDENT PIÙ FREQUENTI', { x: 8.05, y: sepY + 0.07, w: 5.1, h: 0.24, fontSize: 7.5, color: accentOrange, bold: true, charSpacing: 1.5 });
-      buildRecurringIncidentsAnalysis(periodTickets, 4).forEach(function(rec, ri) {
-        const ry = sepY + 0.38 + ri * 0.28;
-        if (ry > 7.0) return;
-        slide.addText('·  ' + rec, { x: 8.05, y: ry, w: 5.1, h: 0.26, fontSize: 9, color: titleColor });
+    cover.background = { color: P.bg };
+    const coverImage = await loadReportCoverImage();
+    if (coverImage) {
+      cover.addImage({ data: coverImage, x: 0, y: 0, w: 13.33, h: 7.5 });
+      // PowerPoint non ha sfumature trasparenti semplici: si simulano con bande a opacità crescente.
+      cover.addShape('rect', { x: 0, y: 0, w: 5.2, h: 7.5, fill: { color: P.bg }, line: { color: P.bg } });
+      [[5.2, 0], [5.9, 20], [6.6, 40], [7.3, 60], [8.0, 80]].forEach(function(b) {
+        cover.addShape('rect', { x: b[0], y: 0, w: 0.72, h: 7.5, fill: { color: P.bg, transparency: b[1] }, line: { type: 'none' } });
       });
     }
+    pptLogoMark(cover, 0.9, 0.78, 0.78);
+    pptWordmark(cover, 1.85, 0.74, 5, 0.6, 40);
+    cover.addText('PRODUCTION OPERATIONS TEAM', { x: 1.87, y: 1.34, w: 5, h: 0.22, fontFace: PPT_FONT, fontSize: 9, bold: true, color: P.muted, charSpacing: 3, margin: 0 });
+    cover.addShape('rect', { x: 0.9, y: 2.95, w: 0.66, h: 0.04, fill: { color: P.accent }, line: { type: 'none' } });
+    cover.addText('REPORT TICKET', { x: 0.9, y: 3.18, w: 6, h: 0.26, fontFace: PPT_FONT, fontSize: 12, bold: true, color: P.accent, charSpacing: 3, margin: 0 });
+    cover.addText(cfg.fabLabel, { x: 0.9, y: 3.46, w: 6.2, h: 0.95, fontFace: PPT_FONT, fontSize: 54, bold: true, color: P.white, margin: 0, fit: 'shrink' });
+    cover.addText(cfg.periodLabel, { x: 0.9, y: 4.44, w: 6.2, h: 0.46, fontFace: PPT_FONT, fontSize: 22, bold: true, color: P.white, margin: 0 });
+    cover.addText(rangeLabel + '  ·  Analisi per ' + dimLower, { x: 0.9, y: 4.92, w: 6.2, h: 0.3, fontFace: PPT_FONT, fontSize: 13, color: P.ink2, margin: 0 });
+    cover.addText('Generato il ' + generatedLabel + (showUser ? '  ·  ' + currentUser.username : '') + '  ·  ProdOps Ticket Manager', {
+      x: 0.9, y: 6.78, w: 8, h: 0.24, fontFace: PPT_FONT, fontSize: 10, color: P.muted, margin: 0
+    });
+    cover.addShape('roundRect', { x: 10.35, y: 6.42, w: 2.35, h: 0.66, rectRadius: 0.12, fill: { color: P.bg, transparency: 20 }, line: { color: P.accent, width: 1 } });
+    cover.addText([
+      { text: String(total), options: { bold: true, fontSize: 24, color: P.white } },
+      { text: '  ticket nel periodo', options: { fontSize: 11, color: P.ink2 } }
+    ], { x: 10.35, y: 6.42, w: 2.35, h: 0.66, fontFace: PPT_FONT, align: 'center', valign: 'middle', margin: 0 });
 
-    if (stats.length) {
-      const detailPalette = {
-        slideBg: slideBg,
-        headerBg: headerBg,
-        headerMuted: headerMuted,
-        panelBg: panelBg,
-        borderColor: borderColor,
-        titleColor: titleColor,
-        mutedColor: mutedColor,
-        accentBlue: accentBlue,
-        accentTeal: accentTeal,
-        accentOrange: accentOrange
-      };
-      stats.forEach(function(statRow) {
-        const dimensionValue = normalizeAnalysisText(statRow.label || 'Voce');
-        const detailTickets = filterTicketsForDimensionValue(periodTickets, cfg.dimension, dimensionValue, meta);
-        const detail = buildDimensionDetailAnalysis(cfg.dimension, dimensionValue, detailTickets, meta);
-        addDimensionDetailSlide(deck, slideRefs, cfg, detail, detailPalette);
-        addOccurrenceTableSlides(deck, slideRefs, cfg, detail, detailPalette);
+    if (!total) {
+      const empty = deck.addSlide();
+      slideRefs.push(empty);
+      pptAddHeader(empty, 'Sintesi', 'Nessun ticket nel periodo', rangeLabel);
+      empty.addText('Non risultano ticket per ' + cfg.fabLabel.toLowerCase() + ' nel periodo selezionato.', {
+        x: 0.5, y: 2.0, w: 12.3, h: 0.5, fontFace: PPT_FONT, fontSize: 14, color: P.ink2, margin: 0
       });
+    } else {
+      // ── 1. Sintesi: KPI + ticket per giorno ──
+      const summary = deck.addSlide();
+      slideRefs.push(summary);
+      pptAddHeader(summary, 'Sintesi', 'Ticket per ' + trend.unit, rangeLabel);
+      const kpis = [
+        { label: 'Ticket totali', value: total, note: cfg.fabLabel },
+        { label: 'Media giornaliera', value: facts.avgPerDay.toLocaleString('it-IT'), note: facts.days > 1 ? 'su ' + facts.days + ' giorni' : 'nella giornata' },
+        { label: 'Giorno di picco', value: facts.peakDay ? facts.peakDay.n : 0, note: facts.peakDay ? pptFormatDate(facts.peakDay.key) : '' },
+        { label: 'Giorni con ticket', value: facts.activeDays + ' / ' + facts.days, note: pptPct(facts.activeDays, facts.days) + '% del periodo' }
+      ];
+      kpis.forEach(function(k, i) { pptAddKpi(summary, 0.5 + i * 3.13, 1.55, 2.95, k.label, k.value, k.note); });
+      pptAddSectionLabel(summary, 'Ticket aperti per ' + trend.unit, 0.5, 3.0, 12.3);
+      pptColumnChart(deck, summary, trend, { x: 0.4, y: 3.25, w: 12.5, h: 3.7 });
+
+      // ── 2. Ricorrenze: macchine e operazioni ripetute ──
+      const rec = deck.addSlide();
+      slideRefs.push(rec);
+      pptAddHeader(rec, 'Ricorrenze', 'Cosa si ripete', 'conteggio ticket');
+      pptAddSectionLabel(rec, 'Macchine ripetute', 0.5, 1.55, 5.9);
+      if (facts.machines.length) pptBarChart(deck, rec, facts.machines, { x: 0.4, y: 1.85, w: 6.0, h: 5.0 }, 10);
+      else pptEmptyNote(rec, 'Nessuna macchina compare in più di un ticket.', { x: 0.5, y: 1.95, w: 5.9, h: 1.2 });
+      pptAddSectionLabel(rec, 'Operazioni ripetute', 6.93, 1.55, 5.9);
+      if (facts.operations.length) pptBarChart(deck, rec, facts.operations, { x: 6.83, y: 1.85, w: 6.0, h: 5.0 }, 10);
+      else pptEmptyNote(rec, 'Nessuna operazione compare in più di un ticket.', { x: 6.93, y: 1.95, w: 5.9, h: 1.2 });
+
+      // ── 2b. Sequenze From → To (una slide per incident che le usa) ──
+      facts.sequences.forEach(function(seq) {
+        const s = deck.addSlide();
+        slideRefs.push(s);
+        pptAddHeader(s, 'Sequenze', seq.incident + ' · From → To',
+          seq.total + ' ticket con sequenza su ' + seq.incidentTotal + ' · ' + seq.distinctPairs + ' passaggi diversi');
+        pptAddSectionLabel(s, 'Passaggi più frequenti (From → To)', 0.5, 1.6, 6.6);
+        if (seq.pairs.length) pptBarChart(deck, s, seq.pairs, { x: 0.4, y: 1.9, w: 6.8, h: 5.0 }, 12);
+        else pptEmptyNote(s, 'Nessun ticket ha sia From che To compilati.', { x: 0.5, y: 2.0, w: 6.6, h: 1.2 });
+        pptAddSectionLabel(s, 'Sequenze di partenza (From)', 7.55, 1.6, 5.3);
+        if (seq.from.length) pptBarChart(deck, s, seq.from, { x: 7.45, y: 1.9, w: 5.45, h: 2.35 }, 5);
+        pptAddSectionLabel(s, 'Sequenze di arrivo (To)', 7.55, 4.4, 5.3);
+        if (seq.to.length) pptBarChart(deck, s, seq.to, { x: 7.45, y: 4.7, w: 5.45, h: 2.25 }, 5);
+      });
+
+      // ── 3. Quando succede: giorno della settimana × fascia oraria ──
+      const when = deck.addSlide();
+      slideRefs.push(when);
+      pptAddHeader(when, 'Quando succede', 'Giorno della settimana × turno', 'ticket per turno · la notte 22–06 conta sul giorno in cui inizia');
+      pptHeatmap(when, facts.grid, { x: 0.5, y: 1.65, w: 12.33 });
+      if (facts.peakBand.n) {
+        when.addText('Turno più carico: ' + PPT_WEEKDAYS[facts.peakBand.wd].toLowerCase() + ' ' + PPT_HOUR_BANDS[facts.peakBand.band] + ' con ' + facts.peakBand.n + ' ticket.', {
+          x: 0.5, y: 5.75, w: 12.33, h: 0.3, fontFace: PPT_FONT, fontSize: 12, color: P.ink2, margin: 0
+        });
+      }
+
+      // ── 4. Distribuzione ──
+      const dist = deck.addSlide();
+      slideRefs.push(dist);
+      pptAddHeader(dist, 'Distribuzione', 'Ticket per ' + dimLower, stats.length + ' voci');
+      const sideStats = (!cfg.fab && cfg.dimension !== 'fab')
+        ? { title: 'Per FAB', stats: facts.fabStats }
+        : (cfg.dimension !== 'incident'
+          ? { title: 'Incident più frequenti', stats: _aggregateBy(periodTickets, function(t) { return normalizeAnalysisText(t.incident_name || 'N/D') || 'N/D'; }) }
+          : { title: 'Per categoria', stats: aggregateTicketsByDimension(periodTickets, 'category', meta) });
+      pptAddSectionLabel(dist, 'Prime ' + Math.min(10, stats.length) + ' voci per ' + dimLower, 0.5, 1.55, 7.2);
+      pptBarChart(deck, dist, stats, { x: 0.4, y: 1.85, w: 7.4, h: 5.0 }, 10);
+      pptAddSectionLabel(dist, sideStats.title, 8.3, 1.55, 4.5);
+      pptBarChart(deck, dist, sideStats.stats, { x: 8.2, y: 1.85, w: 4.65, h: 5.0 }, 8);
+
+      // ── 5. Report scritto ──
+      addWrittenReportSlides(deck, slideRefs, buildWrittenReport(cfg, facts, periodTickets, meta, rangeLabel), rangeLabel);
+
+      // ── 6. Appendice: conteggio completo ──
+      const pageSize = 16;
+      const pages = Math.ceil(stats.length / pageSize);
+      let cumulative = 0;
+      for (let p = 0; p < pages; p++) {
+        const app = deck.addSlide();
+        slideRefs.push(app);
+        pptAddHeader(app, 'Appendice' + (pages > 1 ? ' · ' + (p + 1) + '/' + pages : ''), 'Conteggio completo per ' + dimLower, stats.length + ' voci');
+        pptTable(app, ['#', cfg.dimensionLabel, 'Ticket', '% sul totale', '% cumulata'], stats.slice(p * pageSize, (p + 1) * pageSize).map(function(s, i) {
+          cumulative += s.total;
+          return [p * pageSize + i + 1, pptTruncate(s.label, 80), s.total, pptPct(s.total, total) + '%', pptPct(cumulative, total) + '%'];
+        }), { x: 0.5, y: 1.6, w: 12.33 }, [0.6, 7.9, 1.2, 1.3, 1.33], ['center', 'left', 'right', 'right', 'right']);
+      }
     }
 
+    const totalPages = slideRefs.length + 1;
     slideRefs.forEach(function(ref, index) {
-      addFooter(ref, index + 1, slideRefs.length);
+      ref.addText(cfg.fabLabel + '  ·  ' + cfg.periodLabel + '  ·  ' + generatedLabel, {
+        x: 0.5, y: 7.06, w: 10.2, h: 0.24, fontFace: PPT_FONT, fontSize: 9, color: P.muted, margin: 0
+      });
+      ref.addText((index + 2) + ' / ' + totalPages, {
+        x: 11.33, y: 7.06, w: 1.5, h: 0.24, fontFace: PPT_FONT, fontSize: 9, color: P.muted, align: 'right', margin: 0
+      });
     });
 
-    await deck.writeFile({ fileName: 'ProdOps_Report_' + fileDate + '.pptx', compression: true });
+    const fabPart = cfg.fab ? String(cfg.fab).replace(/[^A-Za-z0-9_-]/g, '') + '_' : '';
+    await deck.writeFile({ fileName: 'ProdOps_Report_' + fabPart + fileDate + '.pptx', compression: true });
   } catch (err) {
     console.error(err);
     showToast('Si è verificato un errore durante la creazione del file PowerPoint. Verifica i dati selezionati e riprova.', 'error', 'Generazione report fallita');
@@ -2809,11 +3213,7 @@ async function generatePowerPointReport(cfg) {
 }
 
 async function generateCsvReport(cfg) {
-  let periodTickets = [];
-  try {
-    const sd = await fetchJson('/api/tickets/search?from=' + encodeURIComponent(cfg.dateFrom) + '&to=' + encodeURIComponent(cfg.dateTo) + '&query=');
-    periodTickets = Array.isArray(sd.tickets) ? sd.tickets : [];
-  } catch (e) { periodTickets = []; }
+  const periodTickets = await fetchReportTickets(cfg);
 
   const meta = await fetchMeta();
   const stats = aggregateTicketsByDimension(periodTickets, cfg.dimension, meta);
@@ -2838,6 +3238,7 @@ async function generateCsvReport(cfg) {
     pad(['REPORT PRODOPS']),
     sep,
     pad(['Periodo', cfg.periodLabel]),
+    pad(['FAB', cfg.fabLabel]),
     pad(['Dimensione', cfg.dimensionLabel]),
     pad(['Ticket totali', String(total)]),
     pad(['Generato il', generatedAt]),
@@ -2870,7 +3271,8 @@ async function generateCsvReport(cfg) {
     ]));
   });
 
-  triggerDownload('ProdOps_Report_' + stamp + '.csv', BOM + rows.join('\r\n'), 'text/csv;charset=utf-8');
+  const fabPart = cfg.fab ? String(cfg.fab).replace(/[^A-Za-z0-9_-]/g, '') + '_' : '';
+  triggerDownload('ProdOps_Report_' + fabPart + stamp + '.csv', BOM + rows.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 async function exportChart(targetId, format) {
